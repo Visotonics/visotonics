@@ -12,9 +12,6 @@ import * as THREE from "three";
 import { PALETTE } from "./palette";
 import { L, H, DEFECT_UV } from "./container";
 
-const hx = L / 2;
-const hy = H / 2;
-
 function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const cv = document.createElement("canvas");
   cv.width = w;
@@ -291,19 +288,6 @@ function paintCrack(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: nu
   ctx.restore();
 }
 
-/* soft filled blob into a single channel (for the glow/detection mask) */
-function maskBlob(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, channel: "r" | "g") {
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  const col = channel === "r" ? "255,60,60" : "60,255,60";
-  g.addColorStop(0, `rgba(${col},1)`);
-  g.addColorStop(0.7, `rgba(${col},0.55)`);
-  g.addColorStop(1, `rgba(${col},0)`);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
 /* Transparent decal textures to lay damage on faces other than the front,
    so it can be demonstrated across multiple faces of the container. */
 export function makeCrackDecal(): THREE.CanvasTexture {
@@ -328,18 +312,51 @@ export function makeDentDecal(): THREE.CanvasTexture {
 export interface FrontMaterial {
   material: THREE.MeshStandardMaterial;
   setScan: (x: number, on: number) => void;
-  setReveal: (t: number) => void;
   setTime: (t: number) => void;
   dispose: () => void;
 }
 
-function buildFront(): FrontMaterial {
-  const W = 2048;
+export function makeRustDecal(): THREE.CanvasTexture {
+  const S = 512;
+  const [cv, ctx] = makeCanvas(S, S);
+  // paintRust lays no base fill, so the patch arrives with its own irregular
+  // silhouette over transparent pixels — which is the whole requirement of a
+  // decal: a rectangle of steel stuck on steel would read as a sticker.
+  paintRust(ctx, S * 0.5, S * 0.5, S * 0.42, mulberry32(37));
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* TEXTURE CACHE — measured, not assumed.
+
+   A gate-vision build costs 367 ms, and the Viso Yard page pays that twice:
+   buildMaterials is called once by container-vision and once by gate-vision,
+   and between them they paint a 1024x512 steel canvas plus THREE 2048-wide
+   canvases with thousands of per-pixel operations, for byte-identical output.
+
+   Sharing is safe because these textures are IMMUTABLE after generation: the
+   scan is a shader UNIFORM, so setScan/setTime only ever write
+   uniforms[name].value and material.userData.shader — nothing here is ever
+   redrawn and needUpdate is never raised. The MATERIAL owns the uniforms, so
+   the material stays per-scene and only the pixels are shared.
+
+   Every generator below seeds its own mulberry32 from a literal, so a cache
+   hit cannot shift anyone's random sequence: the first call produces exactly
+   what an uncached call produced, and later calls produce nothing at all. */
+interface FrontTextures {
+  albTex: THREE.CanvasTexture;
+  rghTex: THREE.CanvasTexture;
+  bmpTex: THREE.CanvasTexture;
+}
+let frontTexCache: FrontTextures | null = null;
+
+function makeFrontTextures(): FrontTextures {
+  const W = 1024;
   const HT = Math.round(W * (H / L)); // keep aspect ~ real face
   const [alb, actx] = makeCanvas(W, HT);
   const [rgh, rctx] = makeCanvas(W, HT);
   const [bmp, bctx] = makeCanvas(W, HT);
-  const [msk, mctx] = makeCanvas(W, HT);
 
   // base steel
   drawSteel(actx, W, HT, 101, true);
@@ -355,8 +372,6 @@ function buildFront(): FrontMaterial {
   // bump base mid-gray
   bctx.fillStyle = "#808080";
   bctx.fillRect(0, 0, W, HT);
-  mctx.fillStyle = "#000";
-  mctx.fillRect(0, 0, W, HT);
 
   const rnd = mulberry32(303);
   const px = (u: number) => u * W;
@@ -420,15 +435,16 @@ function buildFront(): FrontMaterial {
   bctx.ellipse(px(DEFECT_UV.dent.u), py(DEFECT_UV.dent.v), rDent, rDent * 0.82, 0, 0, Math.PI * 2);
   bctx.fill();
 
-  // detection mask (unused now; scan lighting only)
-  maskBlob(mctx, px(DEFECT_UV.dent.u), py(DEFECT_UV.dent.v), rDent, "r");
-
   const albTex = new THREE.CanvasTexture(alb);
   albTex.colorSpace = THREE.SRGBColorSpace;
   const rghTex = new THREE.CanvasTexture(rgh);
   const bmpTex = new THREE.CanvasTexture(bmp);
-  const mskTex = new THREE.CanvasTexture(msk);
-  mskTex.flipY = false;
+  return { albTex, rghTex, bmpTex };
+}
+
+function buildFront(): FrontMaterial {
+  if (!frontTexCache) frontTexCache = makeFrontTextures();
+  const { albTex, rghTex, bmpTex } = frontTexCache;
 
   const material = new THREE.MeshStandardMaterial({
     map: albTex,
@@ -446,15 +462,8 @@ function buildFront(): FrontMaterial {
   const uniforms = {
     uScanX: { value: -99 },
     uScanOn: { value: 0 },
-    uReveal: { value: 0 },
     uTime: { value: 0 },
     uAccent: { value: new THREE.Color(PALETTE.accent) },
-    uWarn: { value: new THREE.Color(PALETTE.warn) },
-    uMask: { value: mskTex },
-    uHx: { value: hx },
-    uHy: { value: hy },
-    uL: { value: L },
-    uHh: { value: H },
   };
 
   material.onBeforeCompile = (shader) => {
@@ -494,15 +503,12 @@ function buildFront(): FrontMaterial {
       set("uScanX", x);
       set("uScanOn", on);
     },
-    setReveal: (t) => set("uReveal", t),
     setTime: (t) => set("uTime", t),
-    dispose: () => {
-      albTex.dispose();
-      rghTex.dispose();
-      bmpTex.dispose();
-      mskTex.dispose();
-      material.dispose();
-    },
+    // MATERIAL ONLY. The three maps are cached and shared, and on the Yard page
+    // a second scene is still drawing with them when this one tears down —
+    // disposing them here blanks that scene's steel. This exact trap has been
+    // hit twice in this codebase; see PERFORMANCE.md.
+    dispose: () => { material.dispose(); },
   };
 }
 
@@ -513,7 +519,11 @@ export interface MaterialSet {
   dispose: () => void;
 }
 
-export function buildMaterials(): MaterialSet {
+/* Same cache, same reasoning as the front maps above: the tiled steel pair is
+   identical for every caller and nothing ever writes to it after generation. */
+let tiledTexCache: { albedo: THREE.CanvasTexture; rough: THREE.CanvasTexture } | null = null;
+
+function makeTiledTextures() {
   const [alb, actx] = makeCanvas(1024, 512);
   drawSteel(actx, 1024, 512, 7, false); // no repeated ID stencil on tiled faces
   const albedo = new THREE.CanvasTexture(alb);
@@ -533,6 +543,35 @@ export function buildMaterials(): MaterialSet {
   const rough = new THREE.CanvasTexture(rgh);
   rough.wrapS = rough.wrapT = THREE.RepeatWrapping;
   rough.repeat.set(3, 1.5);
+  return { albedo, rough };
+}
+
+/** Populate the two texture caches without building any material.
+ *
+ *  The caches below already prevented the SECOND consumer on a page from
+ *  repainting three 2048-wide canvases. They never helped the first one, and on
+ *  the Viso Yard page the first one is whichever scene the visitor scrolls to —
+ *  so the cost was still landing on a scrolling frame. Called from the idle warm
+ *  in _vision/lazy.tsx, this makes every consumer the second one. */
+export function warmContainerTextures() {
+  /* MEASURED HERE, because nothing else was measuring it.
+     `mount.ts`'s build timer wraps make(), and these generators run in the idle
+     warm chain OUTSIDE it — so the most expensive thing on the page reported
+     zero for months while the build it fed reported 150ms. On /lab/container-
+     vision the build says 233ms and the main thread blocks for over six seconds.
+     Anything that paints a canvas gets a mark from now on. */
+  const mark = (what: string, t0: number) => {
+    if (typeof location === "undefined" || !location.search.includes("perf")) return;
+    const w = window as unknown as { __visionTex?: string[] };
+    (w.__visionTex ||= []).push(`${what} ${(performance.now() - t0).toFixed(0)}`);
+  };
+  if (!tiledTexCache) { const t = performance.now(); tiledTexCache = makeTiledTextures(); mark("tiled", t); }
+  if (!frontTexCache) { const t = performance.now(); frontTexCache = makeFrontTextures(); mark("front", t); }
+}
+
+export function buildMaterials(): MaterialSet {
+  if (!tiledTexCache) tiledTexCache = makeTiledTextures();
+  const { albedo, rough } = tiledTexCache;
 
   const steel = new THREE.MeshStandardMaterial({
     map: albedo,
@@ -560,9 +599,9 @@ export function buildMaterials(): MaterialSet {
     steel,
     dark,
     front,
+    // MATERIALS ONLY — the tiled maps are cached and a second scene on the same
+    // page is still sampling them. See the note on FrontMaterial.dispose.
     dispose: () => {
-      albedo.dispose();
-      rough.dispose();
       steel.dispose();
       dark.dispose();
       front.dispose();

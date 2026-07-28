@@ -26,6 +26,8 @@ import {
 // band-corner registration crosses use a slightly stronger dark ink on light
 const CROSS_INK = "rgba(19,21,26,0.45)";
 import { Schematic } from "./_media";
+// lazy: keeps three.js out of this page's critical bundle — see _vision/lazy
+import { ContainerVisionScene, GateVisionScene, TankVisionScene, YardVisionScene } from "@/components/vision/_vision/lazy";
 
 /* ---------------------------------------------------------------------------
    Viso Yard — section modules. Ported from the approved Design exports as
@@ -175,19 +177,22 @@ export function SectionContainer() {
         </div>
 
         {/* demo slot — full-bleed technical drawing, gridlines dim to 0.03 */}
-        <div style={{ position: "relative", zIndex: 1, background: SURFACE_DARK, borderTop: `1px solid ${BORDER_D}`, borderBottom: `1px solid ${BORDER_D}` }}>
+        <div style={{ position: "relative", zIndex: 1 }}>
           <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
             <Verticals color={GRID_D_DIM} />
           </div>
-          {/* mono-labels stacked bottom-centre-right, per the export */}
-          <span style={{ position: "absolute", left: "54.8%", top: 579, zIndex: 2, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>VSTU 907032 1</span>
-          <span style={{ position: "absolute", left: "54.9%", top: 604, zIndex: 2, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>MM² ANNOTATED</span>
-          <span style={{ position: "absolute", left: "57.8%", top: 630, zIndex: 2, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>ISO 6346</span>
-          <Schematic
-            file="visotonics-container-schematic.svg"
-            label="Container damage-detection schematic — specimen 22G1, six faces scanned, dent/rust/crack annotated"
-            style={{ position: "relative", zIndex: 1, padding: "64px 0" }}
-          />
+          {/* No page-level mono labels here: the original flagship SVG carried
+              its own "VSTU 907032 1 / MM² ANNOTATED / ISO 6346" caption as
+              separate absolutely-positioned spans, but ContainerVisionScene
+              already renders that same data inside its own overlay — keeping
+              both left a stale duplicate floating at the SVG's old pixel
+              offsets once the box's real height changed. */}
+          {/* No vertical margin: the scene paints its own dark-blue cyclorama,
+              so it runs edge-to-edge and the band's rules land on the frame's
+              own top/bottom edges. The flat SVG needed the inset; this doesn't. */}
+          <div style={{ position: "relative", zIndex: 1, width: "100%", aspectRatio: "1600 / 680" }}>
+            <ContainerVisionScene bare bleed={230} />
+          </div>
         </div>
 
         {/* proof zone — one relative container, elements absolutely positioned
@@ -249,11 +254,12 @@ export function SectionContainer() {
           </div>
         </div>
 
-        <div style={{ position: "relative", zIndex: 1, background: SURFACE_DARK, borderTop: `1px solid ${BORDER_D}`, borderBottom: `1px solid ${BORDER_D}`, padding: "12px 0" }}>
-          <span style={{ position: "absolute", left: 12, top: 10, zIndex: 2, fontFamily: mono, fontSize: 10, letterSpacing: "0.06em", color: TXT_D2 }}>VSTU 907032 1</span>
-          <span style={{ position: "absolute", right: 12, top: 10, zIndex: 2, fontFamily: mono, fontSize: 10, letterSpacing: "0.06em", color: TXT_D2 }}>ISO 6346</span>
-          <span style={{ position: "absolute", right: 12, bottom: 10, zIndex: 2, fontFamily: mono, fontSize: 10, letterSpacing: "0.06em", color: TXT_D2 }}>MM² ANNOTATED</span>
-          <Schematic file="visotonics-container-schematic.svg" label="Container damage-detection schematic" style={{ padding: "28px 0" }} />
+        {/* Same as desktop: no page-level mono caption (the scene renders that
+            data itself) and no inset, so the frame fills the band. */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div style={{ position: "relative", width: "100%", aspectRatio: "1600 / 680" }}>
+            <ContainerVisionScene bare bleed={130} />
+          </div>
         </div>
 
         <div style={{ position: "relative", zIndex: 1, margin: "56px 24px 0", borderTop: `1px solid ${BORDER_D}`, paddingTop: 40, paddingBottom: 64 }}>
@@ -328,12 +334,12 @@ export function SectionTank() {
         <h2 style={{ margin: "42px 0 0", paddingLeft: 6, maxWidth: 1040, fontFamily: sans, fontSize: 56, lineHeight: 1.08, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
           Tank health detection, from the cameras you already have.
         </h2>
-        {/* ink drawing, no slot border, generous void */}
-        <Schematic
-          file="visotonics-tank-schematic.svg"
-          label="ISO tank T11 schematic — shell, dished ends and walkway, dimension-annotated"
-          style={{ marginTop: 76, marginLeft: 3, width: "calc(100% - 6px)" }}
-        />
+        {/* demo slot — the 3D scene in the box the ink drawing used to hold, at
+            the same aspect and bleed as Container Vision's so both flagships
+            sit in the page the same way. No slot border, generous void. */}
+        <div style={{ position: "relative", zIndex: 1, marginTop: 76, marginLeft: 3, width: "calc(100% - 6px)", aspectRatio: "1600 / 680" }}>
+          <TankVisionScene bare bleed={230} />
+        </div>
       </Reveal>
 
       {/* MOBILE */}
@@ -342,7 +348,11 @@ export function SectionTank() {
         <h2 style={{ margin: "32px 0 0", fontFamily: sans, fontSize: 32, lineHeight: 1.12, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
           Tank health detection, from the cameras you already have.
         </h2>
-        <Schematic file="visotonics-tank-schematic.svg" label="ISO tank T11 schematic" style={{ marginTop: 40 }} />
+        {/* same slot on mobile, at the schematic's aspect rather than a flat
+            letterbox the scene was never framed for */}
+        <div style={{ position: "relative", marginTop: 40, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
+          <TankVisionScene bare bleed={130} />
+        </div>
       </Reveal>
     </section>
   );
@@ -516,8 +526,11 @@ export function SectionGate() {
             ))}
           </div>
 
-          {/* demo slot — r-2 media frame */}
-          <MediaFrame file="visotonics-gate-schematic.svg" label="Gate identity-read schematic — container/ISO/trailer IDs read on moving vehicles" style={{ marginTop: 48 }} />
+          {/* demo slot — the 3D scene inside the same r-2 media frame the
+              schematic used, so the section's chrome is unchanged */}
+          <div style={{ position: "relative", marginTop: 48, aspectRatio: "1600 / 680" }}>
+            <GateVisionScene bare bleed={230} />
+          </div>
 
           {/* proof — absolute composition per the export: giant number owns the
               block at left, the two sentences sit on grid cols 3 and 4 (lefts
@@ -551,9 +564,11 @@ export function SectionGate() {
             </div>
           ))}
         </div>
-        {/* fixed-height contain slot, per the mobile export */}
-        <div style={{ position: "relative", marginTop: 32, height: 240, background: SURFACE_DARK, border: `1px solid ${BORDER_D}`, borderRadius: 12, boxSizing: "border-box", overflow: "hidden" }}>
-          <Schematic file="visotonics-gate-schematic.svg" label="Gate identity-read schematic" fit="contain" style={{ width: "100%", height: "100%" }} />
+        {/* the mobile export's fixed-height slot, now holding the 3D scene.
+            Kept at the schematic's aspect rather than the export's flat 240px
+            so the scene isn't squeezed into a letterbox it was never framed for. */}
+        <div style={{ position: "relative", marginTop: 32, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
+          <GateVisionScene bare bleed={130} />
         </div>
         <div style={{ marginTop: 48, borderTop: `1px solid ${BORDER_D}`, paddingTop: 40 }}>
           <span style={{ display: "block", fontFamily: sans, fontSize: 52, lineHeight: 1, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", color: TXT_D1 }}>400,000</span>
@@ -610,33 +625,34 @@ export function SectionYard() {
 
           <div aria-hidden="true" style={{ height: 130 }} />
 
-          {/* the map */}
-          <div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 34 }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12, textAlign: "right", paddingRight: 20 }}>
-                {YARD_LEGEND.map(([n, t]) => (
-                  <span key={n} style={{ fontFamily: mono, fontSize: 18, letterSpacing: "0.06em", color: TXT_D2 }}>
-                    <span style={{ color: MUTED }}>{n}</span> {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-            {/* bay axis */}
-            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-              <div style={{ width: 28 }} />
-              {YARD_BAYS.map((b) => (
-                <div key={b} style={{ flex: 1, textAlign: "center", fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: MUTED }}>{b}</div>
+          {/* legend stays — it is the only thing naming the three beats the
+              animation plays, in the order it plays them */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 34 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12, textAlign: "right", paddingRight: 20 }}>
+              {YARD_LEGEND.map(([n, t]) => (
+                <span key={n} style={{ fontFamily: mono, fontSize: 18, letterSpacing: "0.06em", color: TXT_D2 }}>
+                  <span style={{ color: MUTED }}>{n}</span> {t}
+                </span>
               ))}
             </div>
-            {YARD_ROWS.map((r) => (
-              <div key={r} style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-                <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: MUTED }}>{r}</div>
-                {YARD_BAYS.map((b) => (
-                  <div key={b} style={{ flex: 1, ...cell(r === "D" && b === "06", 112) }} />
-                ))}
-              </div>
-            ))}
-            <span style={{ display: "block", margin: "20px 0 0 44px", fontFamily: mono, fontSize: 16, fontWeight: 500, letterSpacing: "0.08em", color: SIGNAL }}>D-06 — LOCATED</span>
+          </div>
+
+          {/* demo slot — the aerial replaces the flat DOM slot map that used to
+              sit here, at the same aspect and bleed as the other three flagships
+              so all four sit in the page the same way.
+
+              THE MAP IS GONE ON DESKTOP ON PURPOSE. It carried exactly what the
+              scene now carries — five rows, eight bays, D-06 marked in the signal
+              colour — and two grids saying the same thing at once read as
+              redundancy rather than as reinforcement. What the map had and the
+              scene does not is axis labels, and the scene does not need them: the
+              callout states the address in words ("row D · bay 06 · tier 1"), so
+              the slot reference is self-explaining rather than something you have
+              to cross-reference against a legend.
+
+              The map is KEPT on mobile — see the mobile branch below. */}
+          <div style={{ position: "relative", zIndex: 1, marginLeft: 3, width: "calc(100% - 6px)", aspectRatio: "1600 / 680" }}>
+            <YardVisionScene bare bleed={230} />
           </div>
 
           <div aria-hidden="true" style={{ height: 150 }} />
@@ -664,6 +680,12 @@ export function SectionYard() {
             <span key={n} style={{ fontFamily: mono, fontSize: 11, letterSpacing: "0.04em", color: TXT_D2 }}><span style={{ color: MUTED }}>{n}</span> {t}</span>
           ))}
         </div>
+        {/* MOBILE KEEPS THE FLAT MAP. Not an oversight and not a fallback: an
+            aerial of 55 containers at 375px puts each box at roughly 20px, where
+            the stack heights, the empty slot and the bracket all stop resolving —
+            everything the 3D exists to show is exactly what dies at that width.
+            The map says the same thing legibly at any size, and costs no WebGL
+            context on the device least able to afford one. */}
         <div style={{ margin: "32px 0 0" }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
             <div style={{ width: 16 }} />

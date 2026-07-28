@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import Image from "next/image";
 import type { CSSProperties } from "react";
 import { CountUp, Reveal, UnderlineDraw } from "@/components/motion";
 import { TestimonialPagerDesktop, TestimonialPagerMobile } from "@/components/testimonial-pager";
 import { DrawSchematic } from "@/components/draw-schematic";
 import DecryptedText from "@/components/decrypted-text";
+// lazy: keeps three.js out of the homepage's critical bundle — see _vision/lazy
+import { DataCard, FactoryCard, LeadCardScene, WarehouseCard, YardCard } from "@/components/vision/_vision/lazy";
 
 // inlined (not <Image>) so the lead-card schematic can draw itself in via
 // DrawSchematic, same reveal used for every flagship SVG on the platform
@@ -61,6 +62,53 @@ function Dot({ style }: { style: CSSProperties }) {
   return <div aria-hidden="true" style={{ position: "absolute", width: 3, height: 3, background: SIGNAL, ...style }} />;
 }
 
+/* SIGNAL CROSS — an orange registration cross, 11px, for the points that
+   MATTER. The sheet already has white 9px crosses at every rule endpoint;
+   those are structure. This is the accent's smallest legitimate unit and it is
+   used sparingly, at the intersections the eye is already travelling through. */
+function SignalCross({ style }: { style: CSSProperties }) {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", width: 11, height: 11, ...style }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 5, height: 1, background: SIGNAL }} />
+      <div style={{ position: "absolute", top: 0, bottom: 0, left: 5, width: 1, background: SIGNAL }} />
+    </div>
+  );
+}
+
+/* DIMENSION CALLOUT — the drafting sheet's own way of saying "this is the
+   measured thing", in the accent, spanning something real.
+
+   This is the single highest-value accent move available on the hero, and the
+   reason is that it is not decoration: a dimension line is what a drafting
+   sheet DOES. It puts colour at page scale, it points at the headline rather
+   than sitting next to it, and it is the first thing on the page that is
+   neither type nor a 3px dot. Extension ticks at each end, a rule between, and
+   a mono label sitting on the rule with the background knocked out behind it. */
+function DimensionSpan({
+  label, left, right, top, background,
+}: { label: string; left: number | string; right: number | string; top: number | string; background: string }) {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: 9 }}>
+      {/* the measured rule */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: SIGNAL, opacity: 0.55 }} />
+      {/* extension ticks, one at each end */}
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: 9, background: SIGNAL }} />
+      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: 9, background: SIGNAL }} />
+      {/* the label, knocking a hole in the rule the way a real callout does */}
+      <span
+        style={{
+          position: "absolute", left: "50%", top: -3, transform: "translateX(-50%)",
+          padding: "0 8px", background,
+          fontFamily: mono, fontSize: 10, letterSpacing: "0.14em", lineHeight: "15px",
+          color: SIGNAL, whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 // The 5 page-wide verticals: margins at 64 / (100%-64), interiors dividing the
 // inset content into 4 equal columns. Same coordinates in every section so the
 // sheet reads continuous.
@@ -109,9 +157,57 @@ const HERO_CARDS = [
   { num: "04", name: "Viso Data", desc: "Compression, trace & detection AI", href: "/platform/viso-data", img: "/assets/hero-card-04-data.svg" },
 ];
 
+const CARD_SCENES = [YardCard, WarehouseCard, FactoryCard, DataCard];
+
+const HERO_CARD_CSS = `
+/* CARD CHROME REACTS WITH THE SCENE.
+
+   Scoped to a lab-only class and injected here rather than added to globals.css:
+   dt-card is shared with the production homepage, and everything in this work
+   stays in labs until signed off.
+
+   :focus-visible is paired with :hover throughout for the same reason the scene
+   listens to focusin — these are anchors, and a keyboard user must get the same
+   response. */
+.lab-hc {
+  transition: border-color 280ms ease, background-color 280ms ease;
+}
+/* !important is load-bearing here, not laziness. Both cards set border and
+   background as INLINE styles, and an inline declaration beats any class
+   selector — without this the rule silently loses and the border never changes.
+   Caught by reading back getComputedStyle rather than trusting the screenshot,
+   where the leader line drawing was masking the fact that nothing else moved. */
+.lab-hc:hover,
+.lab-hc:focus-visible {
+  border-color: rgba(237, 81, 12, 0.55) !important;
+  background-color: #13161C !important;
+}
+/* the part number's leader rule DRAWS toward the panel on hover: short and
+   faint at rest, running the full width and bright on interaction */
+.lab-hc .lab-lead {
+  transform: scaleX(0.42);
+  transform-origin: left center;
+  opacity: 0.22;
+  transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
+}
+.lab-hc:hover .lab-lead,
+.lab-hc:focus-visible .lab-lead {
+  transform: scaleX(1);
+  opacity: 0.9;
+}
+.lab-hc .lab-num { opacity: 0.72; transition: opacity 240ms ease; }
+.lab-hc:hover .lab-num,
+.lab-hc:focus-visible .lab-num { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .lab-hc, .lab-hc .lab-lead, .lab-hc .lab-num { transition: none; }
+  .lab-hc .lab-lead { transform: scaleX(1); opacity: 0.6; }
+}
+`;
+
 function Hero() {
   return (
     <section style={{ background: DARK, borderTop: `1px solid ${GRID_D}` }}>
+      <style>{HERO_CARD_CSS}</style>
       {/* DESKTOP */}
       <div className="hidden md:block" style={{ ...SHEET, minHeight: 828 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
@@ -126,7 +222,25 @@ function Hero() {
           <Dot style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 1 }} />
           <Dot style={{ left: "calc(64px + (100% - 128px) * 0.25)", top: 383 }} />
           <Dot style={{ left: "50%", top: "calc(100% - 1px)" }} />
+          {/* the accent now MARKS the sheet's real intersections, at 11px rather
+              than 3px — where the interior verticals meet the two rules that
+              bracket the log row. Two points, both already on the eye's path
+              from the headline down to the cards. */}
+          <SignalCross style={{ left: "calc(64px + (100% - 128px) * 0.25 - 5px)", top: 331 }} />
+          <SignalCross style={{ left: "calc(64px + (100% - 128px) * 0.75 - 5px)", top: 379 }} />
         </div>
+
+        {/* THE HEADLINE IS DIMENSIONED. Spans the log row, directly under the
+            slab, so it reads as a measurement OF the headline rather than as a
+            band of its own. Inset to the same 25%/75% verticals the sheet
+            already uses, so it lands on the grid instead of floating. */}
+        <DimensionSpan
+          label="ONE VISION LAYER"
+          left="calc(64px + (100% - 128px) * 0.25)"
+          right="calc(64px + (100% - 128px) * 0.25)"
+          top={332}
+          background={DARK}
+        />
 
         {/* top band — slab headline */}
         <div style={{ position: "relative", zIndex: 1, padding: "72px 64px 0", height: 336, boxSizing: "border-box", display: "flex", justifyContent: "center" }}>
@@ -165,14 +279,32 @@ function Hero() {
           <span style={{ ...eyebrow("rgba(244,245,247,0.3)"), whiteSpace: "nowrap" }}>PATENTED TECHNOLOGY</span>
         </div>
 
-        {/* card band */}
-        <div style={{ position: "relative", zIndex: 1, padding: "0 64px 44px" }}>
+        {/* card band
+
+            TIER 2 — BREAKING THE TILING. Two changes, both structural rather
+            than decorative:
+
+            1. NEGATIVE TOP MARGIN. The band is pulled up 14px so the animation
+               panels CROSS the horizontal rule above them instead of sitting
+               tidily beneath it. Four rectangles arranged politely inside their
+               cells is what made the row read as pasted-in images; one element
+               breaking one rule is enough to make the page read as composed.
+               14px, not 34: the first attempt crossed the rule AND swallowed the
+               log row's two labels, which sit in the 48px between the rules.
+               The overlap has to clear the rule and nothing else.
+            2. CARD 01 WAS WIDER — 1.34fr against three 1fr columns, on the
+               argument that four equal columns have no hierarchy and Yard is
+               the flagship module. REVERSED 2026-07-27 by explicit user call:
+               all four cards are even, and the hierarchy is carried by the
+               scenes themselves rather than by column width. Point 1, the
+               rule-overlap, stays. */}
+        <div style={{ position: "relative", zIndex: 2, padding: "0 64px 44px", marginTop: -14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
             {HERO_CARDS.map((c, i) => (
               <a
                 key={c.num}
                 href={c.href}
-                className="dt-card"
+                className="dt-card lab-hc"
                 style={{
                   position: "relative",
                   boxSizing: "border-box",
@@ -187,19 +319,26 @@ function Hero() {
                   textDecoration: "none",
                 }}
               >
-                <span style={{ ...eyebrow(TXT_D2), fontSize: 13 }}>{c.num}</span>
-                <div style={{ flex: 1, margin: "16px 0", borderRadius: 6, overflow: "hidden", minHeight: 0, display: "flex" }}>
-                  <Image
-                    src={c.img}
-                    alt={`${c.name} schematic`}
-                    width={640}
-                    height={480}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 6, alignSelf: "flex-end" }}
-                  />
+                {/* PART NUMBER, in the accent. Four accent points for free, and
+                    a numbered part on a drawing is exactly what this is — the
+                    grey was saying nothing. The leader tick ties the number to
+                    the panel below it so the panel stops reading as a pasted
+                    image sitting in a box. */}
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="lab-num" style={{ ...eyebrow(SIGNAL), fontSize: 13 }}>{c.num}</span>
+                  <span aria-hidden="true" className="lab-lead" style={{ flex: 1, height: 1, background: SIGNAL }} />
+                </span>
+                <div style={{ flex: 1, margin: "16px 0", borderRadius: 6, overflow: "hidden", minHeight: 0, display: "flex", position: "relative" }}>
+                  {(() => {
+                    const S = CARD_SCENES[i];
+                    return <S />;
+                  })()}
                 </div>
                 <span style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.name}</span>
-                  <span style={{ fontSize: 18, lineHeight: 1.5, color: TXT_D2 }}>{c.desc}</span>
+                  {/* two reserved lines (2 x 18 x 1.5) so a one-line description
+                      cannot make its card's flex-1 media panel taller than Yard's */}
+                  <span style={{ fontSize: 18, lineHeight: 1.5, color: TXT_D2, minHeight: 54 }}>{c.desc}</span>
                 </span>
               </a>
             ))}
@@ -246,8 +385,11 @@ function Hero() {
               <span style={{ display: "flex", justifyContent: "flex-end" }}>
                 <span style={{ ...eyebrow(TXT_D2), fontSize: 13 }}>{c.num}</span>
               </span>
-              <div style={{ flex: 1, minHeight: 160, borderRadius: 6, overflow: "hidden", background: "#101216", display: "flex" }}>
-                <Image src={c.img} alt={`${c.name} schematic`} width={640} height={480} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <div style={{ flex: 1, minHeight: 160, borderRadius: 6, overflow: "hidden", background: "#101216", display: "flex", position: "relative" }}>
+                {(() => {
+                  const S = CARD_SCENES[i];
+                  return <S />;
+                })()}
               </div>
               <span style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.name}</span>
@@ -319,10 +461,10 @@ function Statement() {
    ========================================================================= */
 
 const HIW_CARDS = [
-  { num: "01", col: 3, row: 1, title: "Detect and segment", body: "Every defect classified — type, dimension, location, area to the mm²." },
-  { num: "02", col: 4, row: 1, title: "Checkpoint diff", body: "Gate in, crane on, crane off, gate out — any two moments compared for auditable damage attribution." },
-  { num: "03", col: 3, row: 2, title: "Tamper-evident logbook", body: "A time-stamped record per container movement, from vessel to gate." },
-  { num: "04", col: 4, row: 2, title: "Report in under a minute", body: "Survey PDF and structured data to your system via API, in real time." },
+  { num: "01", col: 3, row: 1, title: "Detect and segment", body: "Type, size, location and area, to the mm-squared." },
+  { num: "02", col: 4, row: 1, title: "Checkpoint diff", body: "Any two moments compared, damage attributed." },
+  { num: "03", col: 3, row: 2, title: "Tamper-evident logbook", body: "A time-stamped record for every movement." },
+  { num: "04", col: 4, row: 2, title: "Report in under a minute", body: "Survey PDF and structured data, straight to your system." },
 ];
 const HIW_CARD_BG = "linear-gradient(180deg, rgba(244,245,247,0.06), rgba(244,245,247,0) 40%), #101216";
 
@@ -330,63 +472,60 @@ function HowItWorks() {
   return (
     <section style={{ background: DARK }}>
       {/* DESKTOP */}
-      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 1040 }}>
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} />
-          <HRule top={72} color={GRID_D} cross={CROSS_D} />
-          <Cross color={CROSS_D} style={{ left: 60, top: 4 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
-          <Cross color={CROSS_D} style={{ left: 60, top: "calc(100% - 13px)" }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: "calc(100% - 13px)" }} />
-          <Dot style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 71 }} />
-        </div>
-
-        <div style={{ position: "relative", zIndex: 1, padding: "128px 64px 40px" }}>
-          <span style={{ ...eyebrow(TXT_D2), display: "block", paddingLeft: 18 }}>OUR PLATFORM&nbsp;— YOUR CAMERAS</span>
-          <h2 style={{ margin: "37px 0 0", marginLeft: 12, fontFamily: sans, fontSize: 62, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, maxWidth: "20ch" }}>
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 940 }}>
+        {/* NO DRAWN CHROME IN THIS SECTION. It previously carried the full
+            drafting kit — sheet verticals, an h-rule, four corner crosses, a
+            signal centre divider, a dimension span under the plate and an
+            accent spine with a tick per list item. Against a 1312px white
+            animation plate that is a lot of hairlines competing with the one
+            thing the section is actually about, and none of them were load-
+            bearing: the plate and the type already align to the same 64px
+            margin without a line drawn to prove it. The section is now
+            plate + type on an unruled black field. */}
+        <div style={{ position: "relative", zIndex: 1, padding: "112px 64px 96px" }}>
+          {/* TYPE FIRST, THEN THE PLATE. The heading used to sit in a 624px
+              half-column beside/below the animation at 58px, which capped it
+              at ~15ch and broke it over three short lines; the standfirst was
+              19px in a 40ch measure. Both now run across the full 1312px
+              sheet, so the heading reads in two long lines at 84px and the
+              standfirst at 26px — the section states what it is before it
+              shows it. */}
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: 84, lineHeight: 1.02, fontWeight: 600, letterSpacing: "-0.025em", color: TXT_D1, maxWidth: "22ch" }}>
             One vision layer across the operation.
           </h2>
+          <p style={{ margin: "28px 0 0", fontSize: 26, lineHeight: 1.5, color: TXT_D2, maxWidth: "62ch" }}>
+            No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.
+          </p>
 
-          <div style={{ marginTop: 48, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gridTemplateRows: "repeat(2, 1fr)", gridAutoFlow: "row" }}>
-            {/* lead light card, cols 1-2 rows 1-2 */}
-            <div style={{ gridColumn: "1 / span 2", gridRow: "1 / span 2", boxSizing: "border-box", background: LIGHT_SURFACE, borderRadius: 8, padding: 40, display: "flex", flexDirection: "column", justifyContent: "flex-end", overflow: "hidden" }}>
-              <div style={{ flex: 1, minHeight: 0, marginBottom: 24, borderRadius: 6, overflow: "hidden", display: "flex" }}>
-                <DrawSchematic
-                  html={leadcardSvg("xMidYMin slice")}
-                  label="Existing CCTV covering yard, warehouse and factory — one vision layer, no new hardware"
-                  style={{ width: "100%", height: "100%", borderRadius: 6 }}
-                />
-              </div>
-              <span style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-                <span style={{ fontSize: 42, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>From the CCTV you already own.</span>
-                <span style={{ fontSize: 26, lineHeight: 1.5, color: TXT_L2, maxWidth: "34ch" }}>
-                  No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.
-                </span>
-              </span>
+          {/* THE PLATE — the animation, full sheet width, below the type.
+              It used to sit in a half-width column at 600px tall, which gave a
+              wide, flat site scene a near-square 588×564 frame: the drawing
+              shrank to fit the narrow axis and left roughly 250px of dead
+              near-white at the top and bottom of the loudest element on a
+              black page — while the text column ran ~190px past the bottom of
+              the animation column, so the two-column row never closed. Full
+              width in a landscape frame is the scene's own aspect, so the
+              site is drawn at scale and the white carries content edge to
+              edge. The type then reads as notes under a plate, which is the
+              same drafting-sheet logic the rest of the section is built on. */}
+          <div style={{ position: "relative", marginTop: 72, background: LIGHT_SURFACE, borderRadius: 8, padding: 18, display: "flex", height: 720, boxSizing: "border-box" }}>
+            <div style={{ position: "relative", flex: 1, minHeight: 0, borderRadius: 6, overflow: "hidden", display: "flex" }}>
+              <LeadCardScene />
             </div>
+          </div>
+          {/* THE FOUR, FOUR-UP. They were a vertical stack in one 624px column
+              — a signal spine, a signal tick per item, signal numerals and a
+              hairline rule between each — five decorations on four short
+              lines of text, which is what made the list read as clutter. They
+              are four peers, so they run as four equal columns of the sheet
+              with nothing drawn between them; the gap does the separating and
+              the numeral is demoted to a quiet mono label. */}
+          <div style={{ marginTop: 80, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", columnGap: 48, alignItems: "start" }}>
             {HIW_CARDS.map((c) => (
-              <div
-                key={c.num}
-                style={{
-                  gridColumn: c.col,
-                  gridRow: c.row,
-                  marginLeft: c.col === 4 ? -1 : 0,
-                  marginTop: c.row === 2 ? -1 : 0,
-                  boxSizing: "border-box",
-                  background: HIW_CARD_BG,
-                  border: `1px solid ${BORDER_D}`,
-                  padding: 32,
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <span style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <span style={{ ...eyebrow(TXT_D2), fontSize: 13 }}>{c.num}</span>
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 20 }}>
-                  <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
-                  <span style={{ fontSize: 18, lineHeight: 1.5, color: TXT_D2 }}>{c.body}</span>
-                </span>
+              <div key={c.num}>
+                <span style={{ display: "block", fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.08em", color: TXT_D2 }}>{c.num}</span>
+                <span style={{ display: "block", marginTop: 18, fontSize: 23, lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
+                <span style={{ display: "block", marginTop: 12, fontSize: 17, lineHeight: 1.55, color: TXT_D2 }}>{c.body}</span>
               </div>
             ))}
           </div>
@@ -395,26 +534,21 @@ function HowItWorks() {
 
       {/* MOBILE */}
       <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
-          <div style={{ position: "absolute", left: "50%", top: 36, width: 3, height: 3, background: SIGNAL }} />
-        </div>
+        {/* same removals as desktop — no centre rule, no signal dot, no eyebrow */}
         <div style={{ position: "relative", zIndex: 1 }}>
-          <span style={{ ...eyebrow(TXT_D2), display: "block", fontSize: 12 }}>OUR PLATFORM&nbsp;— YOUR CAMERAS</span>
-          <h2 style={{ margin: "16px 0 28px", fontFamily: sans, fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>
+          <h2 style={{ margin: "0 0 20px", fontFamily: sans, fontSize: 34, lineHeight: 1.12, fontWeight: 600, letterSpacing: "-0.025em", color: TXT_D1 }}>
             One vision layer across the operation.
           </h2>
+          <p style={{ margin: "0 0 28px", fontSize: 18, lineHeight: 1.55, color: TXT_D2 }}>
+            No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.
+          </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ boxSizing: "border-box", background: LIGHT_SURFACE, borderRadius: 8, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ borderRadius: 6, overflow: "hidden", display: "flex" }}>
-                <DrawSchematic
-                  html={leadcardSvg("xMidYMid meet")}
-                  label="Existing CCTV covering yard, warehouse and factory — one vision layer, no new hardware"
-                  style={{ width: "100%", height: "auto", borderRadius: 6 }}
-                />
+            {/* the card's own headline + copy moved up to the section head, so
+                the card is the scene and nothing else */}
+            <div style={{ boxSizing: "border-box", background: LIGHT_SURFACE, borderRadius: 8, padding: 12, display: "flex" }}>
+              <div style={{ position: "relative", flex: 1, aspectRatio: "4 / 3", borderRadius: 6, overflow: "hidden", display: "flex" }}>
+                <LeadCardScene />
               </div>
-              <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>From the CCTV you already own.</span>
-              <span style={{ fontSize: 15, lineHeight: 1.5, color: TXT_L2 }}>No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.</span>
             </div>
             {HIW_CARDS.map((c) => (
               <div key={c.num} style={{ boxSizing: "border-box", background: HIW_CARD_BG, border: `1px solid ${BORDER_D}`, borderRadius: 8, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -770,8 +904,13 @@ export default function Home() {
     <>
       <Hero />
       <Statement />
-      <HowItWorks />
+      {/* METRICS MOVED ABOVE HOW-IT-WORKS. Per explicit direction: the numbers
+          now land before the section that carries the big lead-card animation,
+          so the page argues (same cameras, different economics) before it
+          demonstrates. Note the 400,000 figure lives in ProofPartners, not
+          Metrics — if that should move too it is a separate reorder. */}
       <Metrics />
+      <HowItWorks />
       <ProofPartners />
       <Testimonials />
       <Convert />

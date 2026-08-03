@@ -396,6 +396,10 @@ export function metalBox(
   let geo = geoCache.get(key);
   if (!geo) {
     geo = new RoundedBoxGeometry(w, h, d, 2, r);
+    /* SHARED — see the dispose guard in _vision/studio.ts. This geometry is
+       handed to every caller asking for the same dimensions, so whoever unmounts
+       first must not destroy it for everyone still using it. */
+    geo.userData.shared = true;
     geoCache.set(key, geo);
   }
   return new THREE.Mesh(geo, m);

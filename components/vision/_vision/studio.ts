@@ -379,9 +379,22 @@ export function createStudio(wrap: HTMLElement, opts: StudioOpts = {}): Studio {
     envRT.dispose();
     hdrRT?.dispose();
     pmrem?.dispose();
+    /* SKIP SHARED GEOMETRY. This traverse used to dispose EVERY mesh geometry
+       it could reach, which quietly included the caches the whole site draws
+       from — metal.ts's rounded-box cache and detect.ts's tracker bar. The cache
+       keeps handing out the reference after it has been destroyed, so the next
+       scene to ask for those dimensions gets a dead geometry and renders
+       nothing. It has not bitten yet only because scenes are built at idle and
+       almost never unmount; a client-side navigation away from a lab route is
+       all it would take.
+
+       PERFORMANCE.md already states the rule ("shared geometry means no mesh may
+       dispose its own geometry") — this is the one place that broke it, and it
+       broke it for every scene at once. Anything cached and shared is tagged
+       userData.shared at the point it enters its cache. */
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.geometry && !mesh.geometry.userData?.shared) mesh.geometry.dispose();
     });
     composer?.dispose?.();
     renderer.dispose();

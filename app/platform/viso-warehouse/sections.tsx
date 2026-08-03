@@ -21,6 +21,8 @@ import {
   sans,
 } from "../viso-yard/_shared";
 import { Schematic } from "../viso-yard/_media";
+// lazy: keeps three.js out of this page's critical bundle — see _vision/lazy
+import { WorkVisionScene } from "@/components/vision/_vision/lazy";
 
 /* ---------------------------------------------------------------------------
    Viso Warehouse — section modules. Ported from the VisoWarehouse-Overview
@@ -51,22 +53,26 @@ const PRODUCTS_OVERVIEW: { n: string; name: string; desc: string; id: string; fi
   { n: "06", name: "Secure Vision", desc: "Alerts and logs", id: "secure-vision", file: "warehouse-secure-schematic-desktop.svg", label: "Secure-vision alert schematic", wide: "1046 / 340" },
 ];
 
+/* ONE TILE = ONE DRAWING. Identical to Viso Yard's ProductCard — see that
+   file for the reasoning: no 8px radius, no hairline box, no caption block
+   under the artwork; the number + name sit ABOVE the drawing as a figure
+   label (every one of these schematics has its own typesetting in at least
+   one corner, so a title laid ON the artwork always collides with something),
+   and the slot is 16:9 contain with a 28px pad so the margin reads as margin.
+   Keep this in step with viso-yard/sections.tsx. */
 function ProductCard({ p }: { p: (typeof PRODUCTS_OVERVIEW)[number] }) {
   return (
     <a
       href={`#${p.id}`}
-      className="hover:border-white/25"
-      style={{ display: "flex", flexDirection: "column", background: SURFACE_DARK, border: `1px solid ${BORDER_D}`, borderRadius: 8, overflow: "hidden", textDecoration: "none", transition: "border-color var(--duration-dur-1) var(--ease-standard)", gridColumn: p.wide ? "1 / -1" : undefined }}
+      className="group"
+      style={{ display: "block", textDecoration: "none", gridColumn: p.wide ? "1 / -1" : undefined }}
     >
-      <div style={{ position: "relative", width: "100%", aspectRatio: p.wide ?? "4 / 3", borderBottom: `1px solid ${BORDER_D}` }}>
-        <Schematic file={p.file} label={p.label} fit="contain" style={{ position: "absolute", inset: 0 }} />
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 20px 14px 20px", background: SURFACE_DARK }}>
+        <span style={{ fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>{p.n}</span>
+        <span style={{ fontFamily: sans, fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em", color: TXT_D1 }}>{p.name}</span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "24px 28px 28px" }}>
-        <div className="flex items-baseline" style={{ gap: 12 }}>
-          <span style={{ fontFamily: mono, fontSize: 14, letterSpacing: "0.04em", color: TXT_D2 }}>{p.n}</span>
-          <span style={{ fontFamily: sans, fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>{p.name}</span>
-        </div>
-        <span style={{ fontFamily: mono, fontSize: 14, letterSpacing: "0.02em", color: TXT_D2 }}>— {p.desc}</span>
+      <div style={{ position: "relative", width: "100%", aspectRatio: p.wide ?? "16 / 9", background: SURFACE_DARK, overflow: "hidden", padding: 28, boxSizing: "border-box" }}>
+        <Schematic file={p.file} label={p.label} fit="contain" style={{ position: "absolute", inset: 28 }} />
       </div>
     </a>
   );
@@ -75,10 +81,11 @@ function ProductCard({ p }: { p: (typeof PRODUCTS_OVERVIEW)[number] }) {
 export function SectionProductsOverview() {
   return (
     <section className="hidden md:block" style={{ position: "relative" }}>
-      {/* same 64+24 / 48-gap alignment to the page's 4-column background grid
-          as Viso Yard — see that file's SectionProductsOverview for the math. */}
-      <div style={{ position: "relative", padding: "40px 88px 72px" }}>
-        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 48 }}>
+      {/* FULL SCREEN WIDTH — mounted OUTSIDE the page's 1620 rail row (see
+          page.tsx BAND 2) so this grid can reach both edges of the viewport.
+          One 24px value does every gap, exactly as Viso Yard. */}
+      <div style={{ position: "relative", padding: "48px 24px 72px" }}>
+        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 24 }}>
           {PRODUCTS_OVERVIEW.map((p) => (
             <ProductCard key={p.id} p={p} />
           ))}
@@ -326,7 +333,22 @@ export function SectionWork({ n = "05" }: { n?: string }) {
         <div aria-hidden="true" style={{ margin: "40px 0 0", height: 1, background: BORDER_D }} />
 
         <span style={{ display: "block", marginTop: 40, fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED }}>LIVE DEMO — SHIFT REGISTER</span>
-        <MediaFrame file="work-vision-schematic-desktop.svg" label="Multi-angle attendance resolution — one person seen from several cameras resolving to one identity, above a live shift register" style={{ margin: "36px auto 0", width: 676, borderRadius: 0 }} />
+        {/* The live aisle, not the flat schematic. 16/9 at 1200 — the exact box
+            the scene was authored and reviewed in (see the lab twin), and the
+            framing is derived from the live aspect, so reshaping it re-frames
+            the shot. 1200 rather than the SVG's 676: this scene has to carry a
+            legible shift register AND three pole cameras resolving to one
+            identity, and at 676 the register type is the size of a caption.
+            Wider than the band's 800 copy measure on purpose — the demo is the
+            evidence, not an illustration beside the argument.
+
+            NO bleed, unlike the other flagships. The register block is pinned
+            to the overlay's own bottom-left while the overlay stays on the real
+            slot; bleeding the canvas would push the walker away from the type
+            that captions them. The scene's author called this out explicitly. */}
+        <div style={{ position: "relative", width: "100%", maxWidth: 1200, margin: "36px auto 0", aspectRatio: "16 / 9" }}>
+          <WorkVisionScene bare />
+        </div>
 
         <span style={{ display: "block", marginTop: 72, fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: TXT_D2 }}>WORK VISION · LIVE IN DAYS, NOT MONTHS</span>
 
@@ -387,7 +409,12 @@ export function SectionWork({ n = "05" }: { n?: string }) {
         <div aria-hidden="true" style={{ marginTop: 32, height: 1, background: BORDER_D }} />
 
         <span style={{ display: "block", marginTop: 32, fontFamily: mono, fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: MUTED }}>LIVE DEMO — SHIFT REGISTER</span>
-        <MediaFrame file="work-vision-schematic-mobile.svg" label="Multi-angle attendance resolution — one person seen from several cameras resolving to one identity, above a live shift register" style={{ marginTop: 16, borderRadius: 0 }} />
+        {/* Same 16/9 and same no-bleed as desktop — the aspect drives the
+            framing and the register is pinned to the overlay, so the mobile
+            twin narrows without reshaping or bleeding. */}
+        <div style={{ position: "relative", marginTop: 16, width: "100%", aspectRatio: "16 / 9" }}>
+          <WorkVisionScene bare />
+        </div>
 
         <span style={{ display: "block", marginTop: 40, fontFamily: mono, fontSize: 11, fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: TXT_D2 }}>WORK VISION · LIVE IN DAYS, NOT MONTHS</span>
 

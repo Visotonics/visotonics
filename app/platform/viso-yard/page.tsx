@@ -132,35 +132,110 @@ export default function VisoYardPage() {
       <YardRulerMobile />
 
       <div style={{ position: "relative", background: CANVAS_DARK }}>
-        <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
-          <YardRailDesktop />
+        {/* ===== BANDS 1-3 =====================================================
+            The overview band has to reach both edges of the SCREEN, and it
+            cannot do that from inside the rail row: that row is capped at 1620,
+            centred, inset a further 180 by the rail, and clipped by the sheet's
+            overflowX. So the content is split into three bands — hero, the
+            full-bleed overview, the sections.
 
-          <div style={{ ...SHEET, overflowX: "clip" }}>
-            {/* page-level continuous grid layer — desktop: the five sheet
-                verticals; mobile: the exports' two margin verticals at 24px */}
-            <div aria-hidden="true" className="hidden md:block" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-              <Verticals color={GRID_D} />
+            BUT the rail and the sheet gridlines have to stay CONTINUOUS across
+            all three, or the page visibly comes apart at the seams: a first
+            attempt put a Verticals layer inside each of the two sheets and the
+            rail inside the second one, which broke the five vertical rules into
+            two disconnected runs with a gap over the overview band, and made
+            the rail appear abruptly at section 01 instead of holding from the
+            top of the page.
+
+            So both are lifted OUT of the bands and drawn as full-height overlay
+            layers over this container instead. Each layer re-creates the row's
+            own geometry — 1620 max, centred, 180 rail column — so it lands on
+            exactly the same axes the bands use, and each spans bands 1-3 in one
+            unbroken piece. The bands below then only own their CONTENT width,
+            which is what lets the middle one go full-screen without disturbing
+            anything. This container must stay `position: relative` and must NOT
+            include the Convert bookend, which draws its own rules.
+            ================================================================= */}
+        <div style={{ position: "relative" }}>
+          {/* continuous gridlines, behind everything */}
+          <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+            <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
+              <div style={{ flex: "0 0 180px" }} />
+              <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
+                <Verticals color={GRID_D} />
+              </div>
             </div>
-            <div aria-hidden="true" className="md:hidden" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+            <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>
               <div style={{ position: "absolute", top: 0, bottom: 0, left: 24, width: 1, background: GRID_D }} />
               <div style={{ position: "absolute", top: 0, bottom: 0, right: 24, width: 1, background: GRID_D }} />
             </div>
+          </div>
 
-            <div style={{ position: "relative", zIndex: 1 }}>
-              <Hero />
-              <Reveal as="div"><SectionProductsOverview /></Reveal>
-              <Reveal as="div"><SectionContainer /></Reveal>
-              {/* Tank is a light band — Reveal wraps inside it (sections.tsx) so the light background paints immediately */}
-              <SectionTank />
-              <Reveal as="div"><SectionGate /></Reveal>
-              <Reveal as="div"><SectionYard /></Reveal>
-              <Reveal as="div"><SectionCrane /></Reveal>
-              {/* PlatformBand is a light band — same reason as Tank */}
-              <PlatformBand />
-              <Reveal as="div"><SectionCargo /></Reveal>
-              <Reveal as="div"><SectionDocument /></Reveal>
-              <Reveal as="div"><SectionWork n="08" /></Reveal>
-              <Reveal as="div"><SectionSecure n="09" /></Reveal>
+          {/* BAND 1 — hero. The 180px spacer holds the hero on exactly the
+              horizontal position the rail used to give it. */}
+          <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
+            <div aria-hidden="true" className="hidden md:block" style={{ flex: "0 0 180px" }} />
+            <div style={{ ...SHEET, overflowX: "clip" }}>
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <Hero />
+              </div>
+            </div>
+          </div>
+
+          {/* BAND 2 — the overview, full screen width, no rail, no sheet. */}
+          <Reveal as="div" style={{ position: "relative", zIndex: 1, background: CANVAS_DARK }}>
+            <SectionProductsOverview />
+          </Reveal>
+
+          {/* BAND 3 — the numbered sections, back on the sheet, and THE ONLY
+              BAND THE RAIL SPANS.
+
+              The rail layer is scoped to this wrapper rather than to the whole
+              three-band container, which is what keeps it off screen until the
+              hero and the overview band have both scrolled away. Two earlier
+              shapes were wrong: inside the sheet it forced the hero to share a
+              row with it, and over the full container it was pinned from scroll
+              0 and sat beside the hero. Anchored here it has nothing to stick
+              to until section 01 reaches the top, which is also the first
+              moment it has anything to point at — it indexes 01-09 and nothing
+              above them. Do not hoist it back up for symmetry with the
+              gridlines; the gridlines are continuous BECAUSE they belong to
+              every band, and the rail is not because it does not. */}
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
+              <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
+                {/* display:flex + height:100% is load-bearing. YardRailDesktop
+                    relies on `alignSelf: stretch` to be as tall as the scroll it
+                    has to stay stuck over, and alignSelf does nothing inside a
+                    block parent — the column collapses to the nav's own
+                    calc(100vh - 72px) and the rail scrolls away one viewport in.
+                    pointerEvents is off on the layer and back on for the column,
+                    so the layer never swallows clicks meant for the sections. */}
+                <div style={{ flex: "0 0 180px", height: "100%", display: "flex", pointerEvents: "auto" }}>
+                  <YardRailDesktop />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
+              <div aria-hidden="true" className="hidden md:block" style={{ flex: "0 0 180px" }} />
+
+              <div style={{ ...SHEET, overflowX: "clip" }}>
+                <div style={{ position: "relative", zIndex: 1 }}>
+                  <Reveal as="div"><SectionContainer /></Reveal>
+                  {/* Tank is a light band — Reveal wraps inside it (sections.tsx) so the light background paints immediately */}
+                  <SectionTank />
+                  <Reveal as="div"><SectionGate /></Reveal>
+                  <Reveal as="div"><SectionYard /></Reveal>
+                  <Reveal as="div"><SectionCrane /></Reveal>
+                  {/* PlatformBand is a light band — same reason as Tank */}
+                  <PlatformBand />
+                  <Reveal as="div"><SectionCargo /></Reveal>
+                  <Reveal as="div"><SectionDocument /></Reveal>
+                  <Reveal as="div"><SectionWork n="08" /></Reveal>
+                  <Reveal as="div"><SectionSecure n="09" /></Reveal>
+                </div>
+              </div>
             </div>
           </div>
         </div>

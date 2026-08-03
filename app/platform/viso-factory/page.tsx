@@ -84,7 +84,7 @@ function Hero() {
           is desktop-only) */}
       <div className="md:hidden" style={{ position: "relative", zIndex: 1, padding: "40px 24px 0" }}>
         <span style={{ ...eyebrow(TXT_D2), fontSize: 11 }}>OUR PLATFORM — YOUR CAMERAS · ON THE LINE</span>
-        <h1 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 0.98, fontWeight: 600, letterSpacing: "-0.035em", textTransform: "uppercase", color: TXT_D1 }}>
+        <h1 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 64, lineHeight: 0.98, fontWeight: 600, letterSpacing: "-0.035em", textTransform: "uppercase", color: TXT_D1 }}>
           <DecryptedText text="Viso Factory" animateOn="view" sequential revealDirection="start" speed={55} encryptedClassName="v-enc" />
         </h1>
         <p style={{ margin: "32px 0 0", fontFamily: sans, fontSize: 18, lineHeight: 1.5, color: TXT_D1 }}>
@@ -98,6 +98,9 @@ function Hero() {
             </a>
           ))}
         </div>
+        <span style={{ display: "block", margin: "40px 0", fontFamily: mono, fontSize: 10, letterSpacing: "0.06em", color: TXT_D2, opacity: 0.6 }}>
+          LINE_03 :: SKU 22841-B :: YIELD 0.99 :: 07:12:44
+        </span>
       </div>
     </div>
   );
@@ -133,27 +136,84 @@ export default function VisoFactoryPage() {
       <FactoryRulerMobile />
 
       <div style={{ position: "relative", background: CANVAS_DARK }}>
-        <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
-          <FactoryRailDesktop />
+        {/* ===== HERO BAND + SECTIONS BAND ====================================
+            Same shell geometry as /platform/viso-yard. The hero gets its own
+            band with a 180px SPACER where the rail column sits, so the rail
+            does not stand beside the hero — it only appears once section 01
+            arrives, which is also the first thing it has anything to index.
 
-          <div style={{ ...SHEET, overflowX: "clip" }}>
-            <div aria-hidden="true" className="hidden md:block" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-              <Verticals color={GRID_D} />
+            The gridlines cannot live inside either band's sheet or they break
+            into two disconnected runs at the seam, so they are lifted out and
+            drawn as one full-height overlay over this container, re-creating
+            the row geometry (1620 max, centred, 180 rail column) so they land
+            on exactly the same axes the bands use. This container must stay
+            `position: relative` and must NOT include the Convert bookend,
+            which draws its own rules.
+            ================================================================= */}
+        <div style={{ position: "relative" }}>
+          {/* continuous gridlines, behind everything */}
+          <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+            <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
+              <div style={{ flex: "0 0 180px" }} />
+              <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
+                <Verticals color={GRID_D} />
+              </div>
             </div>
-            <div aria-hidden="true" className="md:hidden" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+            <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>
               <div style={{ position: "absolute", top: 0, bottom: 0, left: 24, width: 1, background: GRID_D }} />
               <div style={{ position: "absolute", top: 0, bottom: 0, right: 24, width: 1, background: GRID_D }} />
             </div>
+          </div>
 
-            <div style={{ position: "relative", zIndex: 1 }}>
-              <Hero />
-              <Reveal as="div"><SectionProductsOverview /></Reveal>
-              <Reveal as="div"><SectionProduction /></Reveal>
-              <Reveal as="div"><SectionAudit /></Reveal>
-              {/* Dimension is a light band — Reveal wraps inside it (viso-warehouse/sections.tsx) so the background paints immediately */}
-              <SectionDimension />
-              <Reveal as="div"><SectionWork n="04" /></Reveal>
-              <Reveal as="div"><SectionSecure n="05" /></Reveal>
+          {/* BAND 1 — hero. The 180px spacer holds the hero on exactly the
+              horizontal position the rail used to give it. */}
+          <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
+            <div aria-hidden="true" className="hidden md:block" style={{ flex: "0 0 180px" }} />
+            <div style={{ ...SHEET, overflowX: "clip" }}>
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <Hero />
+              </div>
+            </div>
+          </div>
+
+          {/* BAND 2 — the overview, full screen width, no rail, no sheet. */}
+          <Reveal as="div" style={{ position: "relative", zIndex: 1, background: CANVAS_DARK }}>
+            <SectionProductsOverview />
+          </Reveal>
+
+          {/* BAND 3 — the numbered sections, and THE ONLY BAND THE RAIL SPANS.
+              Scoping the rail here is what keeps it off screen until the hero
+              and the overview have both scrolled away — it indexes 01-05 and
+              nothing above them. Do not hoist it up for symmetry with the
+              gridlines; the gridlines are continuous BECAUSE they belong to
+              every band, and the rail is not because it does not. */}
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}>
+              <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
+                {/* display:flex + height:100% is load-bearing — the rail relies
+                    on `alignSelf: stretch` to be as tall as the scroll it stays
+                    stuck over, and alignSelf does nothing inside a block parent.
+                    pointerEvents is off on the layer and back on for the column
+                    so the layer never swallows clicks meant for the sections. */}
+                <div style={{ flex: "0 0 180px", height: "100%", display: "flex", pointerEvents: "auto" }}>
+                  <FactoryRailDesktop />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
+              <div aria-hidden="true" className="hidden md:block" style={{ flex: "0 0 180px" }} />
+
+              <div style={{ ...SHEET, overflowX: "clip" }}>
+                <div style={{ position: "relative", zIndex: 1 }}>
+                  <Reveal as="div"><SectionProduction /></Reveal>
+                  <Reveal as="div"><SectionAudit /></Reveal>
+                  {/* Dimension is a light band — Reveal wraps inside it (viso-warehouse/sections.tsx) so the background paints immediately */}
+                  <SectionDimension />
+                  <Reveal as="div"><SectionWork n="04" /></Reveal>
+                  <Reveal as="div"><SectionSecure n="05" /></Reveal>
+                </div>
+              </div>
             </div>
           </div>
         </div>

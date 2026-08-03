@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import DecryptedText from "@/components/decrypted-text";
 import { JsonLd, productSchema } from "@/components/json-ld";
 import { pageMeta } from "@/lib/seo";
 import { Reveal } from "@/components/motion";
@@ -33,6 +34,9 @@ const BORDER_D = "rgba(244,245,247,0.18)";
 const HAIR_D = "rgba(244,245,247,0.32)";
 const SIGNAL = "#ED510C";
 const CROSS_L = "rgba(90,95,106,0.6)";
+const CROSS_D = "rgba(244,245,247,0.4)";
+const GRID_D = "rgba(244,245,247,0.08)";
+const BORDER_D_STRONG = "rgba(244,245,247,0.18)";
 const HATCH = "repeating-linear-gradient(135deg, #101216, #101216 14px, #0d0f13 14px, #0d0f13 28px)";
 const HATCH_M = "repeating-linear-gradient(135deg, #101216, #101216 12px, #0d0f13 12px, #0d0f13 24px)";
 
@@ -62,6 +66,99 @@ function LightCorners() {
       <Cross color={CROSS_L} style={{ left: 0, bottom: 0 }} />
       <Cross color={CROSS_L} style={{ right: 0, bottom: 0 }} />
     </>
+  );
+}
+
+/* =========================================================================
+   HERO — same layout as /platform/viso-yard (see that file's band comment).
+
+   viso-data has no rail, so the sections band has no rail overlay; the hero
+   band still carries the 180px spacer and the continuous gridline overlay so
+   the four platform pages open on identical geometry. The hero band's own
+   sheet is the shared 1440 drawing sheet, not the 1232 SHEET the three
+   product sections below use.
+   ========================================================================= */
+
+const HERO_SHEET: CSSProperties = { position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 };
+
+const eyebrow = (color: string): CSSProperties => ({
+  fontFamily: mono,
+  fontSize: 13,
+  fontWeight: 500,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color,
+});
+
+// the 5 page-wide verticals — identical coordinates to the yard sheet
+const V_X = [
+  "64px",
+  "calc(64px + (100% - 128px) * 0.25)",
+  "50%",
+  "calc(64px + (100% - 128px) * 0.75)",
+  "calc(100% - 64px)",
+];
+function Verticals({ color }: { color: string }) {
+  return (
+    <>
+      {V_X.map((x, i) => (
+        <div key={i} aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
+      ))}
+    </>
+  );
+}
+
+/* mobile-only hero manifest — the quick-nav list is mobile's only way to jump
+   to a system before scrolling (matches the other three platform pages). */
+const MANIFEST = [
+  { n: "01", name: "COMPRESSION AI", id: "compression-ai" },
+  { n: "02", name: "TRACE AI", id: "trace-ai" },
+  { n: "03", name: "DETECT AI", id: "detect-ai" },
+];
+
+const HERO_EYEBROW = "VISO DATA — THREE SYSTEMS, YOUR FOOTAGE";
+const HERO_SUB = "Same footage, fewer bytes, analytics unaffected — on-premise, in front of the storage you already own.";
+
+function Hero() {
+  return (
+    <div style={{ position: "relative" }}>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: 0, height: 1, background: BORDER_D_STRONG, zIndex: 2 }} />
+      <Cross color={CROSS_D} style={{ left: 60, top: -4 }} />
+      <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: -4 }} />
+
+      {/* DESKTOP */}
+      <div className="hidden md:block" style={{ position: "relative", zIndex: 1, padding: "104px 64px 48px", boxSizing: "border-box" }}>
+        <span style={{ ...eyebrow(TXT_D2), display: "block", paddingLeft: 24 }}>{HERO_EYEBROW}</span>
+        <h1 style={{ margin: "72px 0 0", paddingLeft: 6, fontFamily: sans, fontSize: 136, lineHeight: 1, fontWeight: 600, letterSpacing: "-0.035em", textTransform: "uppercase", color: TXT_D1 }}>
+          <DecryptedText text="Viso Data" animateOn="view" sequential revealDirection="start" speed={55} encryptedClassName="v-enc" />
+        </h1>
+        <p style={{ margin: "40px 0 0", paddingLeft: 24, maxWidth: 592, fontFamily: sans, fontSize: 20, lineHeight: 1.5, color: TXT_D1 }}>
+          {HERO_SUB}
+        </p>
+      </div>
+
+      {/* MOBILE */}
+      <div className="md:hidden" style={{ position: "relative", zIndex: 1, padding: "40px 24px 0" }}>
+        <span style={{ ...eyebrow(TXT_D2), fontSize: 11 }}>{HERO_EYEBROW}</span>
+        <h1 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 64, lineHeight: 0.98, fontWeight: 600, letterSpacing: "-0.035em", textTransform: "uppercase", color: TXT_D1 }}>
+          <DecryptedText text="Viso Data" animateOn="view" sequential revealDirection="start" speed={55} encryptedClassName="v-enc" />
+        </h1>
+        <p style={{ margin: "32px 0 0", fontFamily: sans, fontSize: 18, lineHeight: 1.5, color: TXT_D1 }}>
+          {HERO_SUB}
+        </p>
+        <div style={{ margin: "40px 0 0", display: "flex", flexDirection: "column" }}>
+          {MANIFEST.map((m) => (
+            <a key={m.id} href={`#${m.id}`} style={{ display: "flex", alignItems: "baseline", height: 34, textDecoration: "none", color: TXT_D2 }}>
+              <span style={{ fontFamily: mono, fontSize: 13, width: 28, flex: "0 0 28px" }}>{m.n}</span>
+              <span style={{ fontFamily: mono, fontSize: 13, textTransform: "uppercase", color: TXT_D1 }}>{m.name}</span>
+            </a>
+          ))}
+        </div>
+        <span style={{ display: "block", margin: "40px 0", fontFamily: mono, fontSize: 10, letterSpacing: "0.06em", color: TXT_D2, opacity: 0.6 }}>
+          ARCHIVE_01 :: 42 FEEDS :: RETAIN 90D :: 11:26:53
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -381,6 +478,34 @@ export default function VisoDataPage() {
           features: ["Compression AI", "Trace AI", "Detect AI"],
         })}
       />
+      <div style={{ position: "relative", background: CANVAS_DARK }}>
+        {/* continuous gridlines behind the hero band */}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+          <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
+            <div style={{ flex: "0 0 180px" }} />
+            <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
+              <Verticals color={GRID_D} />
+            </div>
+          </div>
+          <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: 24, width: 1, background: GRID_D }} />
+            <div style={{ position: "absolute", top: 0, bottom: 0, right: 24, width: 1, background: GRID_D }} />
+          </div>
+        </div>
+
+        {/* the 180px spacer is where the rail column sits on the other three
+            platform pages; viso-data has no rail but keeps the column so the
+            hero lands on the same horizontal position. */}
+        <div style={{ maxWidth: 1620, margin: "0 auto", display: "flex", alignItems: "flex-start" }}>
+          <div aria-hidden="true" className="hidden md:block" style={{ flex: "0 0 180px" }} />
+          <div style={{ ...HERO_SHEET, overflowX: "clip" }}>
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <Hero />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <CompressionAI />
       <TraceAI />
       <DetectAI />

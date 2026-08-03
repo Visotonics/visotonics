@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <!-- Placeholder only. #ECEDEF, not the #0A0B0E the real frame will be:
+       the Statement band is the LIGHT band, so a dark placeholder showing
+       through the scrim would change how the section reads today, before any
+       footage exists. See README.txt. -->
+  <rect width="1920" height="1080" fill="#ECEDEF"/>
+  <text x="960" y="540" text-anchor="middle" dominant-baseline="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="28" letter-spacing="6" fill="#6B7078" fill-opacity="0.35">FOOTAGE PENDING</text>
+</svg>

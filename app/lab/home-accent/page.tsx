@@ -1,0 +1,1059 @@
+import type { Metadata } from "next";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import type { CSSProperties } from "react";
+import { CountUp, Reveal, UnderlineDraw } from "@/components/motion";
+import { TestimonialPagerDesktop, TestimonialPagerMobile } from "./testimonial-pager";
+import { DrawSchematic } from "@/components/draw-schematic";
+import DecryptedText from "@/components/decrypted-text";
+import StatementVideo from "@/components/statement-video";
+// lazy: keeps three.js out of the homepage's critical bundle — see _vision/lazy
+import { DataCard, FactoryCard, LeadCardScene, WarehouseCard, YardCard } from "@/components/vision/_vision/lazy";
+
+/* Isolated lab prototype — NOT linked from nav/footer, NOT in the sitemap.
+   noindex per the site convention for non-organic/lab pages (see DECISIONS.md).
+
+   Full-page fork of app/page.tsx (untouched) with a blue accent system
+   applied for review, per the brief: blue is the brand/observation colour,
+   orange survives only inside the 3D scene frames. See the big comment
+   block below ("ACCENT SYSTEM") for exactly what changed and why a fork
+   was used instead of a prop. */
+
+export const metadata: Metadata = {
+  title: "Lab · Home Accent",
+  robots: { index: false, follow: false },
+};
+
+// inlined (not <Image>) so the lead-card schematic can draw itself in via
+// DrawSchematic, same reveal used for every flagship SVG on the platform
+// pages — preserveAspectRatio stands in for the old object-fit: cover/top.
+const LEADCARD_SVG_RAW = readFileSync(path.join(process.cwd(), "public", "assets", "home-leadcard-schematic.svg"), "utf8");
+function leadcardSvg(preserveAspectRatio: string) {
+  return LEADCARD_SVG_RAW.replace(/<svg\b/, `<svg preserveAspectRatio="${preserveAspectRatio}" style="display:block;width:100%;height:100%"`);
+}
+
+/* ---------------------------------------------------------------------------
+   Visotonics home page — Drafting Table — LAB: BLUE ACCENT FORK
+   Ported from Claude Design: Hero-DraftingTable.dc.html (frames 1a desktop / 1b mobile).
+   Scroll order (per request): hero → statement → how-it-works → metrics
+   → proof+partners → testimonials → convert.
+   Nav + footer are supplied by app/layout.tsx (SiteNav / SiteFooter).
+   Signal #ED510C is used only for registration dots. Reduced-motion is handled
+   globally in globals.css (all durations → 0).
+
+   ===========================================================================
+   ACCENT SYSTEM — what changed from app/page.tsx, and why
+   ===========================================================================
+   Two accent stops (given, not derived):
+     ACCENT_D = #5CC8FF  — dark backgrounds (#0A0B0E / #101216)
+     ACCENT_L = #1B7FC4  — light backgrounds (#ECEDEF / #F6F7F8)
+
+   Sections re-derived from their actual background token (not guessed):
+     Hero            dark   (background: DARK = #0A0B0E)
+     Statement       light  (background: LIGHT = #ECEDEF)
+     HowItWorks      dark   (background: DARK)
+     Metrics         light  (background: LIGHT)
+     ProofPartners   light  (background: LIGHT)  — DO NOT TOUCH, see below
+     Testimonials    dark   (background: DARK)
+     Convert         dark   (background: DARK)
+
+   1. GRIDS — GRID_D/GRID_L (Verticals, HRule, hero card seam borders) and
+      CROSS_D/CROSS_L (Cross, corner brackets, DimensionSpan rule/ticks) are
+      hue-shifted to the accent AT THE SAME ALPHA they carried before
+      (0.08 / 0.06 / 0.4 / 0.30 respectively) — only the hue moved.
+   2. EYEBROWS / SYSTEM-ANNOTATION TEXT — every eyebrow(), the Statement
+      mono callouts (ISO 6346 / DET_CONF 0.99 / SCAN 04), and the Hero
+      mobile "OUR PLATFORM…" strip are recoloured to the accent stop that
+      matches their section.
+   3. CROSSES/BRACKETS — covered by the GRID_D/GRID_L hue shift in (1), since
+      every Cross/corner-bracket call in this file already draws from those
+      two consts.
+   4. REGISTRATION DOTS — Dot()'s SIGNAL default is left untouched (SIGNAL
+      still = #ED510C) so that ProofPartners' dots, which never pass a
+      `color` prop, stay exactly as they render today (see the ProofPartners
+      note below). Every OTHER Dot() call in Statement / Metrics /
+      Testimonials / Convert now passes an explicit `color` prop for its
+      section's accent stop.
+   5. HERO CARDS — the ONLY change is the hover-border colour in the
+      `.lab-hc:hover` rule (was rgba(237,81,12,0.55), now the dark accent at
+      the same alpha). No new hover animation, no glow, no scale. The static
+      GRID_D seam borders between the four cards DO still shift hue, because
+      they come from the same shared GRID_D const as every other gridline on
+      the page (see the CONTRADICTION note below) — that is a page-wide grid
+      line, not a hover effect.
+   6. HOW IT WORKS — previously zero accent. The ONLY addition is the
+      section's own 01/02/03/04 index numerals, recoloured to ACCENT_D.
+      Nothing else added: no divider, no spine.
+   7. METRICS — big stat numbers (<CountUp>) are explicitly left alone.
+      Only the "MEASURED ACROSS LIVE SITES" eyebrow gets ACCENT_L.
+   8. TESTIMONIALS — see ./testimonial-pager.tsx (forked): the opening quote
+      glyph is recoloured to ACCENT_D. Nothing else in that card changed.
+   9. PROOF+PARTNERS ("Trusted by Industry Leaders") — LEFT ENTIRELY AS-IS.
+      Local PP_CROSS_L below is a copy of the ORIGINAL neutral CROSS_L value
+      so this section's Cross()/Dot() calls render identically to
+      app/page.tsx even though the shared CROSS_L/GRID_L consts changed hue
+      for every other section.
+
+      *** CONTRADICTION FLAGGED, NOT SILENTLY RESOLVED ***
+      The brief's rule 4 ("Registration dots… blue, both stops per section")
+      explicitly lists Proof+Partners among the sections whose dots should
+      turn blue. The brief's rule 9 says the same section must be left
+      completely untouched because "logos are being handled as a separate
+      task." These two rules cannot both be followed. This fork follows
+      rule 9 (untouched) as the more specific, more strongly worded
+      instruction — flagging this rather than guessing, per the brief's own
+      closing instruction.
+   10. Nothing else on the page uses orange decoratively outside a scene
+       frame. SIGNAL (#ED510C) appears only as: the Dot()/SignalCross()
+       default (now only actually rendered, unchanged, in ProofPartners),
+       and the hero-card hover border fixed in (5). No other decorative
+       orange was found — see the full report delivered alongside this file.
+   =========================================================================== */
+
+const DARK = "#0A0B0E";
+const DARK_SURFACE = "#101216";
+const LIGHT = "#ECEDEF";
+const LIGHT_SURFACE = "#F6F7F8";
+const TXT_D1 = "#F4F5F7";
+const TXT_D2 = "#A6ADB8";
+const TXT_L1 = "#13151A";
+const TXT_L2 = "#6B7078";
+// accent stops (given by the brief)
+const ACCENT_D = "#5CC8FF";
+const ACCENT_L = "#1B7FC4";
+// grids/crosses — hue-shifted to the accent, alpha unchanged from app/page.tsx
+const GRID_D = "rgba(92,200,255,0.08)";
+const GRID_L = "rgba(27,127,196,0.06)";
+const CROSS_D = "rgba(92,200,255,0.4)";
+const CROSS_L = "rgba(27,127,196,0.30)";
+const BORDER_D = "rgba(244,245,247,0.10)";
+const RULE_L = "#D4D6DB";
+const SIGNAL = "#ED510C";
+// ProofPartners-only: the ORIGINAL neutral value, so that untouched section
+// renders identically to production even though CROSS_L above changed hue.
+const PP_CROSS_L = "rgba(19,21,26,0.30)";
+
+const mono = "var(--font-plex-mono)";
+const sans = "var(--font-archivo)";
+
+/* ---- drafting-sheet primitives -------------------------------------------- */
+
+// 9px registration cross, anchored to a corner / rule endpoint.
+function Cross({ color, style }: { color: string; style: CSSProperties }) {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", width: 9, height: 9, ...style }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: color }} />
+      <div style={{ position: "absolute", top: 0, bottom: 0, left: 4, width: 1, background: color }} />
+    </div>
+  );
+}
+
+// 3px registration dot, signal-orange unless told otherwise.
+function Dot({ style, color }: { style: CSSProperties; color?: string }) {
+  // `color` defaults to the accent — every existing caller marks a real point.
+  // The hero passes a neutral instead; see the note in Hero().
+  return <div aria-hidden="true" style={{ position: "absolute", width: 3, height: 3, background: color ?? SIGNAL, ...style }} />;
+}
+
+/* MAJOR CROSS — an 11px registration cross for the intersections that carry
+   more weight than the 9px ones at every rule endpoint. The SIZE is the
+   hierarchy; the colour was doing the same job twice. Defaults to the accent
+   for any future caller that genuinely marks a conclusion — the hero passes a
+   neutral, see the note in Hero(). */
+function SignalCross({ style, color = SIGNAL }: { style: CSSProperties; color?: string }) {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", width: 11, height: 11, ...style }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: 5, height: 1, background: color }} />
+      <div style={{ position: "absolute", top: 0, bottom: 0, left: 5, width: 1, background: color }} />
+    </div>
+  );
+}
+
+/* DIMENSION CALLOUT — the drafting sheet's own way of saying "this is the
+   measured thing", in the accent, spanning something real.
+
+   This is the single highest-value accent move available on the hero, and the
+   reason is that it is not decoration: a dimension line is what a drafting
+   sheet DOES. It puts colour at page scale, it points at the headline rather
+   than sitting next to it, and it is the first thing on the page that is
+   neither type nor a 3px dot. Extension ticks at each end, a rule between, and
+   a mono label sitting on the rule with the background knocked out behind it. */
+function DimensionSpan({
+  label, left, right, top, background, color = SIGNAL,
+}: { label: string; left: number | string; right: number | string; top: number | string; background: string; color?: string }) {
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: 9 }}>
+      {/* the measured rule */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: color, opacity: 0.55 }} />
+      {/* extension ticks, one at each end */}
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: 9, background: color }} />
+      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: 9, background: color }} />
+      {/* the label, knocking a hole in the rule the way a real callout does */}
+      <span
+        style={{
+          position: "absolute", left: "50%", top: -3, transform: "translateX(-50%)",
+          padding: "0 8px", background,
+          fontFamily: mono, fontSize: 10, letterSpacing: "0.14em", lineHeight: "15px",
+          color, whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// The 5 page-wide verticals: margins at 64 / (100%-64), interiors dividing the
+// inset content into 4 equal columns. Same coordinates in every section so the
+// sheet reads continuous.
+const V_X = ["64px", "calc(64px + (100% - 128px) * 0.25)", "50%", "calc(64px + (100% - 128px) * 0.75)", "calc(100% - 64px)"];
+function Verticals({ color }: { color: string }) {
+  return (
+    <>
+      {V_X.map((x, i) => (
+        <div key={i} aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
+      ))}
+    </>
+  );
+}
+
+// full-width horizontal rule + a registration cross at each endpoint (on the margins)
+function HRule({ top, color, cross }: { top: number | string; color: string; cross: string }) {
+  return (
+    <>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top, height: 1, background: color }} />
+      <Cross color={cross} style={{ left: 60, top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
+      <Cross color={cross} style={{ left: "calc(100% - 68px)", top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
+    </>
+  );
+}
+
+const SHEET: CSSProperties = { position: "relative", width: "100%", maxWidth: 1440, margin: "0 auto" };
+
+/* shared text styles */
+const eyebrow = (color: string): CSSProperties => ({
+  fontFamily: mono,
+  fontSize: 13,
+  fontWeight: 500,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color,
+});
+
+/* =========================================================================
+   1 · HERO  (dark)
+   ========================================================================= */
+
+const HERO_CARDS = [
+  { num: "01", name: "Viso Yard", desc: "Container, gate, crane, yard & cargo inspection", href: "/platform/viso-yard", img: "/assets/hero-card-01-yard.svg" },
+  { num: "02", name: "Viso Warehouse", desc: "Counting, audit & dimensioning", href: "/platform/viso-warehouse", img: "/assets/hero-card-02-warehouse.svg" },
+  { num: "03", name: "Viso Factory", desc: "Production & process monitoring", href: "/platform/viso-factory", img: "/assets/hero-card-03-factory.svg" },
+  { num: "04", name: "Viso Data", desc: "Compression, trace & detection AI", href: "/platform/viso-data", img: "/assets/hero-card-04-data.svg" },
+];
+
+const CARD_SCENES = [YardCard, WarehouseCard, FactoryCard, DataCard];
+
+const HERO_CARD_CSS = `
+/* CARD CHROME REACTS WITH THE SCENE.
+
+   Scoped to a lab-only class and injected here rather than added to globals.css:
+   dt-card is shared with the production homepage, and everything in this work
+   stays in labs until signed off.
+
+   :focus-visible is paired with :hover throughout for the same reason the scene
+   listens to focusin — these are anchors, and a keyboard user must get the same
+   response.
+
+   RULE 5 — the only change from app/page.tsx in this whole block is the
+   border-color value below: rgba(237,81,12,0.55) (SIGNAL) → rgba(92,200,255,0.55)
+   (ACCENT_D). Nothing else in this stylesheet changed — no new transition,
+   no glow, no scale. */
+.lab-hc {
+  transition: border-color 280ms ease, background-color 280ms ease;
+}
+/* !important is load-bearing here, not laziness. Both cards set border and
+   background as INLINE styles, and an inline declaration beats any class
+   selector — without this the rule silently loses and the border never changes.
+   Caught by reading back getComputedStyle rather than trusting the screenshot,
+   where the leader line drawing was masking the fact that nothing else moved. */
+.lab-hc:hover,
+.lab-hc:focus-visible {
+  border-color: rgba(92, 200, 255, 0.55) !important;
+  background-color: #13161C !important;
+}
+/* the part number's leader rule DRAWS toward the panel on hover: short and
+   faint at rest, running the full width and bright on interaction */
+.lab-hc .lab-lead {
+  transform: scaleX(0.42);
+  transform-origin: left center;
+  opacity: 0.22;
+  transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
+}
+.lab-hc:hover .lab-lead,
+.lab-hc:focus-visible .lab-lead {
+  transform: scaleX(1);
+  opacity: 0.9;
+}
+.lab-hc .lab-num { opacity: 0.72; transition: opacity 240ms ease; }
+.lab-hc:hover .lab-num,
+.lab-hc:focus-visible .lab-num { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .lab-hc, .lab-hc .lab-lead, .lab-hc .lab-num { transition: none; }
+  .lab-hc .lab-lead { transform: scaleX(1); opacity: 0.6; }
+}
+`;
+
+function Hero() {
+  return (
+    <section style={{ background: DARK, borderTop: `1px solid ${GRID_D}` }}>
+      <style>{HERO_CARD_CSS}</style>
+      {/* DESKTOP */}
+      {/* BAND 1 — THE FIRST SCREEN, AND ONLY TWO THINGS ON IT: the nav (from
+          the layout) and the headline. The hero used to be a fixed 828px slab
+          that put the headline, a log row and all four animation cards in the
+          same viewport, so the page opened on five competing objects and the
+          scenes were doing their loudest work before anyone had read what the
+          company does. This band is now exactly one screen tall — 100vh less
+          the 72px sticky nav — and holds the headline alone. The cards start
+          below the fold and are arrived at, not presented. */}
+      <div className="hidden md:flex" style={{ ...SHEET, minHeight: "calc(100vh - 72px)", flexDirection: "column" }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <Verticals color={GRID_D} />
+          {/* One rule, 48px off the bottom of the screen, carrying the callout.
+              Percentages rather than the old hard-coded 336/384: the band's
+              height is now viewport-derived, so anything positioned in px from
+              the top detaches from it the moment the window resizes. */}
+          <HRule top="calc(100% - 48px)" color={GRID_D} cross={CROSS_D} />
+          <Cross color={CROSS_D} style={{ left: 60, top: 4 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
+          {/* SILENT CHROME — the hero's drafting furniture is drawn in neutral,
+              not in the accent.
+
+              This block, the dimension span below it and the four card part
+              numbers used to put roughly fourteen separate orange marks in one
+              viewport: crosses, dots, a callout rule with two ticks and a
+              label, four numerals and four leader rules. Not one of them marked
+              a RESULT — every one was on the page's own styling conceit, which
+              is the opposite of what the accent means everywhere else on this
+              site (inside every card scene, orange is reserved for the moment
+              the system concludes something).
+
+              The cost was ranking. Each of the four scenes below runs its own
+              blue-observing-to-orange-concluding beat; that is the product, and
+              a numbering system above it was outranking it in the same colour.
+
+              Nothing is removed structurally — the crosses, dots and callout
+              are all still here, still on the same intersections, still at the
+              same 11px/3px sizes. SIZE carries the hierarchy now, which is what
+              it should have been carrying all along. The only orange left in
+              this section is inside the scenes.
+
+              LAB NOTE: CROSS_D is now the accent (ACCENT_D), not neutral — see
+              the ACCENT SYSTEM comment at the top of this file, rule 1/3. */}
+          {/* NO DOTS OR MAJOR CROSSES ON THIS BAND. There were five, placed on
+              intersections of the two old rules. With one rule left, the only
+              interior intersections are at the 25% and 75% verticals — which is
+              exactly where the dimension span puts its own extension ticks, so
+              a dot there lands inside a tick rather than marking anything. The
+              rule's two endpoint crosses (from HRule) and the callout are the
+              whole furniture budget for a screen holding one headline. */}
+        </div>
+
+        {/* THE HEADLINE IS DIMENSIONED. Spans the log row, directly under the
+            slab, so it reads as a measurement OF the headline rather than as a
+            band of its own. Inset to the same 25%/75% verticals the sheet
+            already uses, so it lands on the grid instead of floating. */}
+        {/* The callout now carries the copy the log row used to hold in two
+            separate corner labels ("OUR PLATFORM — YOUR CAMERAS" left,
+            "PATENTED TECHNOLOGY" right). Those are one sentence, and splitting
+            them across 1200px of empty rule meant neither half was read as part
+            of the other. Measured between the 25% and 75% verticals, on the
+            rule, they read as one statement being dimensioned — which is what
+            the callout is for. `top` is the rule's 100%-48 less the 4px that
+            centres the 9px span on it. */}
+        <DimensionSpan
+          label="OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS"
+          left="calc(64px + (100% - 128px) * 0.25)"
+          right="calc(64px + (100% - 128px) * 0.25)"
+          top="calc(100% - 52px)"
+          background={DARK}
+          color={CROSS_D}
+        />
+
+        {/* The headline takes the whole band and centres in it. flex:1 rather
+            than a fixed height so it stays optically centred at any viewport
+            height; the 48px bottom padding is the callout strip it must not
+            sit on top of. */}
+        <div style={{ position: "relative", zIndex: 1, flex: 1, padding: "0 64px 48px", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: sans,
+              fontSize: 85,
+              lineHeight: 1.02,
+              fontWeight: 600,
+              letterSpacing: "0.01em",
+              color: TXT_D1,
+              maxWidth: 1257,
+              textAlign: "center",
+            }}
+          >
+            <DecryptedText text="Vision-AI Platform" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+            <br />
+            <DecryptedText text="for Industrial Operations" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+          </h1>
+        </div>
+
+      </div>
+
+      {/* BAND 2 — THE CARDS, FULL BLEED, BELOW THE FOLD.
+
+          This band is deliberately OUTSIDE the SHEET wrapper above. Inside it
+          the row was capped at 1440 and inset a further 64px each side, so on
+          any wide screen the four scenes sat in a letterboxed strip with dead
+          page either side. Out here the grid is the width of the screen, the
+          columns butt directly against each other, and the animations run to
+          all four edges of their own cell — the same treatment as the Viso Yard
+          tile band. */}
+      <div className="hidden md:grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", borderTop: `1px solid ${GRID_D}` }}>
+        {HERO_CARDS.map((c, i) => (
+          <a
+            key={c.num}
+            href={c.href}
+            className="dt-card lab-hc"
+            style={{
+              position: "relative",
+              boxSizing: "border-box",
+              background: DARK_SURFACE,
+              /* Right edge only, and none on the last card. A border on every
+                 side doubled every internal edge, which is what the old
+                 marginLeft:-1 was there to collapse. Butted cells with one
+                 shared hairline need neither. */
+              borderRight: i === HERO_CARDS.length - 1 ? undefined : `1px solid ${GRID_D}`,
+              display: "flex",
+              flexDirection: "column",
+              color: TXT_D1,
+              textDecoration: "none",
+            }}
+          >
+            {/* Title above the animation, as on the Viso Yard tiles — the part
+                number and name on one line, the description under it. The
+                leader rule that used to run from the number across the card is
+                gone: it tied a number to a panel directly beneath it, which is
+                a journey the eye does not need help with. */}
+            <div style={{ padding: "20px 22px 18px" }}>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span className="lab-num" style={{ ...eyebrow(TXT_D2), fontSize: 12 }}>{c.num}</span>
+                <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.name}</span>
+              </span>
+              {/* two reserved lines so a one-line description cannot shorten
+                  its card's title block and push that scene out of line with
+                  the other three */}
+              <span style={{ display: "block", marginTop: 8, fontSize: 16, lineHeight: 1.5, color: TXT_D2, minHeight: 48 }}>{c.desc}</span>
+            </div>
+            {/* The animation, edge to edge. No padding, no radius, and sized by
+                its own aspect rather than by flex:1 — at full-bleed width the
+                cell is wide enough that 4:3 gives the scenes more height than
+                the old fixed 397px card ever did. */}
+            <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", overflow: "hidden", display: "flex" }}>
+              {(() => {
+                const S = CARD_SCENES[i];
+                return <S />;
+              })()}
+            </div>
+          </a>
+        ))}
+      </div>
+
+      {/* MOBILE */}
+      <div className="md:hidden" style={{ position: "relative" }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
+        </div>
+        <div style={{ position: "relative", zIndex: 1, padding: "40px 20px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
+          <h1 style={{ margin: 0, fontFamily: sans, fontSize: 44, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
+            <DecryptedText text="Vision-AI Platform" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+            <br />
+            <DecryptedText text="for Industrial Operations" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+          </h1>
+        </div>
+        {/* one line, matching the desktop callout's consolidated copy.
+            LAB: was eyebrow("rgba(244,245,247,0.3)") — now ACCENT_D, per rule 2
+            (small system-annotation text follows its section's accent stop). */}
+        <div style={{ position: "relative", zIndex: 1, padding: "14px 20px", borderBottom: `1px solid ${GRID_D}` }}>
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 11, letterSpacing: "0.06em" }}>OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS</span>
+        </div>
+        <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+          {HERO_CARDS.map((c, i) => (
+            <a
+              key={c.num}
+              href={c.href}
+              style={{
+                position: "relative",
+                boxSizing: "border-box",
+                borderRight: i % 2 === 0 ? `1px solid ${GRID_D}` : undefined,
+                borderBottom: i < 2 ? `1px solid ${GRID_D}` : undefined,
+                background: DARK_SURFACE,
+                padding: 18,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                minHeight: 320,
+                color: TXT_D1,
+                textDecoration: "none",
+              }}
+            >
+              <span style={{ display: "flex", justifyContent: "flex-end" }}>
+                <span style={{ ...eyebrow(TXT_D2), fontSize: 13 }}>{c.num}</span>
+              </span>
+              <div style={{ flex: 1, minHeight: 160, borderRadius: 6, overflow: "hidden", background: "#101216", display: "flex", position: "relative" }}>
+                {(() => {
+                  const S = CARD_SCENES[i];
+                  return <S />;
+                })()}
+              </div>
+              <span style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.name}</span>
+                <span style={{ fontSize: 14, lineHeight: 1.5, color: TXT_D2 }}>{c.desc}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================================
+   2 · STATEMENT  (light)
+   ========================================================================= */
+
+function Statement() {
+  return (
+    <section className="on-light" style={{ background: LIGHT }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, height: 900 }}>
+        {/* Background-footage slot. Renders its media layer first and the
+            existing content after, so the brackets/dot/type all keep their own
+            z-index and paint above it. Poster-only until the real loop ships. */}
+        <StatementVideo>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <Verticals color={GRID_L} />
+          {/* L-corner registration brackets, four section corners only */}
+          <div style={{ position: "absolute", left: 16, top: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 16, top: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", left: 16, bottom: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 16, bottom: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+          {/* single signal dot on a gridline — LAB: now ACCENT_L (light-stop), per rule 4 */}
+          <Dot color={ACCENT_L} style={{ left: "calc(64px + (100% - 128px) * 0.25)", bottom: 148 }} />
+          {/* mono-label callouts in the margins — LAB: TXT_D2 → ACCENT_L, per rule 2
+              (these are system-annotation labels; TXT_D2 was already an odd choice
+              here since this section is light, not dark — see report) */}
+          <div style={{ position: "absolute", left: 76, top: 653, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>ISO 6346</div>
+          <div style={{ position: "absolute", right: 340, top: 806, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>DET_CONF 0.99</div>
+          <div style={{ position: "absolute", left: 848, top: 150, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>SCAN 04</div>
+          {/* blueprint dimension line, left margin */}
+          <div style={{ position: "absolute", left: 32, top: 300, bottom: 300, width: 1, background: "rgba(19,21,26,0.20)" }} />
+          <div style={{ position: "absolute", left: 28, top: 300, width: 9, height: 1, background: "rgba(19,21,26,0.20)" }} />
+          <div style={{ position: "absolute", left: 28, bottom: 300, width: 9, height: 1, background: "rgba(19,21,26,0.20)" }} />
+        </div>
+        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 64px", boxSizing: "border-box" }}>
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: "clamp(32px, 5vw, 64px)", lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, textAlign: "center", maxWidth: 1000, textWrap: "balance" }}>
+            <DecryptedText text="Proprietary AI models delivering high accuracy in complex, chaotic, and edge-case environments." animateOn="view" sequential revealDirection="center" speed={4} encryptedClassName="v-enc" />
+          </h2>
+        </div>
+        </StatementVideo>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", height: 480 }}>
+        <StatementVideo>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <div style={{ position: "absolute", left: 12, top: 12, width: 12, height: 12, borderLeft: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 12, top: 12, width: 12, height: 12, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", left: 12, bottom: 12, width: 12, height: 12, borderLeft: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 12, bottom: 12, width: 12, height: 12, borderRight: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+          {/* LAB: SIGNAL → ACCENT_L, per rule 4 */}
+          <div style={{ position: "absolute", left: "50%", bottom: 64, width: 3, height: 3, background: ACCENT_L }} />
+        </div>
+        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px", boxSizing: "border-box" }}>
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: 26, lineHeight: 1.3, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, textAlign: "center", textWrap: "balance" }}>
+            <DecryptedText text="Proprietary AI models delivering high accuracy in complex, chaotic, and edge-case environments." animateOn="view" sequential revealDirection="center" speed={4} encryptedClassName="v-enc" />
+          </h2>
+        </div>
+        </StatementVideo>
+      </Reveal>
+    </section>
+  );
+}
+
+/* =========================================================================
+   3 · HOW IT WORKS  (dark)
+   ========================================================================= */
+
+const HIW_CARDS = [
+  { num: "01", col: 3, row: 1, title: "Detect and segment", body: "Type, size, location and area, to the mm-squared." },
+  { num: "02", col: 4, row: 1, title: "Checkpoint diff", body: "Any two moments compared, damage attributed." },
+  { num: "03", col: 3, row: 2, title: "Tamper-evident logbook", body: "A time-stamped record for every movement." },
+  { num: "04", col: 4, row: 2, title: "Report in under a minute", body: "Survey PDF and structured data, straight to your system." },
+];
+const HIW_CARD_BG = "linear-gradient(180deg, rgba(244,245,247,0.06), rgba(244,245,247,0) 40%), #101216";
+
+function HowItWorks() {
+  return (
+    <section style={{ background: DARK }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 940 }}>
+        {/* NO DRAWN CHROME IN THIS SECTION — unchanged from production. Per
+            rule 6, the ONLY accent addition here is the four index numerals
+            below (c.num), recoloured to ACCENT_D. */}
+        <div style={{ position: "relative", zIndex: 1, padding: "112px 64px 96px" }}>
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: 84, lineHeight: 1.02, fontWeight: 600, letterSpacing: "-0.025em", color: TXT_D1, maxWidth: "22ch" }}>
+            One vision layer across the operation.
+          </h2>
+          <p style={{ margin: "28px 0 0", fontSize: 26, lineHeight: 1.5, color: TXT_D2, maxWidth: "62ch" }}>
+            No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.
+          </p>
+
+          <div style={{ position: "relative", marginTop: 72, background: DARK, display: "flex", height: 720, overflow: "hidden", boxSizing: "border-box" }}>
+            <LeadCardScene />
+          </div>
+          <div style={{ marginTop: 80, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", columnGap: 48, alignItems: "start" }}>
+            {HIW_CARDS.map((c) => (
+              <div key={c.num}>
+                {/* LAB: TXT_D2 → ACCENT_D — the section's one accent addition (rule 6) */}
+                <span style={{ display: "block", fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.08em", color: ACCENT_D }}>{c.num}</span>
+                <span style={{ display: "block", marginTop: 18, fontSize: 23, lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
+                <span style={{ display: "block", marginTop: 12, fontSize: 17, lineHeight: 1.55, color: TXT_D2 }}>{c.body}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <h2 style={{ margin: "0 0 20px", fontFamily: sans, fontSize: 34, lineHeight: 1.12, fontWeight: 600, letterSpacing: "-0.025em", color: TXT_D1 }}>
+            One vision layer across the operation.
+          </h2>
+          <p style={{ margin: "0 0 28px", fontSize: 18, lineHeight: 1.55, color: TXT_D2 }}>
+            No new hardware. The platform runs on the cameras already watching your yard, warehouse and factory.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ boxSizing: "border-box", background: DARK, display: "flex" }}>
+              <div style={{ position: "relative", flex: 1, aspectRatio: "4 / 3", overflow: "hidden", display: "flex" }}>
+                <LeadCardScene />
+              </div>
+            </div>
+            {HIW_CARDS.map((c) => (
+              <div key={c.num} style={{ boxSizing: "border-box", background: HIW_CARD_BG, border: `1px solid ${BORDER_D}`, borderRadius: 8, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+                <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
+                  {/* LAB: TXT_D2 → ACCENT_D — same rule-6 numeral treatment as desktop */}
+                  <span style={{ ...eyebrow(ACCENT_D), fontSize: 12 }}>{c.num}</span>
+                </span>
+                <span style={{ fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>{c.body}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* =========================================================================
+   4 · METRICS  (light)
+   ========================================================================= */
+
+const METRICS = [
+  { n: "90%", label: "lower inspection cost" },
+  { n: "99%", label: "reporting-time reduction" },
+  { n: "70%", label: "faster gate turnaround" },
+  { n: "60%", label: "less inventory shrinkage" },
+];
+
+function Metrics() {
+  return (
+    <section className="on-light" style={{ background: LIGHT }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 1040 }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <div style={{ position: "absolute", left: 16, top: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 16, top: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", left: 16, bottom: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+          <div style={{ position: "absolute", right: 16, bottom: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
+        </div>
+
+        <div style={{ position: "relative", zIndex: 1, padding: "96px 64px 64px" }}>
+          {/* LAB: TXT_L2 → ACCENT_L, per rule 2 */}
+          <span style={{ ...eyebrow(ACCENT_L), display: "block", padding: "0 4px" }}>MEASURED ACROSS LIVE SITES</span>
+          <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.08, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "18.68ch" }}>
+            Same cameras. Different economics.
+          </h2>
+
+          <div style={{ marginTop: 48 }}>
+            {METRICS.map((m, i) => (
+              <div
+                key={m.n}
+                style={{
+                  position: "relative",
+                  borderTop: `1px solid ${RULE_L}`,
+                  borderBottom: i === METRICS.length - 1 ? `1px solid ${RULE_L}` : undefined,
+                  padding: "32px 0",
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                }}
+              >
+                {/* RULE 7 — big stat numbers explicitly left alone */}
+                <span style={{ fontFamily: sans, fontSize: 102, lineHeight: 0.9, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value={m.n} /></span>
+                <span style={{ fontSize: 24, lineHeight: 1.4, color: TXT_L2 }}>{m.label}</span>
+                {/* LAB: registration dot → ACCENT_L, per rule 4 */}
+                {i === METRICS.length - 1 ? <Dot color={ACCENT_L} style={{ left: 0, bottom: -2 }} /> : null}
+              </div>
+            ))}
+            <div style={{ marginTop: 24, fontFamily: mono, fontSize: 15, letterSpacing: "0.02em", color: TXT_L2 }}>
+              Aggregate across container, gate, yard &amp; cargo deployments.
+            </div>
+          </div>
+        </div>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
+        <span style={{ ...eyebrow(ACCENT_L), display: "block", fontSize: 12 }}>MEASURED ACROSS LIVE SITES</span>
+        <h2 style={{ margin: "16px 0 32px", fontFamily: sans, fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
+          Same cameras. Different economics.
+        </h2>
+        {METRICS.map((m, i) => (
+          <div
+            key={m.n}
+            style={{
+              position: "relative",
+              borderTop: `1px solid ${RULE_L}`,
+              borderBottom: i === METRICS.length - 1 ? `1px solid ${RULE_L}` : undefined,
+              padding: "20px 0",
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <span style={{ fontFamily: sans, fontSize: 52, lineHeight: 0.9, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value={m.n} /></span>
+            <span style={{ fontSize: 15, lineHeight: 1.4, color: TXT_L2, textAlign: "right" }}>{m.label}</span>
+            {i === METRICS.length - 1 ? <Dot color={ACCENT_L} style={{ left: 0, bottom: -2 }} /> : null}
+          </div>
+        ))}
+        <div style={{ marginTop: 16, fontFamily: mono, fontSize: 12, lineHeight: 1.5, letterSpacing: "0.02em", color: TXT_L2 }}>
+          Aggregate across container, gate, yard &amp; cargo deployments.
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* =========================================================================
+   5 · PROOF + PARTNERS  (light) — DO NOT TOUCH, per rule 9.
+   Every Cross()/Dot() call below is left using the ORIGINAL neutral values
+   (PP_CROSS_L, and Dot()'s untouched SIGNAL default) so this section renders
+   byte-for-byte identical to app/page.tsx, even though CROSS_L/GRID_L above
+   changed hue for every other section on this page. See the CONTRADICTION
+   note in the top-of-file ACCENT SYSTEM comment (rule 4 vs rule 9).
+   ========================================================================= */
+
+/* LAB: LOGO COLOUR SWAP — logos-light (flattened mono PNGs) → logos-color
+   (real full-colour files, see public/assets/logos-color/). This is the ONLY
+   change made to Proof+Partners; the rest of the section (rule 9, see the
+   block comment above) is still byte-identical to app/page.tsx.
+
+   REPROCESSED, not just swapped: the colour sources originally dropped into
+   logos-color/ were raw exports with uneven padding, and three of them
+   (hind_terminals, jnpa, meity_startup_hub) had a solid opaque background
+   baked in — a colour block, or a checkerboard-transparency preview
+   flattened to real pixels (iit_kharagpur/iit_kanpur/iim_kozhikode/nvidia
+   all had this too, just less visibly). All were reprocessed with
+   scripts/trim-logos.mjs (sharp) into tight-crop, true-alpha PNGs — the same
+   preparation the mono set already had — before any `h` was chosen. See that
+   script and the delivered report for the per-file background/crop
+   reasoning. Every file below is now a plain `${src}.png`, no more
+   heterogeneous ext/crop props.
+
+   `h` values are RE-TUNED against the actual reprocessed aspect ratios, not
+   copied from the mono row — a full-colour mark is not always the same
+   shape as its flattened mono counterpart. Reasoning per logo is in the
+   report; verified against production side-by-side in the browser. */
+const DEPLOYED = [
+  { src: "adani", alt: "Adani", h: 43 },
+  { src: "dp_world", alt: "DP World", h: 70 },
+  { src: "hind_terminals", alt: "Hind Terminals", h: 32 },
+  { src: "jnpa", alt: "JNPA", h: 72 },
+  { src: "cochin_shipyard", alt: "Cochin Shipyard", h: 72 },
+];
+const RECOGNISED = [
+  { src: "iit_kharagpur", alt: "IIT Kharagpur", h: 46 },
+  { src: "iit_kanpur", alt: "IIT Kanpur", h: 46 },
+  { src: "iim_kozhikode", alt: "IIM Kozhikode", h: 46 },
+  { src: "nasscom", alt: "NASSCOM", h: 22 },
+  { src: "meity_startup_hub", alt: "MeitY Startup Hub", h: 48 },
+  { src: "nvidia", alt: "NVIDIA", h: 44 },
+  // LAB: no colour source file exists for Microsoft for Startups (not in the
+  // supplied coloured-logos folder). Left pointing at the old flattened-mono
+  // asset rather than fabricating a placeholder — this is a deliberately
+  // mixed mono+colour row entry, flagged per the brief.
+  { src: "microsoft_for_startups", alt: "Microsoft for Startups", h: 20, mono: true },
+  { src: "startupindia", alt: "Startup India", h: 26 },
+];
+
+function Logo({
+  src, alt, h, mono,
+}: {
+  src: string; alt: string; h: number; mono?: boolean;
+}) {
+  // Plain <img> (as in the design): logos have varying intrinsic aspect ratios,
+  // so we let the browser scale width from the natural aspect at a fixed height.
+  // A defensive max-width clamp (item 5 of the brief): none of the current
+  // colour logos actually reach it at their chosen `h`, but it stops any
+  // single wide logo from dominating the fixed 5-across DEPLOYED row, which
+  // has no wrap and no width cap of its own.
+  const folder = mono ? "logos-light" : "logos-color";
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/assets/${folder}/${src}.png`}
+      alt={alt}
+      style={{ display: "block", height: h, width: "auto", maxWidth: 200, objectFit: "contain" }}
+    />
+  );
+}
+
+function ProofPartners() {
+  return (
+    <section className="on-light" style={{ background: LIGHT }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET }}>
+        <div style={{ position: "relative", zIndex: 1, padding: "96px 64px", display: "flex", flexDirection: "column" }}>
+          {/* header band */}
+          <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
+            <Dot style={{ left: -2, top: -2 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <span style={{ ...eyebrow(TXT_L2), fontSize: 16, display: "block" }}>PROVEN WHERE IT&apos;S HARDEST</span>
+            <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "22ch" }}>
+              Trusted by Industry Leaders
+            </h2>
+            <div style={{ marginTop: 48, display: "flex", alignItems: "flex-start", gap: 80 }}>
+              <div>
+                <span style={{ display: "block", fontFamily: sans, fontSize: "clamp(120px, 16.1vw, 232px)", lineHeight: 0.82, fontWeight: 500, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value="400,000" /></span>
+                <span style={{ display: "block", marginTop: 56, ...eyebrow(TXT_L2), fontSize: 26, fontStyle: "italic" }}>IMAGE READS A DAY&nbsp;·&nbsp;ACROSS LIVE SITES</span>
+              </div>
+              <span style={{ flex: 1, alignSelf: "center", fontFamily: sans, fontSize: 34, lineHeight: 1.35, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_L1, maxWidth: "16.11ch", paddingBottom: 84, paddingLeft: 65 }}>
+                Inspection and monitoring of assets in night, rain, fog and dust.
+              </span>
+            </div>
+          </div>
+
+          {/* deployed band */}
+          <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>DEPLOYED AT</span>
+            <div style={{ marginTop: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 56 }}>
+              {DEPLOYED.map((l) => <Logo key={l.src} {...l} />)}
+            </div>
+          </div>
+
+          {/* recognition band */}
+          <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>BACKED &amp; RECOGNISED BY</span>
+            <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 28, columnGap: 48 }}>
+              {RECOGNISED.map((l) => <Logo key={l.src} {...l} />)}
+            </div>
+          </div>
+
+          {/* footnote band */}
+          <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "28px 0 0" }}>
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Dot style={{ right: -2, top: -2 }} />
+            <span style={{ display: "block", fontSize: 16, lineHeight: 1.6, color: TXT_L2 }}>CII Best Industry AI Application 2025&nbsp;·&nbsp;Patented Technology</span>
+          </div>
+        </div>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 32px" }}>
+        <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "24px 0 32px" }}>
+          <Dot style={{ left: -2, top: -2 }} />
+          <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 12 }}>PROVEN WHERE IT&apos;S HARDEST</span>
+          <h2 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>Trusted by Industry Leaders</h2>
+          <span style={{ display: "block", marginTop: 28, fontFamily: sans, fontSize: 72, lineHeight: 0.9, fontWeight: 500, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value="400,000" /></span>
+          <span style={{ display: "block", marginTop: 16, ...eyebrow(TXT_L2), fontSize: 13, fontStyle: "italic" }}>IMAGE READS A DAY&nbsp;·&nbsp;ACROSS LIVE SITES</span>
+          <span style={{ display: "block", marginTop: 24, fontFamily: sans, fontSize: 20, lineHeight: 1.4, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_L1, maxWidth: "24ch" }}>Inspection and monitoring of assets in night, rain, fog and dust.</span>
+        </div>
+        <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "24px 0 32px" }}>
+          <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 12 }}>DEPLOYED AT</span>
+          <div style={{ marginTop: 24, display: "flex", flexWrap: "wrap", alignItems: "center", rowGap: 24, columnGap: 32 }}>
+            {DEPLOYED.map((l) => <Logo key={l.src} {...l} h={Math.round(l.h * 0.68)} />)}
+          </div>
+        </div>
+        <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "24px 0 32px" }}>
+          <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 12 }}>BACKED &amp; RECOGNISED BY</span>
+          <div style={{ marginTop: 24, display: "flex", flexWrap: "wrap", alignItems: "center", rowGap: 20, columnGap: 28 }}>
+            {RECOGNISED.map((l) => <Logo key={l.src} {...l} h={Math.round(l.h * 0.68)} />)}
+          </div>
+        </div>
+        <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "20px 0 0" }}>
+          <Dot style={{ right: -2, top: -2 }} />
+          <span style={{ display: "block", fontSize: 13, lineHeight: 1.6, color: TXT_L2 }}>CII Best Industry AI Application 2025&nbsp;·&nbsp;Patented Technology</span>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* =========================================================================
+   6 · TESTIMONIALS  (dark) — PLACEHOLDER
+   The design's quote/attribution are unverified draft copy; per the standing
+   rule the testimonial content ships as an obvious bracketed, mono-log
+   placeholder. Section framing (eyebrow, headline, CTA, pager) is kept.
+   LAB: rule 8 treatment lives in ./testimonial-pager.tsx (forked) — the
+   opening quote glyph is recoloured to ACCENT_D.
+   ========================================================================= */
+
+function Testimonials() {
+  return (
+    <section style={{ background: DARK }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 740 }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <Verticals color={GRID_D} />
+          <HRule top={72} color={GRID_D} cross={CROSS_D} />
+          <Cross color={CROSS_D} style={{ left: 60, top: 4 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
+          <Cross color={CROSS_D} style={{ left: 60, top: "calc(100% - 13px)" }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: "calc(100% - 13px)" }} />
+          {/* LAB: registration dot → ACCENT_D, per rule 4 */}
+          <Dot color={ACCENT_D} style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 71 }} />
+        </div>
+
+        <div style={{ position: "relative", zIndex: 1, padding: "98px 64px 64px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 32 }}>
+            <div style={{ maxWidth: 940 }}>
+              {/* LAB: TXT_D2 → ACCENT_D, per rule 2 */}
+              <span style={{ ...eyebrow(ACCENT_D), display: "block" }}>CUSTOMER PROOF</span>
+              <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 56, lineHeight: 1.1, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, maxWidth: "24ch" }}>
+                See how industrial sites run inspection <span style={{ color: TXT_D2 }}>— without stopping the operations.</span>
+              </h2>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 40, borderTop: `1px solid ${BORDER_D}`, paddingTop: 40, display: "grid", gridTemplateColumns: "3fr 1fr", gap: 0 }}>
+            <TestimonialPagerDesktop />
+          </div>
+        </div>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
+        <span style={{ ...eyebrow(ACCENT_D), display: "block", fontSize: 12 }}>CUSTOMER PROOF</span>
+        <h2 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 28, lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>
+          See how industrial sites run inspection <span style={{ color: TXT_D2 }}>— without stopping the operations.</span>
+        </h2>
+        <div style={{ margin: "24px 0 0", borderTop: `1px solid ${BORDER_D}`, paddingTop: 24 }}>
+          <TestimonialPagerMobile />
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* =========================================================================
+   7 · CONVERT  (dark, checkered) — closing bookend
+   ========================================================================= */
+
+function Convert() {
+  return (
+    <section style={{ background: DARK }}>
+      {/* DESKTOP */}
+      <Reveal as="div" className="hidden md:block" style={{ ...SHEET, height: 720 }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <Verticals color={GRID_D} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: 64, height: 1, background: GRID_D }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: GRID_D }} />
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 64, height: 1, background: GRID_D }} />
+          {/* corner crosses */}
+          <Cross color={CROSS_D} style={{ left: 60, top: 60 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 60 }} />
+          <Cross color={CROSS_D} style={{ left: 60, bottom: 60 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", bottom: 60 }} />
+          {/* internal gridline-intersection crosses (checkered) */}
+          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: "calc(50% - 4px)" }} />
+          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", top: "calc(50% - 4px)" }} />
+          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: 60 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", bottom: 60 }} />
+          {/* LAB: registration dot → ACCENT_D, per rule 4 */}
+          <Dot color={ACCENT_D} style={{ left: "50%", top: "calc(50% - 1px)" }} />
+        </div>
+        {/* neutral vignette */}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", background: "radial-gradient(ellipse 640px 340px at 50% 50%, rgba(0,0,0,0.15), rgba(0,0,0,0) 70%)" }} />
+        <div style={{ position: "absolute", inset: 0, zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 64px", boxSizing: "border-box" }}>
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: 84, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, maxWidth: "20ch" }}>
+            Join industry leaders running AI-enabled sites with 400,000+ daily reads.
+          </h2>
+          <span style={{ display: "block", marginTop: 24, fontSize: 29, lineHeight: 1.5, color: TXT_D2 }}>Bring CCTV feed, We&apos;ll read it live.</span>
+          <div style={{ marginTop: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+            <a href="/contact" className="dt-fill" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 77, padding: "0 32px", background: TXT_D1, color: TXT_L1, borderRadius: 999, fontFamily: sans, fontSize: 24, fontWeight: 500, textDecoration: "none" }}>Talk to us</a>
+            <a href="/platform/viso-yard" className="dt-outline" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 76, padding: "0 32px", background: "transparent", color: TXT_D1, border: `1px solid rgba(244,245,247,0.28)`, borderRadius: 999, fontFamily: sans, fontSize: 24, fontWeight: 500, textDecoration: "none" }}>Explore the platform</a>
+          </div>
+        </div>
+      </Reveal>
+
+      {/* MOBILE */}
+      <Reveal as="div" className="md:hidden" style={{ position: "relative", height: 520 }}>
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: 130, height: 1, background: GRID_D }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: 390, height: 1, background: GRID_D }} />
+          <Cross color={CROSS_D} style={{ left: 16, top: 16 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", top: 16 }} />
+          <Cross color={CROSS_D} style={{ left: 16, bottom: 16 }} />
+          <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", bottom: 16 }} />
+          {/* LAB: SIGNAL → ACCENT_D, per rule 4 */}
+          <div style={{ position: "absolute", left: "50%", top: 389, width: 3, height: 3, background: ACCENT_D }} />
+        </div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 24px", boxSizing: "border-box" }}>
+          <h2 style={{ margin: 0, fontFamily: sans, fontSize: 34, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, textWrap: "balance" }}>Join industry leaders running AI-enabled sites with 400,000+ daily reads.</h2>
+          <span style={{ display: "block", marginTop: 16, fontSize: 17, lineHeight: 1.5, color: TXT_D2 }}>Bring CCTV feed, We&apos;ll read it live.</span>
+          <div style={{ marginTop: 32, display: "flex", flexDirection: "column", alignItems: "stretch", gap: 12, width: "100%", maxWidth: 280 }}>
+            <a href="/contact" className="dt-fill" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 52, background: TXT_D1, color: TXT_L1, borderRadius: 999, fontFamily: sans, fontSize: 17, fontWeight: 500, textDecoration: "none" }}>Talk to us</a>
+            <a href="/platform/viso-yard" className="dt-outline" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 52, background: "transparent", color: TXT_D1, border: `1px solid rgba(244,245,247,0.28)`, borderRadius: 999, fontFamily: sans, fontSize: 17, fontWeight: 500, textDecoration: "none" }}>Explore the platform</a>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* ========================================================================= */
+
+export default function Home() {
+  return (
+    <>
+      <Hero />
+      <Statement />
+      {/* METRICS MOVED ABOVE HOW-IT-WORKS. Per explicit direction: the numbers
+          now land before the section that carries the big lead-card animation,
+          so the page argues (same cameras, different economics) before it
+          demonstrates. Note the 400,000 figure lives in ProofPartners, not
+          Metrics — if that should move too it is a separate reorder. */}
+      <Metrics />
+      <HowItWorks />
+      <ProofPartners />
+      <Testimonials />
+      <Convert />
+    </>
+  );
+}

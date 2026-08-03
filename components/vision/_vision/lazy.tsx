@@ -179,13 +179,26 @@ const loadGate = () => import("../gate-vision/scene")
   .then(async (m) => { (await import("../gate-vision/materials")).warmGateTextures(); return m; });
 const loadYardVision = () => import("../yard-vision/scene")
   .then(async (m) => { (await import("../yard-vision/yard")).warmYardTextures(); return m; });
+const loadCrane = () => import("../crane-vision/scene")
+  .then(async (m) => { (await import("../crane-vision/crane")).warmCraneTextures(); return m; });
+const loadCargo = () => import("../cargo-vision/scene")
+  .then(async (m) => { (await import("../cargo-vision/cargo")).warmCargoTextures(); return m; });
+const loadDocument = () => import("../document-vision/scene")
+  .then(async (m) => { (await import("../document-vision/document")).warmDocumentTextures(); return m; });
 const loadLead = () => import("../lead-card/scene");
 const loadCards = () => import("../hero-cards");
+
+const loadAscii = () => import("../ascii-hero/scene")
+  .then(async (m) => { (await import("../ascii-hero/ascii")).warmAsciiAtlas(); return m; });
 
 const DynContainer = dynamic(loadContainer, { ssr: false, loading: Placeholder });
 const DynTank = dynamic(loadTank, { ssr: false, loading: Placeholder });
 const DynGate = dynamic(loadGate, { ssr: false, loading: Placeholder });
 const DynYardVision = dynamic(loadYardVision, { ssr: false, loading: Placeholder });
+const DynCrane = dynamic(loadCrane, { ssr: false, loading: Placeholder });
+const DynCargo = dynamic(loadCargo, { ssr: false, loading: Placeholder });
+const DynDocument = dynamic(loadDocument, { ssr: false, loading: Placeholder });
+const DynAscii = dynamic(loadAscii, { ssr: false, loading: Placeholder });
 const DynLead = dynamic(loadLead, { ssr: false, loading: Placeholder });
 const DynYard = dynamic(() => loadCards().then((m) => m.YardCard), { ssr: false, loading: Placeholder });
 const DynWarehouse = dynamic(() => loadCards().then((m) => m.WarehouseCard), { ssr: false, loading: Placeholder });
@@ -204,8 +217,31 @@ export const GateVisionScene = (p: SceneProps) => <WhenNear warm={loadGate}><Dyn
    for the Viso Yard PRODUCT; this is section 04's aerial flagship. Two different
    scenes about the same word, and the names have to keep them apart. */
 export const YardVisionScene = (p: SceneProps) => <WhenNear warm={loadYardVision}><DynYardVision {...p} /></WhenNear>;
+/* The portrait flagship — a load rising on a spreader. Its slot is ~1:2.2 tall
+   and the scene derives its framing from the live aspect, so it must not be
+   dropped into a landscape box. */
+export const CraneVisionScene = (p: SceneProps) => <WhenNear warm={loadCrane}><DynCrane {...p} /></WhenNear>;
+/* The destuff flagship — mixed cargo counted out of a container's door end. Its
+   slot is landscape 4:3 and the framing is derived from the live aspect. */
+export const CargoVisionScene = (p: SceneProps) => <WhenNear warm={loadCargo}><DynCargo {...p} /></WhenNear>;
+/* The key-value flagship — a Bill of Lading read in place on a desk. Its slot is
+   landscape 3:2 and the framing is derived from the live aspect. */
+export const DocumentVisionScene = (p: SceneProps) => <WhenNear warm={loadDocument}><DynDocument {...p} /></WhenNear>;
+/* The ASCII field takes  rather than bare/bleed — it is a background,
+   and how loud it is belongs to the page it sits behind, not to the scene. */
+export const AsciiHeroScene = (p: { intensity?: number }) => <WhenNear warm={loadAscii}><DynAscii {...p} /></WhenNear>;
 export const LeadCardScene = () => <WhenNear warm={loadLead}><DynLead /></WhenNear>;
 export const YardCard = () => <WhenNear warm={loadCards}><DynYard /></WhenNear>;
 export const WarehouseCard = () => <WhenNear warm={loadCards}><DynWarehouse /></WhenNear>;
 export const FactoryCard = () => <WhenNear warm={loadCards}><DynFactory /></WhenNear>;
 export const DataCard = () => <WhenNear warm={loadCards}><DynData /></WhenNear>;
+
+/* The people flagship — one worker crossing an aisle, read by three pole
+   cameras that resolve to one identity. Its slot is landscape 16/9 and the
+   framing is derived from the live aspect. `warmWorkTextures` has no canvases of
+   its own; it exists to generate the DARK_METAL maps (shared with gate-vision)
+   during idle rather than on the scroll path. */
+const loadWork = () => import("../work-vision/scene")
+  .then(async (m) => { (await import("../work-vision/work")).warmWorkTextures(); return m; });
+const DynWork = dynamic(loadWork, { ssr: false, loading: Placeholder });
+export const WorkVisionScene = (p: SceneProps) => <WhenNear warm={loadWork}><DynWork {...p} /></WhenNear>;

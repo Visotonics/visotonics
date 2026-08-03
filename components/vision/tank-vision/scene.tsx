@@ -34,7 +34,7 @@ import {
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { makeMetal, metalBox, tintMetal } from "../_vision/metal";
 import { makeRustDecal } from "../container-vision/materials";
-import { createTracker, detectMaterials, scanPlane } from "../hero-cards/detect";
+import { createSightCone, createTracker, detectMaterials, scanPlane } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 
 /* ---- the tank, in metres. ISO 20ft envelope: 6058 x 2438 x 2591 ---- */
@@ -46,6 +46,12 @@ const R = 1.05;          // shell radius
 
 /* One pass end to end, unhurried: this is a survey, not a gate crawl. */
 const LOOP = 7.4;
+
+/* The pole camera's field of view. The hand-built cone this replaces was a
+   unit cone written as scale.set(len * 0.11, len * 0.11, len) every frame —
+   a radius of 0.11*len at distance len, which is a half-angle of atan(0.11),
+   independent of length. Same number, stated once. */
+const SIGHT_HALF_ANGLE = Math.atan(0.11);
 /* 5.0s. Three stops each need a move, a hold and a return. At 3.4 the holds
    came out around 0.3s, which is below what a two-word label needs to be read;
    5.0 is the shortest period that leaves each hold near 0.6s.
@@ -170,9 +176,6 @@ interface TankMats {
   fitting: THREE.MeshStandardMaterial;
   grating: THREE.MeshStandardMaterial;
   patch: THREE.MeshStandardMaterial;
-  /* Not in `all`: the sight cone is a presence-tier volume and peaks far below
-     the solids, so it rides its own fraction of the intro ramp. */
-  sight: THREE.MeshBasicMaterial;
   all: THREE.MeshStandardMaterial[];
   dispose: () => void;
 }
@@ -185,16 +188,39 @@ function buildTankMaterials(): TankMats {
      barrel reads by its CURVATURE and its specular band, and a grain map fights
      both. It is also three fewer maps to sample per fragment on the largest
      surface in the frame. */
+  /* #C4CCD6 -> #6B737C. The shell is the one surface in this scene with NO
+     map (see above) — flat colour, full key+fill+rim, through ACES. That
+     combination reads a hex far lighter than its own number, which is why
+     the barrel was glowing off the page even though C4CCD6 does not look
+     like a bright hex on a swatch. Relative luminance (0.2126R+0.7152G+0.0722B
+     in linear-from-sRGB terms) was ~0.80 for the old value; 6B737C brings it
+     to ~0.45, a ~44% cut. That is deliberately NOT pushed further: the shell
+     still has to read as rolled stainless by its curvature and specular band
+     (see the comment above this block), and a value much below mid-grey
+     starts to read as painted steel instead — which is the OTHER flagships'
+     material, not this one's. It also has to stay far enough above the rust
+     decal's dominant dark tones (see patch, below) that the defect still
+     reads as darker-than-shell rather than shell-coloured. */
   const shell = new THREE.MeshStandardMaterial({
-    color: "#C4CCD6",
+    color: "#6B737C",
     metalness: 0.45,
     roughness: 0.28,
     envMapIntensity: 0.9,
     transparent: true,
     opacity: 0,
   });
+  /* Frame and grating are left alone — see the report. Fitting is the one
+     other value moved: it is the material on the manlid, the valve body and
+     stub, the ladder, and the camera head lens, all explicitly called out as
+     "the tank itself". #6E767F -> #5C636B, ~16% luminance cut. Smaller than
+     the shell's because fitting is MAPPED (tintMetal clones a material that
+     carries albedo/roughness/normal maps baked at a NEUTRAL base and tints by
+     multiplying `.color` over that map) — a mapped surface already renders
+     roughly a stop darker than a flat colour at the same hex, so it did not
+     need the shell's full correction, and moving it as far would have pushed
+     it past frame's own darker value and inverted the two structural greys. */
   const frame = tintMetal(base.material, "#4A525B", { metalness: 0.3 });
-  const fitting = tintMetal(base.material, "#6E767F", { metalness: 0.35 });
+  const fitting = tintMetal(base.material, "#5C636B", { metalness: 0.35 });
   const grating = tintMetal(base.material, "#3A4149", { metalness: 0.25 });
   /* THE CORRODED PATCH IS NOW A DECAL, not a tinted solid. Every tinted-solid
      pass at this failed the same way: a disc always reads as a disc, so the
@@ -208,26 +234,18 @@ function buildTankMaterials(): TankMats {
     map: rustTex, transparent: true, opacity: 0, roughness: 0.75, metalness: 0.2,
     depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
   });
-  /* The camera's sight cone. MeshBasicMaterial: this is a volume of light, not
-     a lit surface, and DoubleSide keeps it drawn when the eye ends up inside
-     it during a punch-in. */
-  const sight = new THREE.MeshBasicMaterial({
-    color: "#2E86BE",
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
+  /* The sight cone's material used to live here, as a #2E86BE MeshBasicMaterial.
+     It is gone: the volume is now createSightCone's, built in the scene body
+     where it is aimed, on the palette's one observing blue. */
   const all = [shell, frame, fitting, grating, patch];
   return {
-    shell, frame, fitting, grating, patch, sight, all,
+    shell, frame, fitting, grating, patch, all,
     /* The neutral base is never assigned to a mesh, but it is a real material.
        The rust texture IS disposed here — unlike the shared maps inside
        container-vision's cache, this one is generated per call and tank-vision
        is its only consumer. */
     dispose: () => {
       all.forEach((m) => m.dispose());
-      sight.dispose();
       rustTex.dispose();
       base.dispose();
     },
@@ -244,8 +262,6 @@ interface Tank {
   valve: THREE.Group;
   /** the CCTV head, re-aimed every frame at whatever is currently flagged */
   camHead: THREE.Group;
-  /** its sight cone, a unit cone rescaled to reach the thing it is aimed at */
-  cone: THREE.Mesh;
   /** geometry this scene owns outright and must dispose */
   owned: THREE.BufferGeometry[];
 }
@@ -483,22 +499,19 @@ function buildTank(m: TankMats): Tank {
   lens.position.z = 0.24;
   camHead.add(lens);
 
-  /* ONE unit cone, apex at the origin, opening along +Z.
+  /* THE SIGHT CONE IS NO LONGER A CHILD OF THE HEAD. It used to be a local
+     unit cone rotated onto the head's +Z and rescaled every frame, which
+     worked only because it inherited camHead's lookAt. The shared builder
+     takes a world apex and a world target instead, and its ground pool has to
+     stay flat in world XZ — neither survives being parented to a rotating
+     group. It is built and aimed in the scene body; camHead still gets its
+     lookAt, because the physical lens must keep pointing where the beam goes.
 
-     ConeGeometry(1, 1, 4, 1, true) stands on Y with its apex at y = +0.5.
-     translate(0, -0.5, 0) drops the apex onto the origin and puts the base at
-     y = -1. Rotating about X by -PI/2 maps (x, y, z) to (x, z, -y), so that
-     base point (0, -1, 0) lands at (0, 0, +1) — apex at origin, opening along
-     +Z, which is what lookAt orients. (+PI/2 maps it to (0, 0, -1) and points
-     the cone out of the BACK of the camera.) */
-  const coneGeo = new THREE.ConeGeometry(1, 1, 4, 1, true);
-  coneGeo.translate(0, -0.5, 0);
-  coneGeo.rotateX(-Math.PI / 2);
-  const cone = new THREE.Mesh(coneGeo, m.sight);
-  camHead.add(cone);
+     `root` carries no transform of its own, so head-local and world
+     coordinates coincide and the cone can sit alongside it. */
   root.add(camHead);
 
-  return { root, patch, manlid, valve, camHead, cone, owned: [patchGeo, lensGeo, coneGeo] };
+  return { root, patch, manlid, valve, camHead, owned: [patchGeo, lensGeo] };
 }
 
 /* ---- the three findings, as screen furniture -------------------------- */
@@ -619,6 +632,13 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       const mats = buildTankMaterials();
       const tank = buildTank(mats);
       scene.add(tank.root);
+
+      /* NO footprintY. Every entry in STOPS is a defect ON THE TANK SHELL, so
+         the sight line never reaches the floor plane at y = GROUND — a ground
+         pool here would be permanently hidden, i.e. a material and a draw call
+         for nothing. Add one only if this scene ever aims at the deck. */
+      const sightCone = createSightCone();
+      scene.add(sightCone.group);
 
       /* The drafting sheet, not scenery — the same ground the hero cards use,
          so a bare scene still sits on a measured surface instead of floating.
@@ -791,11 +811,16 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         }
         tank.camHead.getWorldPosition(headWorld);
         tank.camHead.lookAt(aimPoint);
-        const len = headWorld.distanceTo(aimPoint);
-        // 0.11 half-angle, not 0.16 — at 0.16 the cone covered most of the
-        // tank and read as haze rather than as a beam with a direction
-        tank.cone.scale.set(len * 0.11, len * 0.11, len);
-        mats.sight.opacity = solid * 0.10;
+        /* Re-aimed every frame, and now through the shared builder. The old
+           code wrote scale.set(len*0.11, len*0.11, len) on a unit cone, i.e. a
+           radius of 0.11*len at distance len — which is a half-angle of
+           atan(0.11) = 0.10956 rad, independent of length. Same volume, same
+           apex, same target; SIGHT_HALF_ANGLE is that number.
+           0.11 and not 0.16: at 0.16 the cone covered most of the tank and
+           read as haze rather than as a beam with a direction. */
+        sightCone.aim(headWorld, aimPoint, SIGHT_HALF_ANGLE);
+        sightCone.setOpacity(solid * 0.10);
+        sightCone.tick(frozen ? 1.4 : t);
 
         const place = (a: Callout) => {
           const [w0, w1] = a.win;
@@ -890,6 +915,7 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         mats.dispose();
         // metalBox geometry is cached and shared; these three are this scene's
         tank.owned.forEach((g) => g.dispose());
+        sightCone.dispose();
         dm.all.forEach((m) => m.dispose());
         ground.material.dispose();
         studio.dispose();

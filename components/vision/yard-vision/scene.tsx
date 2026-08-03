@@ -205,7 +205,33 @@ export default function YardVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          own unit — held very quiet, because this scene already has a second and
          more meaningful grid on top of it (the slot boundaries), and two grids
          at similar strength read as moire. */
-      const ground = draftingGround({ size: 34, y: GROUND - 0.012, step: 1, opacity: 0.055 });
+      /* The analog sheet — white, faint, and running past the frame.
+
+         SIZE 420, so the half-size is 210. The fade does not begin until 0.86
+         of that (~181 units out) and completes at 1.0 (210), which is well
+         past anything this aerial can actually see — the widest camera key
+         (REF_RAD 11.4, aspect-corrected) never puts the visible ground further
+         out than a few tens of units. So every part of the floor inside the
+         frame sits at full grid strength, and the fade only starts as the
+         sheet is already leaving the viewport — ground that continues past the
+         frame rather than a rug the yard is standing on. That is what
+         "infinite" means here; the geometry is emphatically finite, it is just
+         sized so the finiteness never shows.
+
+         OPACITY 0.11, NOT THE 0.26 A PREVIOUS PASS USED. That pass raised it
+         five-fold at the same time as turning the slot grid white, and the two
+         rulings — 1.0 against the bay/row pitches of 2.30/2.22, which do not
+         divide evenly — beat against each other into moiré. The slot grid is
+         back to accent (see yard.ts) and this sheet is back to being texture
+         rather than structure. There is a hierarchy on this floor and it only
+         has room for one crisp grid: the blue one, because it carries meaning.
+         Glow is kept but modest — the analog character survives at low alpha,
+         the competition does not. */
+      const ground = draftingGround({
+        size: 420, y: GROUND - 0.012, step: 1,
+        color: PALETTE.grid, opacity: 0.11, glow: 2.2, majorBoost: 2.2,
+        fadeStart: 0.86, fadeEnd: 1.0,
+      });
       scene.add(ground.mesh);
 
       /* ---- the detector ----

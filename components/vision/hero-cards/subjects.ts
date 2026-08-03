@@ -14,8 +14,8 @@ import * as THREE from "three";
 import { PALETTE } from "../_vision/palette";
 import { makeMetal, metalBox, tintMetal } from "../_vision/metal";
 import { cardboardSide, cardboardTop, containerEnd, containerRoof, containerSide } from "./skins";
-import { createTracker, detectMaterials, scanPlane } from "./detect";
-import type { Tracked } from "./detect";
+import { createSightCone, createTracker, detectMaterials as detectMaterialsRaw, scanPlane } from "./detect";
+import type { DetectMaterials, Tracked } from "./detect";
 import { draftingGround, setGroundOpacity } from "./ground";
 
 export interface CardSubject {
@@ -59,10 +59,51 @@ const _deep = (label: string, t0: number) => {
 const faces = (endM: THREE.Material, topM: THREE.Material, sideM: THREE.Material) =>
   [endM, endM, topM, topM, sideM, sideM];
 
+/* THE DETECTION PALETTE, RE-KEYED FOR A DARK PANEL — here rather than in
+   detect.ts, which is shared with scenes outside this change's scope.
+
+   detect.ts still ships the light-card colours, picked on the explicit rule
+   that "on light, an overlay reads by being DARKER and more saturated than
+   everything around it". That rule inverts with the ground, and both of its
+   results fail on a #0E1015 backdrop:
+
+     accent #1B7FC4 = (27,127,196) — DARKER than the cargo it is marking, so a
+       bracket reads as a shadow on the box rather than as a graphic over it.
+     faint  #5A6B7A = (90,107,122) at 0.8 alpha -> ~(75,89,102) over the
+       backdrop: indistinguishable from the structural steel behind it.
+     scan   #2E86BE at 0.42 -> ~(27,66,89): a bar that darkens a near-black
+       frame, which is not a scan, it is a smudge.
+
+   The replacements are the dark palette's own values. accent goes to
+   PALETTE.accent (#5CC8FF); scan to PALETTE.accentBloom (#8FDCFF) so a sweep
+   reads as light passing over the subject; faint becomes a LIGHT desaturated
+   slate — still obviously not the accent (no saturation, and it keeps its 0.8
+   alpha) but now clearly present. `warn` is untouched: #ED510C is the site's
+   signal orange and it was already the one value in the set that holds against
+   both grounds. */
+function detectMaterials(): DetectMaterials {
+  const dm = detectMaterialsRaw();
+  dm.accent.color.set(PALETTE.accent);
+  dm.faint.color.set("#8FA3B4");
+  dm.scan.color.set(PALETTE.accentBloom);
+  return dm;
+}
+
+/* THE DRAFTING GROUND'S INK, likewise. ground.ts defaults to #1A2733 — a
+   near-black line, correct for drawing a drafting sheet on paper and invisible
+   on one. Every call below passes this instead, and lifts its own peak alpha by
+   ~1.6x: a light line at 0.07 over (14,16,21) contributes about (6,8,9), which
+   rounds away at card size, so the alphas that were tuned for dark-ink-on-white
+   have to come up as well as the hue changing. */
+const GRID_INK = "#5E7A93";
+
 /* The site's own signal orange — the colour every schematic SVG already uses
-   for callouts. Kept here rather than reaching for PALETTE.warn (#FFB020),
-   which is a softer amber picked for dark scenes and greys out on a light
-   panel. Orange means CONCLUSION across the whole row; see DECISIONS.md. */
+   for callouts. Kept here rather than reaching for PALETTE.warn (#FFB020) even
+   now the panel is dark again: the reason has changed but the answer has not.
+   It was chosen because the softer amber greyed out on a light panel; it stays
+   because ORANGE means CONCLUSION across the whole row and every schematic SVG
+   on the site draws that callout in this exact hue. #ED510C is fully readable
+   on #0E1015, so nothing forces a change. See DECISIONS.md. */
 const SIGNAL_ORANGE = "#ED510C";
 
 /* 01 · Viso Yard — a gantry crane reading a container mid-move.
@@ -128,24 +169,32 @@ export function yardSubject(): CardSubject {
   /* THREE liveries, down from five: two for the yard and one for the load.
      18 materials where there were 30.
 
-     SATURATED MID BLUE, on a light card. These have now been navy (unreadable
-     against a charcoal card), then pale desaturated blue (to separate from a
-     light-blue overlay), and now this — because the card went light and the
-     rule inverted again. The rule that survives all three:
+     The rule that has survived every re-key of this card — navy, then pale
+     desaturated blue, then saturated mid blue for the white panel, and now
+     this — is the only thing here worth memorising:
 
          CARGO SITS BETWEEN THE BACKGROUND AND THE OVERLAY IN VALUE.
 
-     On a near-white card that means real colour: mid-blue containers read as
-     objects against the paper, and the overlay wins by being DARKER than they
-     are rather than brighter. Pale cargo would have vanished into the card.
+     With the panel back to #101216 that means cargo has to be LIGHT: it wins
+     against the ground by being brighter, and the overlay wins against it by
+     being brighter still (#5CC8FF) and by being the only saturated cyan in the
+     frame.
 
-     Tints MULTIPLY a mid-grey albedo (#9AA0A8) carrying baked corrugation
-     shadow, so the on-screen result is roughly one step darker than the hex. */
-  const yardA = skin("#7AAFD6");
-  const yardB = skin("#97C4E2");
+     Tints MULTIPLY makeMetal's mid-grey albedo (#9AA0A8, ~0.60) which also
+     carries the baked corrugation shadow, so the on-screen value is roughly
+     one step darker than the hex. Each is lifted ~+25 in R from the white-panel
+     values, which with the exposure move (0.78 -> 1.18, x1.51) puts the
+     mid livery at about 0.60 x 0.74 x 1.51 = 0.67 of full — light cargo on a
+     dark ground, where before it computed to 0.60 x 0.48 x 0.78 = 0.22.
+
+       yardA    #7AAFD6 -> #93BEDD
+       yardB    #97C4E2 -> #AFD2E9
+       loadSkin #B4D9EF -> #CCE6F6                                          */
+  const yardA = skin("#93BEDD");
+  const yardB = skin("#AFD2E9");
   // the load: the lightest of the three, so the box in the crane's grasp still
-  // separates from the stacks behind it without going pale
-  const loadSkin = skin("#B4D9EF");
+  // separates from the stacks behind it
+  const loadSkin = skin("#CCE6F6");
 
   /* ONE BoxGeometry, shared by all eight containers. The old version called
      `box()` per container, i.e. sixteen identical BoxGeometry allocations. */
@@ -193,7 +242,11 @@ export function yardSubject(): CardSubject {
      this card's shallow camera angle they rake almost to the horizon — at the
      shared 0.16 the floor read as a bright blue net competing with the
      gantry, which is the opposite of what a ground plane is for. */
-  const ground = draftingGround({ size: 24, y: FLOOR - 0.01, step: PITCH_X, opacity: 0.07 });
+  /* 0.07 -> 0.11 (x1.6), and light ink — see GRID_INK. Still the quietest grid
+     of the four: at bay pitch the lines are far apart and this camera's shallow
+     angle rakes them almost to the horizon, so the shared value read as a net
+     competing with the gantry. */
+  const ground = draftingGround({ size: 24, y: FLOOR - 0.01, step: PITCH_X, color: GRID_INK, opacity: 0.11 });
   g.add(ground.mesh);
 
   /* ---- the gantry ----
@@ -201,18 +254,26 @@ export function yardSubject(): CardSubject {
      pass per material, and at 280px a gantry strut is about two pixels wide —
      there is nowhere for a roughness map to show. metalBox still applies, for
      the rounded edge highlight that reads at any size. */
-  /* DARK METALLIC CHARCOAL — and going light made this work BETTER, not worse.
-     Against a charcoal card the gantry had to be lifted to #4A5057 just to stay
-     visible, which cost it its silhouette. On paper it can be properly dark: a
-     near-black structure on a near-white card is the strongest read in the
-     frame, and it frames the blue cargo instead of competing with it.
+  /* MID METALLIC SLATE. #525A63 / #32383F were picked to be the darkest thing
+     in a near-white frame — the strongest read available on paper — and that is
+     precisely what fails on #0E1015: a gantry leg is 0.16 units wide, so a
+     structure at (50,56,63) against a backdrop at (14,16,21) has nowhere near
+     enough separation to survive at ~2px, and the whole crane went to
+     silhouette. These are the same two shades lifted about 56 points:
 
-     Two shades only. Structure, then a darker one for the moving parts. */
+       steel #525A63 = (82,90,99)  -> #8A939D = (138,147,157)
+       dark  #32383F = (50,56,63)  -> #5C646E = (92,100,110)
+
+     Both still sit BELOW the cargo, so the value order is unchanged — the
+     gantry frames the blue rather than competing with it — but neither is a
+     silhouette any more. Two shades only: structure, then a darker one for the
+     moving parts (trolley, cables, spreader), which is what keeps the mechanism
+     legible now that nothing in the crane is black. */
   const steel = new THREE.MeshStandardMaterial({
-    color: "#525A63", metalness: 0.72, roughness: 0.46, transparent: true, opacity: 0,
+    color: "#8A939D", metalness: 0.72, roughness: 0.46, transparent: true, opacity: 0,
   });
   const dark = new THREE.MeshStandardMaterial({
-    color: "#32383F", metalness: 0.6, roughness: 0.62, transparent: true, opacity: 0,
+    color: "#5C646E", metalness: 0.6, roughness: 0.62, transparent: true, opacity: 0,
   });
   mats.push(steel, dark);
 
@@ -472,11 +533,13 @@ export function warehouseSubject(): CardSubject {
      warn colour, and a permanently-orange vehicle would compete with the one
      graphic that is supposed to mean "something is wrong". Consistency across
      four cards beats accuracy on one. */
+  /* Same three-shade lift as the gantry, and the same arithmetic — see the
+     yard's `steel`/`dark` note. #525A63 -> #8A939D, #32383F -> #5C646E. */
   const steel = own(new THREE.MeshStandardMaterial({
-    color: "#525A63", metalness: 0.72, roughness: 0.46, transparent: true, opacity: 0,
+    color: "#8A939D", metalness: 0.72, roughness: 0.46, transparent: true, opacity: 0,
   }));
   const dark = own(new THREE.MeshStandardMaterial({
-    color: "#32383F", metalness: 0.55, roughness: 0.62, transparent: true, opacity: 0,
+    color: "#5C646E", metalness: 0.55, roughness: 0.62, transparent: true, opacity: 0,
   }));
   /* A THIRD charcoal, lighter, for the mast, forks, carriage and guard. Two
      values was not enough: body, counterweight, wheels, mast and cage all sat
@@ -484,16 +547,23 @@ export function warehouseSubject(): CardSubject {
      readable mechanism in it. A forklift is only recognisable if the MAST and
      FORKS separate from the body, so those get the light value and the rolling
      parts keep the darkest. Still all charcoal — the row's machinery rule. */
+  /* #7E8792 -> #A9B2BD, the same +43 that keeps this a clear step above `steel`
+     (#8A939D). The mast, forks, carriage and guard are the parts that make a
+     forklift recognisable as a forklift, so they take the lightest value; the
+     rolling parts keep the darkest. Three values that still span 92 -> 169. */
   const steelLt = own(new THREE.MeshStandardMaterial({
-    color: "#7E8792", metalness: 0.7, roughness: 0.44, transparent: true, opacity: 0,
+    color: "#A9B2BD", metalness: 0.7, roughness: 0.44, transparent: true, opacity: 0,
   }));
+  // timber, lifted the same way as everything else: #8A6E45 -> #A98A5C, so the
+  // pallet under the load reads as wood rather than as a dark gap
   const palletM = own(new THREE.MeshStandardMaterial({
-    color: "#8A6E45", metalness: 0, roughness: 0.9, transparent: true, opacity: 0,
+    color: "#A98A5C", metalness: 0, roughness: 0.9, transparent: true, opacity: 0,
   }));
-  /* Mid blue for the stock in the racking — cargo sits between the near-white
-     panel and the darker overlay in value, the rule that holds across the row. */
+  /* Light blue for the stock in the racking — cargo sits between the DARK panel
+     and the brighter overlay in value, the rule that holds across the row.
+     #8CBBDD -> #A8CDE6, matching the yard's livery lift. */
   const brushedN = own(makeMetal({ base: "#9AA0A8", kind: "brushed", metalness: 0.7, rough: 0.45 }).material);
-  const crateM = own(tintMetal(brushedN, "#8CBBDD", { metalness: 0.3 }));
+  const crateM = own(tintMetal(brushedN, "#A8CDE6", { metalness: 0.3 }));
 
   // kraft board, from the shared cache — the same two canvases Factory uses
   const kraftSide = own(new THREE.MeshStandardMaterial({
@@ -545,7 +615,8 @@ export function warehouseSubject(): CardSubject {
     g.add(m);
   }
 
-  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, opacity: 0.13 });
+  // 0.13 -> 0.20 (x1.6) and light ink — see GRID_INK
+  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.20 });
   g.add(ground.mesh);
 
   /* ---- the fixed camera over the aisle ----
@@ -670,19 +741,33 @@ export function warehouseSubject(): CardSubject {
   mats.push(...dm.all);
 
   /* the sight cone, static, from the lens down to the spot the truck stops in */
-  const coneGeo = new THREE.BufferGeometry();
-  coneGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-    CAM_X - 0.1, CAM_Y - 0.28, 0,
-    CAM_X + 0.1, CAM_Y - 0.28, 0,
-    CAM_X + 1.15, FLOOR + 0.15, 0,
-    CAM_X - 1.15, FLOOR + 0.15, 0,
-  ], 3));
-  coneGeo.setIndex([0, 3, 2, 0, 2, 1]);
-  const coneM = own(new THREE.MeshBasicMaterial({
-    color: "#2E86BE", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.1, tier: "presence" },
-  }));
-  g.add(new THREE.Mesh(coneGeo, coneM));
+  /* WAS A FLAT QUAD-FAN, NOW A REAL CONE. The old geometry was four vertices:
+     a 0.2-wide top edge at y = CAM_Y - 0.28 = 2.34 and a 2.3-wide bottom edge
+     at y = FLOOR + 0.15 = -0.80, both in the z = 0 plane — a trapezoid, which
+     is why it read as a translucent triangle rather than as a volume.
+
+     Apex and target are PRESERVED: apex at the top edge's midpoint
+     (0, 2.34, 0), target at the bottom edge's midpoint (0, -0.80, 0).
+     length  = 2.34 - (-0.80) = 3.14
+     far half-width = 1.15 (unchanged from the quad)
+     halfAngle = atan(1.15 / 3.14) = atan(0.366242) = 0.35107 rad (20.11 deg)
+
+     footprintY = FLOOR: this camera looks straight down at one spot on the
+     warehouse floor, which is the textbook case for the ground pool — the beam
+     stops 0.15 above the floor, so the axis meets the plane at s = 3.29 against
+     a length of 3.14 (s/len = 1.048) and the reach fade brings the pool in at
+     ~27%: a soft mark on the concrete rather than a painted disc. */
+  const coneApex = new THREE.Vector3(CAM_X, CAM_Y - 0.28, 0);
+  const coneTarget = new THREE.Vector3(CAM_X, FLOOR + 0.15, 0);
+  const sightCone = createSightCone({ footprintY: FLOOR });
+  sightCone.aim(coneApex, coneTarget, Math.atan(1.15 / 3.14));
+  /* Registered in `mats` so the card's shared opacity loop drives it — the
+     ShaderMaterial's `opacity` is aliased onto its uOpacity uniform for
+     exactly this. `max` stays 0.14 and the tier stays "presence": the
+     camera's existence does not ramp with hover, only its conclusions do. */
+  sightCone.material.userData = { max: 0.14, tier: "presence" };
+  own(sightCone.material);
+  g.add(sightCone.group);
 
   /* THE TALLY — one tick per carton, filling upward beside the load. This is
      the only thing in the row that states a QUANTITY, which is the warehouse
@@ -731,6 +816,10 @@ export function warehouseSubject(): CardSubject {
     marks: [loadDet, cartonDet],
     ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
     tick: (p) => {
+      /* The sweep band. `p` is the card loop progress, already pinned to a
+         fixed 0.85 by card-scene in reduced motion, so this needs no branch
+         of its own — x8 puts a little under three sweeps in a loop. */
+      sightCone.tick(p * 8);
       /* THE DEAD TIME IS OUT OF THE APPROACH AND THE DEPARTURE, not out of the
          count. The old split spent 0.28 of the loop driving in and 0.20 driving
          out, and the count did not start until 0.34 — so of a 9.5s loop, 4.6s
@@ -813,7 +902,11 @@ export function warehouseSubject(): CardSubject {
       ground.material.dispose();
       rackLoadGeo.dispose();
       cartonGeo.dispose();
-      coneGeo.dispose();
+      /* Disposes the cone material AND its ground pool material; the shared
+         cone/pool GEOMETRY is module-level and flagged, never touched here.
+         The cone material is also in `mats`, and Material.dispose() is safe
+         to call twice. */
+      sightCone.dispose();
       tickGeo.dispose();
       wheelGeo.dispose();
     },
@@ -870,25 +963,36 @@ export function factorySubject(): CardSubject {
      roughness canvas and a Sobel normal pass. Each finish is generated ONCE in
      neutral grey and tinted with `tintMetal`, which clones the material and
      shares all three maps. */
-  const frameM = met("#575F68", "galv", 0.8, 0.45);      // charcoal line frame
-  const darkM = met("#31373E", "plate", 0.55, 0.72);     // belt, camera, tooling
+  /* Line frame and tooling lifted with the rest of the row's machinery —
+     #575F68 -> #8A939D and #31373E -> #5C646E, the same values the gantry and
+     the forklift use, so all four cards' structure sits at one pair of shades.
+     The belt is 15 units of continuous surface across the bottom of the frame;
+     at (49,55,62) against a (14,16,21) backdrop it was a black band with the
+     units apparently floating over nothing. */
+  const frameM = met("#8A939D", "galv", 0.8, 0.45);      // slate line frame
+  const darkM = met("#5C646E", "plate", 0.55, 0.72);     // belt, camera, tooling
   const brushedN = met("#9AA0A8", "brushed", 0.7, 0.45);
   const paintedN = met("#9AA0A8", "painted", 0.4, 0.58);
 
-  /* Separation is carried by COLOUR alone: pale machined arm, charcoal line,
-     kraft board and mid-blue crates. Nothing here is as bright as the overlay
-     drawn on top of it, which is the rule the old bright-blue "cleared" state
-     broke. */
-  const armM = own(tintMetal(brushedN, "#7E8792"));      // the arm
-  /* Crates are DESATURATED pale steel-blue, not a saturated blue. Making the
-     cargo light (as it must be, to stop the card reading dark-on-dark) puts it
-     in direct competition with a light-blue overlay, and a #5CC8FF hairline on
-     a #7FB4D8 box has almost no separation. The fix is to separate on
-     SATURATION rather than lightness: pale near-grey items, and an overlay that
-     is the only saturated cyan in the frame. */
-  const crateM = own(tintMetal(brushedN, "#8CBBDD"));    // plastic crates
+  /* Separation is carried by COLOUR alone: pale machined arm, slate line,
+     kraft board and light steel-blue crates. Nothing here is as bright as the
+     overlay drawn on top of it, which is the rule the old bright-blue "cleared"
+     state broke and which still holds now the overlay is #5CC8FF again. */
+  const armM = own(tintMetal(brushedN, "#A9B2BD"));      // the arm, #7E8792 +43
+  /* Crates stay DESATURATED steel-blue rather than becoming a saturated blue,
+     and that decision survives the flip. Light cargo (which it must be, on a
+     dark panel) competes with a light-blue overlay, and a #5CC8FF hairline on a
+     saturated blue box has almost no separation. Separate on SATURATION, not
+     lightness: near-grey items, and an overlay that is the only saturated cyan
+     in the frame. #8CBBDD -> #A8CDE6, matching the yard and warehouse cargo. */
+  const crateM = own(tintMetal(brushedN, "#A8CDE6"));    // plastic crates
   const flagM = own(tintMetal(paintedN, PALETTE.warn));  // the only warm thing
-  const zoneM = own(tintMetal(paintedN, "#2E86BE", { metalness: 0.25 }));
+  /* The zone outline is a LIT material painted on the belt, not an unlit
+     overlay, so it is dimmed by the belt's own shading before it ever reaches
+     the frame. #2E86BE was already the darker of the two blues and on a dark
+     belt it disappeared entirely; #4FA8D8 is the same hue taken up ~33% so the
+     zone still reads as painted-on marking rather than as a graphic. */
+  const zoneM = own(tintMetal(paintedN, "#4FA8D8", { metalness: 0.25 }));
 
   /* ---- the line, end to end ---- */
   const BELT_L = 15.0, BELT_Y = -0.55;
@@ -920,7 +1024,8 @@ export function factorySubject(): CardSubject {
 
   // held quieter than the shared 0.16: this camera sits low, so the floor is
   // seen very obliquely and the grid rakes almost to the horizon
-  const ground = draftingGround({ size: 34, y: -0.72, step: 1.0, opacity: 0.1 });
+  // 0.1 -> 0.16 (x1.6) and light ink — see GRID_INK
+  const ground = draftingGround({ size: 34, y: -0.72, step: 1.0, color: GRID_INK, opacity: 0.16 });
   g.add(ground.mesh);
 
   /* ---- the inspection station ----
@@ -962,21 +1067,32 @@ export function factorySubject(): CardSubject {
      quad. Without it a camera on a stick is a prop; with it the frame states
      what the camera can see and why the zone is where it is. Held at 0.09
      because it covers real area — bright enough to read as light, never bright
-     enough to compete with the box inside it. */
-  const coneTopY = 1.5, coneBotY = BELT_TOP + 0.02, coneTopW = 0.1;
-  const coneGeo = new THREE.BufferGeometry();
-  coneGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-    ZONE_X - coneTopW, coneTopY, 0,
-    ZONE_X + coneTopW, coneTopY, 0,
-    ZONE_X + ZONE_W / 2, coneBotY, 0,
-    ZONE_X - ZONE_W / 2, coneBotY, 0,
-  ], 3));
-  coneGeo.setIndex([0, 3, 2, 0, 2, 1]);
-  const coneM = own(new THREE.MeshBasicMaterial({
-    color: "#8FDCFF", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.09, tier: "presence" },
-  }));
-  g.add(new THREE.Mesh(coneGeo, coneM));
+     enough to compete with the box inside it.
+     0.09 -> 0.14 on the dark panel, matching Warehouse's cone: this colour is
+     already #8FDCFF, so only the alpha had to move, and the same blend applies
+     (0.14x(143,220,255) + 0.86x(14,16,21) = (32,45,54)). */
+  /* WAS A FLAT QUAD-FAN, NOW A REAL CONE. Apex and target preserved:
+     apex   = (ZONE_X, 1.5, 0)                        = (-2.2, 1.5, 0)
+     target = (ZONE_X, BELT_TOP + 0.02, 0)            = (-2.2, -0.45, 0)
+     length = 1.5 - (-0.45) = 1.95
+     far half-width = ZONE_W / 2 = 0.75 (unchanged from the quad)
+     halfAngle = atan(0.75 / 1.95) = atan(0.384615) = 0.36717 rad (21.04 deg)
+
+     NO footprintY. The beam lands on the BELT, not on the floor — a pool at
+     the drafting ground's height would sit under the conveyor where nothing
+     can see it, and a pool at belt height would be a circle overhanging the
+     belt's edges. The zone is already outlined by four rails, which is the
+     ground mark this scene actually wants. */
+  const coneTopY = 1.5, coneBotY = BELT_TOP + 0.02;
+  const sightCone = createSightCone();
+  sightCone.aim(
+    new THREE.Vector3(ZONE_X, coneTopY, 0),
+    new THREE.Vector3(ZONE_X, coneBotY, 0),
+    Math.atan((ZONE_W / 2) / (coneTopY - coneBotY)),
+  );
+  sightCone.material.userData = { max: 0.14, tier: "presence" };
+  own(sightCone.material);
+  g.add(sightCone.group);
 
   /* ---- the units: kraft cartons and blue crates ----
      The cardboard skins are the SAME cached canvases the Warehouse card
@@ -1187,6 +1303,10 @@ export function factorySubject(): CardSubject {
     marks: dets,
     ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
     tick: (p) => {
+      /* The sweep band. `p` is the card loop progress, already pinned to a
+         fixed 0.85 by card-scene in reduced motion, so this needs no branch
+         of its own — x8 puts a little under three sweeps in a loop. */
+      sightCone.tick(p * 8);
       const travel = p * SPAN;
       inZone = -1;
       downstream.length = 0;
@@ -1295,7 +1415,11 @@ export function factorySubject(): CardSubject {
       mats.forEach((m) => m.dispose());
       ground.material.dispose();
       rollGeo.dispose();
-      coneGeo.dispose();
+      /* Disposes the cone material AND its ground pool material; the shared
+         cone/pool GEOMETRY is module-level and flagged, never touched here.
+         The cone material is also in `mats`, and Material.dispose() is safe
+         to call twice. */
+      sightCone.dispose();
       cartonGeo.dispose();
       gauge.children.forEach((c) => (c as THREE.Mesh).geometry.dispose());
     },
@@ -1349,14 +1473,26 @@ export function dataSubject(): CardSubject {
      a metal with nothing to reflect either blows out on edge highlights or goes
      dead (see DECISIONS.md). */
   const brushedN = own(makeMetal({ base: "#9AA0A8", kind: "brushed", metalness: 0.7, rough: 0.45 }).material);
-  const frameM = own(tintMetal(brushedN, "#4E565F", { metalness: 0.14 }));
-  const darkM = own(tintMetal(brushedN, "#3A4149", { metalness: 0.14 }));
-  // two values across the deck so it has grain without any frame standing out
+  /* The mast, spine and reader head lifted for the dark panel — #4E565F ->
+     #838C96 and #3A4149 -> #646C76, the same ~+53 the other three cards' steel
+     takes. Both still sit below recB (#A3ACB6), so the mechanism reads as
+     darker than the record it is filing, which is the value order this scene
+     depends on: the DECK has to be the bright thing. */
+  const frameM = own(tintMetal(brushedN, "#838C96", { metalness: 0.14 }));
+  const darkM = own(tintMetal(brushedN, "#646C76", { metalness: 0.14 }));
+  /* recA/recB/clipM ARE UNCHANGED. They were already the lightest materials in
+     any of the four cards — #A3ACB6-#CFDEEA is exactly the band the dark
+     flagships light their cargo in — because the deck had to hold as a solid
+     object against a near-white panel. Against black they simply work, and the
+     exposure lift (0.78 -> 1.18) is doing the rest; taking them higher would
+     push the clip into the ACES roll-off and flatten the wedge's grain. */
   const recA = own(tintMetal(brushedN, "#B2BBC5", { metalness: 0.14 }));
   const recB = own(tintMetal(brushedN, "#A3ACB6", { metalness: 0.14 }));
-  // the retrieved frame: the lightest thing in the deck, still well under the
+  // the retrieved frame: the lightest thing in the deck, still under the
   // overlay — nothing in a scene may be as bright as the graphics over it
   const clipM = own(tintMetal(brushedN, "#CFDEEA", { metalness: 0.16 }));
+  // the picture ON the clip stays dark: the clip is light, so its content
+  // reads by being darker than it, and that is unaffected by the panel flip
   const inkM = own(tintMetal(brushedN, "#5E6A76", { metalness: 0.12 }));
 
   const FLOOR = -0.95;
@@ -1446,7 +1582,8 @@ export function dataSubject(): CardSubject {
   readerHead.lookAt(0, DECK_Y + FH / 2, zs[8]);
   g.add(readerHead);
 
-  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, opacity: 0.1 });
+  // 0.1 -> 0.16 (x1.6) and light ink — see GRID_INK
+  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.16 });
   g.add(ground.mesh);
 
   /* ---- the vision layer ---- */
@@ -1457,19 +1594,30 @@ export function dataSubject(): CardSubject {
   /* The reader's field of view, dropping onto the near end of the deck.
      "presence" tier — the camera's existence never ramps with hover, only its
      conclusions do. */
-  const coneGeo = new THREE.BufferGeometry();
-  coneGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-    READ_X + 1.32, FLOOR + 1.66, READ_Z,
-    READ_X + 1.48, FLOOR + 1.66, READ_Z,
-    0.92, DECK_Y + 0.18, 0.35,
-    -0.92, DECK_Y + 0.18, 0.35,
-  ], 3));
-  coneGeo.setIndex([0, 3, 2, 0, 2, 1]);
-  const coneM = own(new THREE.MeshBasicMaterial({
-    color: "#2E86BE", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.1, tier: "presence" },
-  }));
-  g.add(new THREE.Mesh(coneGeo, coneM));
+  /* WAS A FLAT QUAD-FAN, NOW A REAL CONE — and this is the riskiest of the
+     three, because it is the one whose quad was genuinely wide.
+     apex   = midpoint of (READ_X+1.32, FLOOR+1.66, READ_Z) and
+              (READ_X+1.48, FLOOR+1.66, READ_Z)  = (-0.15, 0.71, 1.75)
+     target = midpoint of (0.92, DECK_Y+0.18, 0.35) and (-0.92, ...)
+                                                 = (0.00, 0.30, 0.35)
+     axis   = (0.15, -0.41, -1.40)
+     length = sqrt(0.0225 + 0.1681 + 1.9600) = sqrt(2.1506) = 1.46649
+     far half-width = 0.92 (unchanged from the quad)
+     halfAngle = atan(0.92 / 1.46649) = atan(0.627322) = 0.56029 rad (32.10 deg)
+
+     NO footprintY. The beam lands on the receding DECK, well above the
+     drafting floor, and the deck is a stack of frames rather than a plane — a
+     flat disc anywhere in there would cut through the frames it is supposed to
+     be lighting. */
+  const sightCone = createSightCone();
+  {
+    const apex = new THREE.Vector3(READ_X + 1.40, FLOOR + 1.66, READ_Z);
+    const tgt = new THREE.Vector3(0, DECK_Y + 0.18, 0.35);
+    sightCone.aim(apex, tgt, Math.atan(0.92 / apex.distanceTo(tgt)));
+  }
+  sightCone.material.userData = { max: 0.14, tier: "presence" };
+  own(sightCone.material);
+  g.add(sightCone.group);
 
   /* THE SEARCH BAR — a bright plane that travels BACKWARD along the deck. It is
      the only thing in any of the four cards that moves along Z, and that is
@@ -1482,10 +1630,18 @@ export function dataSubject(): CardSubject {
      A search bar has to be a slice of light: the deck's height, barely wider
      than a frame, and its own low-alpha material so it can be quiet without
      dragging Factory's and Warehouse's scan bars down with it. */
+  /* #2E86BE @ 0.20 -> #8FDCFF @ 0.26. This one crosses the DECK, not the
+     backdrop, so the blend that matters is against recA/recB (~(175,185,197)):
+     the old dark blue at 0.20 darkened the frames it passed over, which on
+     paper read as a shadow moving through the archive and on a dark panel reads
+     as nothing at all. A pale cyan at 0.26 lifts a frame it is over to
+     ~(166,194,212) — a slice of light travelling back through the record, which
+     is what a search running is supposed to look like. Still a slice and never
+     a plate: the geometry is unchanged. */
   const scanGeo = new THREE.PlaneGeometry(FW * 1.12, FH * 1.18);
   const scanM = own(new THREE.MeshBasicMaterial({
-    color: "#2E86BE", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.2, tier: "presence" },
+    color: "#8FDCFF", transparent: true, opacity: 0, toneMapped: false,
+    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.26, tier: "presence" },
   }));
   const scan = new THREE.Mesh(scanGeo, scanM);
   scan.position.set(0, DECK_Y, 0.9);
@@ -1536,10 +1692,19 @@ export function dataSubject(): CardSubject {
   /* A BACKING PLATE, because a record needs a surface. Without it the grey
      rows were drawn straight over the deck behind them — slate lines on slate
      frames, invisible at card size, so only the orange title rule survived and
-     the whole thing read as a stray dash. The plate is a shade off the panel
-     white with a hairline edge, which is what makes it read as a card lying in
-     front of the archive rather than as marks floating on it. */
-  for (const [w, h, col, op] of [[1.52, 1.06, "#5A6B7A", 0.5], [1.46, 1.0, "#F1F4F7", 0.97]] as const) {
+     the whole thing read as a stray dash.
+
+     ON A DARK PANEL THE PLATE IS THE POINT. A record pulled out of an archive
+     ought to look like a document, and paper on near-black is the strongest
+     read available — it is also the only place in the row where a light slab is
+     correct rather than a mistake. #F1F4F7 -> #DCE4EC: one step down, because
+     at 0.97 alpha over a (14,16,21) ground the old value was a light SOURCE
+     brighter than every overlay in the scene, and nothing may out-brighten the
+     accent. #DCE4EC still reads unambiguously as paper. The 0.03 rim at
+     #5A6B7A now falls to a dark ground rather than a light one, so it reads as
+     the card's own drop shadow instead of a hairline — which is the right
+     answer for a card lying in front of the archive either way. */
+  for (const [w, h, col, op] of [[1.52, 1.06, "#5A6B7A", 0.5], [1.46, 1.0, "#DCE4EC", 0.97]] as const) {
     const plate = new THREE.Mesh(barGeo, own(new THREE.MeshBasicMaterial({
       color: col, transparent: true, opacity: 0, toneMapped: false,
       depthWrite: false, userData: { max: op, tier: "mark" },
@@ -1624,6 +1789,10 @@ export function dataSubject(): CardSubject {
     marks: [det],
     ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
     tick: (p) => {
+      /* The sweep band. `p` is the card loop progress, already pinned to a
+         fixed 0.85 by card-scene in reduced motion, so this needs no branch
+         of its own — x8 puts a little under three sweeps in a loop. */
+      sightCone.tick(p * 8);
       /* 0.00-0.08  idle
          0.08-0.40  the search runs back along the deck
          0.40-0.52  it settles on the frame
@@ -1705,7 +1874,11 @@ export function dataSubject(): CardSubject {
       ground.material.dispose();
       frameGeo.dispose();
       lensGeo.dispose();
-      coneGeo.dispose();
+      /* Disposes the cone material AND its ground pool material; the shared
+         cone/pool GEOMETRY is module-level and flagged, never touched here.
+         The cone material is also in `mats`, and Material.dispose() is safe
+         to call twice. */
+      sightCone.dispose();
       scanGeo.dispose();
       cursorGeo.dispose();
       barGeo.dispose();

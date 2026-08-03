@@ -55,23 +55,26 @@ interface Props {
 
 /** The ANIMATION PANEL's own colour — not the card's.
  *
- *  THE RENDER AREA FLIPPED TO LIGHT; THE CARD DID NOT. Explicit user call, and
- *  the distinction matters. With a dark page (#0A0B0E), a dark card (#101216)
- *  and a scene backdrop keyed flat to that card, all three sat inside a 4% value
- *  window — nothing in the frame was dark and nothing was bright, so every card
- *  read as pale shapes floating on the same mid-charcoal whatever was in it.
- *  That was a studio decision (hold the backdrop flat so the canvas shows no
- *  edge), not a constraint, and it capped the contrast of the whole band.
+ *  THE RENDER AREA IS DARK AGAIN. It was flipped to near-white to escape a real
+ *  problem: a dark page (#0A0B0E), a dark card (#101216) and a scene backdrop
+ *  keyed FLAT to that card put all three inside a ~4% value window, so every
+ *  card read as pale shapes floating on the same mid-charcoal. Going light did
+ *  fix the contrast, and it broke the site — the white panels were the founder's
+ *  first complaint about the homepage, and the three approved scenes
+ *  (container / gate / yard vision) are all dark.
  *
- *  Making only the RENDER AREA light fixes that and keeps the band's design:
- *  a near-white panel inside a dark card, the way a photograph sits on a dark
- *  page. The card keeps DARK_SURFACE and its light text. What inverts is every
- *  scene palette — see the value rules in DECISIONS.md.
+ *  THE FLAT BACKDROP WAS THE ACTUAL BUG, not the darkness. It was a studio
+ *  decision (hold the ramp flat so the canvas shows no edge), not a constraint.
+ *  Restoring the flagships' RAMPED cyclorama plus a glow pool, and putting the
+ *  subject exposure back up where the dark scenes run it, buys the contrast
+ *  without the white: dark BACKDROP, bright SUBJECTS. See the backdrop and
+ *  exposure notes below — they are two halves of one change, and applying
+ *  either alone gives you back either the white panel or a murky one.
  *
  *  This value is also the placeholder and error-fallback background, so it must
  *  track the backdrop below: an unbuilt scene should look like an empty panel,
  *  not like a hole. */
-const CARD_SURFACE = "#F6F7F8";
+const CARD_SURFACE = "#101216";
 
 const LOOP = 14;      // slow — these are ambient, not attention-grabbing
 /* How present the detector's MARKS are with no interaction. Deliberately not 0:
@@ -107,26 +110,44 @@ export default function CardScene({ build, rig }: Props) {
          show, and DPR above 1.5 is invisible here. */
       const _tS = performance.now();
       const studio = createStudio(el, {
-        floorY: -1.0, shadowExtent: 5, exposure: 0.78,
+        floorY: -1.0, shadowExtent: 5,
+        /* 1.18, up from 0.78 — the studio DEFAULT, which is what
+           container-vision and gate-vision run. 0.78 was itself a correction
+           (0.5 had been copied over from the lead card and made every subject
+           read "insanely dark" on white), and the compounding note behind it
+           still applies and now cuts harder:
+
+             a tinted metal's value is albedo x tint x exposure. `tintMetal`
+             multiplies makeMetal's mid-grey #9AA0A8 albedo (~0.6) by a tint, so
+             a "light grey" #7E8792 tint is already at ~0.30 before any lighting.
+             At 0.78 that is ~0.23; at 1.18 it is ~0.35.
+
+           On a #F6F7F8 panel 0.23 was merely dark. On #0E1015 it is the whole
+           subject failing to appear, which is why this and the tint hexes in
+           subjects.ts had to move TOGETHER — either alone is not enough.
+
+           EXPOSURE DOES NOT TOUCH THE BACKDROP: the cyclorama is a raw
+           ShaderMaterial writing gl_FragColor directly (studio.ts), so it takes
+           none of three's tone-mapping. This number moves the subjects only. */
+        exposure: 1.18,
         bloom: false, shadowMapSize: 512, maxDpr: 1.5,
         noEnv: true,
         lightRig: "lite",
-        /* Keyed to LIGHT_SURFACE (#F6F7F8) — the card these sit ON — not to the
-           page canvas. Held nearly flat: any ramp reads as a vignette inside
-           the card and gives the frame a visible edge.
+        /* Keyed to DARK_SURFACE (#101216) — the card these sit ON — with the
+           floor at the page canvas #0A0B0E so the panel never reads lighter
+           than the page around it.
 
-           Backdrop values come from the lead-card scene, which has run on a
-           light surface since it was built. EXPOSURE DOES NOT: 0.5 was copied
-           across with them and it made every subject read "insanely dark".
+           AND IT IS RAMPED, not flat. Flat is what collapsed the whole band
+           into one value the last time these were dark (see CARD_SURFACE
+           above); the ramp plus the glow pool is how the flagships give a
+           subject a lighter ground to stand against near the horizon without
+           lightening the frame overall.
 
-           The reason is compounding, and it is worth stating because it will
-           catch the next person. A tinted metal's final value is
-           albedo x tint x exposure: `tintMetal` multiplies a mid-grey #9AA0A8
-           albedo (~0.6) by a tint, so a "light grey" #7E8792 tint is already
-           down at ~0.3 before any lighting, and 0.5 exposure takes it to ~0.15
-           — near-black against a #F6F7F8 panel. Lightening the tint hexes alone
-           could not fix it; the multiplier had to come back up. 0.78. */
-        backdrop: { top: "#F7F8FA", mid: "#F6F7F8", bottom: "#F4F5F7", glow: "#FFFFFF" },
+           Same values and the same glow arithmetic as lead-card/scene.tsx —
+           #1E2836 x 0.55 = (17,22,30) over mid (14,16,21) peaks at #1F2633 —
+           because the two scenes sit on the same page and any difference
+           between their backdrops would read as one panel being wrong. */
+        backdrop: { top: "#14171C", mid: "#0E1015", bottom: "#0A0B0E", glow: "#1E2836" },
       });
       const { camera, scene, bloom, shadowMat } = studio;
 
@@ -255,11 +276,14 @@ export default function CardScene({ build, rig }: Props) {
           const gate = m.userData?.tier === "mark" ? vis : 1;
           (m as THREE.Material & { opacity: number }).opacity = solid * max * gate;
         });
-        /* 0.22, down from 0.5. A ShadowMaterial darkens whatever is under it, and
-           on a near-white card 0.5 puts a heavy grey slab beneath every object.
-           Going light makes the contact shadow far more visible for free, so it
-           needs LESS of it — this is now the main thing grounding the subject. */
-        shadowMat.opacity = 0.22 * solid;
+        /* 0.5, back up from 0.22 and back to the value these ran at when they
+           were last dark. A ShadowMaterial only DARKENS what is under it: on a
+           near-white card that made the contact shadow the strongest thing in
+           the frame and 0.22 was all it could take, while on #0A0B0E there is
+           almost nothing left for it to remove. The flagships run 0.44-0.62 for
+           exactly this reason. It cannot dim the scene — it never touches the
+           subjects, only the ground and the glow pool behind them. */
+        shadowMat.opacity = 0.5 * solid;
         /* The drafting ground fades with everything else, but its opacity is a
            shader uniform rather than material.opacity, so it cannot ride the
            materials loop above. */

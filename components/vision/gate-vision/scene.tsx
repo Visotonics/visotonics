@@ -29,13 +29,28 @@ import { clamp01, easeInOut, lerp, placeCamera, smoothstep } from "../_vision/ca
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildMaterials } from "../container-vision/materials";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
+import { createSightCone } from "../hero-cards/detect";
 import { buildGateMaterials, gateStencilTexture } from "./materials";
 import { GANTRY_X, GROUND_Y, buildGate } from "./gate";
 
-/* 7.0s over a 27.2-unit run: 3.9 u/s, 55% faster than the original 2.5 —
-   an explicit user call, and it also happens to be a more believable speed for
-   a gate that never asks anyone to stop. */
-const LOOP = 7.0;
+/* 4.6s over a 27.2-unit run: 5.91 u/s, 52% faster than the previous 7.0s pass
+   (3.9 u/s) and 2.4x the original 2.5 u/s — a second, explicit user call
+   ("need gate vision to move much faster") on top of the first. The truck's
+   own speed is the only thing that changed here: RUN_FROM/RUN_TO (the frame
+   entry/exit points) are untouched, so the truck is still fully off-screen
+   through the wrap, it just gets there quicker.
+
+   Every phase-fraction "win" window below (reads, plate, seal, head, the
+   cone and underline flashes) is driven by `phase = elapsed / LOOP`, so
+   shrinking LOOP alone would shrink every one of those windows' ON-SCREEN
+   SECONDS by the same 7.0/4.6 = 1.522x — the labels would flash by even
+   faster than the truck. Every window below has had its fraction widened by
+   that same 1.522x so its absolute hold time is unchanged (reads, plate,
+   head) or explicitly increased (seal, widened by the same factor since it
+   was already generous). See the per-window comments for the arithmetic.
+   The barrier's rise/fall timing is the one exception, kept on its original
+   fixed phase points on purpose — see the barrier comment below for why. */
+const LOOP = 4.6;
 const HOLD_END = 0.9;   // short beat on the assembled rig before the run begins
 const ZOOM_IN = 1.25;
 
@@ -110,10 +125,16 @@ const fitRad = (rad: number, aspect: number) =>
    value: what the system knows, then what it knows it more precisely, then
    what it committed. The confidence figure climbing 0.61 -> 0.94 -> 0.99 does
    the work "VERIFIED" was doing, and does it with evidence. */
+/* Widths widened ×1.522 (7.0/4.6, see LOOP) so each state holds the same
+   absolute seconds it did before the truck sped up: Reading 0.84s, Resolved
+   0.77s, Logged 1.05s — unchanged from the 7.0s pass. Kept CONTIGUOUS (each
+   start = previous end), same as before, so the three states stay mutually
+   exclusive; only the internal boundaries moved outward. The 0.30 opening
+   anchor is untouched — it is the only one anything else keys off. */
 const READS: { title: string; detail: string; win: [number, number] }[] = [
-  { title: "Reading", detail: "…7032 1 · 0.61", win: [0.30, 0.42] },
-  { title: "Resolved", detail: "VSTU 907032 1 · 22G1 · 0.94", win: [0.42, 0.53] },
-  { title: "Logged", detail: "0.99 · gate 04 in · 14:02:11", win: [0.53, 0.68] },
+  { title: "Reading", detail: "…7032 1 · 0.61", win: [0.30, 0.4826] },
+  { title: "Resolved", detail: "VSTU 907032 1 · 22G1 · 0.94", win: [0.4826, 0.6500] },
+  { title: "Logged", detail: "0.99 · gate 04 in · 14:02:11", win: [0.6500, 0.8783] },
 ];
 
 /** `bare` lifts the rig out of its frame — see ContainerVisionScene. */
@@ -230,20 +251,16 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          it diagonally ACROSS the container's face, fully visible against it,
          and the truck drives through the beam — which is the honest picture. */
       const coneTarget = new THREE.Vector3(-0.1, GROUND_Y + 0.1, 2.6);
-      const coneDir = coneTarget.clone().sub(headPos);
-      const CONE_LEN = coneDir.length();
-      coneDir.normalize();
-      const coneGeo = new THREE.ConeGeometry(0.8, CONE_LEN, 24, 1, true);
-      coneGeo.translate(0, -CONE_LEN / 2, 0);   // apex at the origin, opening -Y
-      const coneMat = new THREE.MeshBasicMaterial({
-        color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false,
-        depthWrite: false, side: THREE.DoubleSide,
-      });
-      const coneGroup = new THREE.Group();
-      coneGroup.position.copy(headPos);
-      coneGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), coneDir);
-      coneGroup.add(new THREE.Mesh(coneGeo, coneMat));
-      scene.add(coneGroup);
+      /* Apex, target and length are UNCHANGED from the hand-built version this
+         replaces; only the way the volume is shaded has moved. Head sits at
+         (-0.4, 2.61, -0.08), target at (-0.1, -1.8, 2.6), so the axis is
+         (0.3, -4.41, 2.68) and the length is 5.1692. The old geometry was a
+         base radius of 0.8 at that length, which is a half-angle of
+         atan(0.8 / 5.1692) = 0.15355 rad. */
+      const CONE_HALF_ANGLE = Math.atan(0.8 / coneTarget.distanceTo(headPos));
+      const sightCone = createSightCone({ footprintY: GROUND_Y });
+      sightCone.aim(headPos, coneTarget, CONE_HALF_ANGLE);
+      scene.add(sightCone.group);
 
       /* An underline struck under the markings block at the instant the read
          RESOLVES. Accent = observation, the page's colour grammar: the same
@@ -266,19 +283,23 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
           lane: { dir: "up", len: 96 }, win: r.win,
         }),
       );
+      // win widened ×1.522 to hold the same 0.98s it did at the old LOOP —
+      // see the LOOP comment for the arithmetic.
       const plate = createCallout(overlay, {
         id: "plate", title: "Trailer plate", detail: "MH 43 AT 7712",
         pos: model.anchors.plate.pos, normal: model.anchors.plate.normal,
         onDark: true,
-        lane: { dir: "down", len: 56 }, win: [0.30, 0.44],
+        lane: { dir: "down", len: 56 }, win: [0.30, 0.5130],
       });
       // the schematic's "SEAL · CHECKED" and "FACE · REAR · CAM 1/1" — both
       // read off the door end as it clears the heads
+      // win widened ×1.522 to hold the same 0.98s it did at the old LOOP.
+      // Still well inside the tail's frame-exit at p=0.982.
       const seal = createCallout(overlay, {
         id: "seal", title: "Seal checked", detail: "88421 · rear face · cam 1/1",
         pos: model.anchors.seal.pos, normal: model.anchors.seal.normal,
         onDark: true,
-        lane: { dir: "up", len: 168 }, win: [0.64, 0.78],
+        lane: { dir: "up", len: 168 }, win: [0.64, 0.8530],
       });
       /* The gantry head is introduced at the top of the loop, while the lane is
          still clear, and HOLDS through most of the pass — it is the piece of
@@ -297,7 +318,9 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         // 74 was tuned at the old framing. At the tighter one the head anchor
         // sits ~118px from the overlay top in-section, and 74 + the label's own
         // height overshot it; 56 + ~50 fits with ~12px to spare.
-        lane: { dir: "up", len: 56 }, win: [0.0, 0.50],
+        // win widened ×1.522 (0.0-0.7609, up from 0.0-0.50) to hold the same
+        // 3.5s it did at the old LOOP — see the LOOP comment.
+        lane: { dir: "up", len: 56 }, win: [0.0, 0.7609],
       });
       gmark("callouts");
       const onVehicle = [...reads, plate, seal];
@@ -401,12 +424,30 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
 
         /* Barrier choreography — the scene's claim, animated. The arm is DOWN
            and waiting through the whole approach — the state the loop's empty
-           beat opens on — STARTS RISING THE FRAME THE READ RESOLVES (win
-           [0.42, 0.53]) and is fully clear at p=0.52, 0.042 of the loop
-           (0.29s) before the truck's foremost point reaches the boom. The
-           truck never slows: read on the move, no stop-and-shoot.
+           beat opens on — and STARTS RISING at the fixed phase p=0.42.
 
-           ARITHMETIC. vehicleX(p) = -13.6 + 27.2p, boom at x=6.4.
+           DELIBERATELY KEPT ON THE OLD FIXED PHASE POINTS, not re-tied to the
+           Resolved read's win, which now starts later (0.4826, widened so the
+           label holds its original absolute time — see LOOP and READS). The
+           barrier's 0.42 is a physical deadline, not a narrative cue: it has
+           to be fully up before the truck's front reaches the boom at
+           p=0.562, and rising with only (0.562-0.4826)=0.079 of phase to
+           work with leaves no room for a rise animation. So the read resolving
+           and the arm lifting are no longer frame-exact twins — the arm now
+           starts rising slightly BEFORE the "Resolved" label appears rather
+           than in the same frame. Still reads as "system reacts, then
+           confirms," just not simultaneously; flagged rather than shipped
+           quietly, since it's a real change from the old beat.
+
+           The rise is fully clear at p=0.52, 0.042 of the loop before the
+           truck's foremost point reaches the boom — 0.042 * 4.6 = 0.193s of
+           margin (was 0.294s at the old 7.0s LOOP). Tighter, still positive,
+           still safe: the truck never slows, read on the move, no
+           stop-and-shoot.
+
+           ARITHMETIC (unchanged — depends only on RUN_FROM/RUN_TO and the
+           boom position, neither of which moved). vehicleX(p) = -13.6 +
+           27.2p, boom at x=6.4.
              front: trailer plate at +4.715 (the model's true foremost point —
                see the extents note in gate.ts). Crosses 6.4 when
                vehicleX = 1.685, i.e. p = (1.685 + 13.6) / 27.2 = 0.562.
@@ -424,11 +465,22 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
           (1 - easeInOut(clamp01((cp - 0.95) / 0.05)));
         model.barrier.rotation.x = -1.50 * (1 - upT);
 
-        // the sight cone is lit across Reading and Resolved, and gone by Logged
-        const coneVis = smoothstep(0.27, 0.31, cp) * (1 - smoothstep(0.51, 0.55, cp));
-        coneMat.opacity = solid * 0.30 * coneVis;
+        // the sight cone is lit across Reading and Resolved, and gone by
+        // Logged. Tail edge moved from (0.51, 0.55) to (0.63, 0.67) — the
+        // same -0.02/+0.02 straddle of the Resolved end, which itself moved
+        // from 0.53 to 0.6500 when Resolved's win was widened (see READS).
+        // Lead-in (0.27, 0.31) is untouched: it is a fixed lead ahead of
+        // Reading's own untouched 0.30 start, not tied to Resolved.
+        const coneVis = smoothstep(0.27, 0.31, cp) * (1 - smoothstep(0.63, 0.67, cp));
+        sightCone.setOpacity(solid * 0.30 * coneVis);
+        // reduced motion pins a mid-sweep frame rather than t=0, where the
+        // travelling band would sit on the apex and read as nothing
+        sightCone.tick(frozen ? 1.4 : t);
+        // Underline flash brackets the Resolved window exactly, same as
+        // before, just re-pointed at Resolved's new (widened) [0.4826, 0.65]
+        // instead of the old [0.42, 0.53] — same 0.03 fade-in/out shape.
         underMat.opacity =
-          solid * 0.85 * smoothstep(0.42, 0.45, cp) * (1 - smoothstep(0.50, 0.53, cp));
+          solid * 0.85 * smoothstep(0.4826, 0.5126, cp) * (1 - smoothstep(0.6200, 0.6500, cp));
 
         // the scan sweep runs as the markings pass under the heads — the
         // moment the read actually happens
@@ -458,6 +510,16 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
              Same failure family as the tank valve and the yard slot: when a
              callout never appears, check the bounds test before anything else. */
           placeCallout(a, r ? { sx: r.sx, sy: r.sy - bleed } : null, vis, w, h - bleed * 2, 0.04);
+          // TEMP MEASUREMENT HOOK — window-timing calibration only, removed
+          // before ship. Unconditionally projects (ignores vis gating) so the
+          // anchor's screen position can be read at any phase via ?phase=.
+          if (location.search.includes("dbg")) {
+            const rr = proj(world, a.normal, w, h);
+            (window as unknown as { __gateDbg: unknown[] }).__gateDbg ||= [];
+            (window as unknown as { __gateDbg: { win: number[]; sx: number | null; w: number }[] }).__gateDbg.push(
+              { win: a.win, sx: rr ? rr.sx : null, w },
+            );
+          }
         };
         onVehicle.forEach((a) => place(a, projectV, model.vehicle.matrixWorld));
         place(head, projectF, model.fixed.matrixWorld);
@@ -545,7 +607,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         laneMat.dispose(); laneGeo.dispose();
         stopMat.dispose(); stopGeo.dispose();
         stencilMat.dispose(); stencilGeo.dispose();
-        coneMat.dispose(); coneGeo.dispose();
+        sightCone.dispose();
         underMat.dispose(); underGeo.dispose();
         mats.dispose();
         cmats.dispose();

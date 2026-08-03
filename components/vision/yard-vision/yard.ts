@@ -32,6 +32,7 @@
        and an instance does not have one. Two exceptions, not fifty-five.
 --------------------------------------------------------------------------- */
 import * as THREE from "three";
+import { PALETTE } from "../_vision/palette";
 import { containerEnd, containerRoof, containerSide } from "../hero-cards/skins";
 
 /* ---- one 20ft box, in metres/2.44 so the box's own width is 0.82 ----------
@@ -204,8 +205,21 @@ export function buildYardMaterials(): YardMaterials {
      recommendation, and the gridlines read as pale pencil rather than as signal.
      detectMaterials() sets this flag for exactly the same reason; these
      materials are local to this scene and had to be told separately. */
+  /* ACCENT BLUE, and it stays that way — a white experiment here was reverted.
+
+     The slot grid is NOT generic floor ruling: these lines are the bay
+     boundaries the system surveyed, and they come up behind the survey wave as
+     its result. That makes them an OBSERVATION, which is exactly what accent is
+     for, and it is why blue was right all along.
+
+     It also has to stay a different colour from the drafting sheet underneath
+     it. Both grids drawn white, on the same plane, at pitches that do not divide
+     evenly (1.0 against 2.30/2.22) is textbook moiré — the two rulings beat
+     against each other and the floor turns to mush. Colour is what separates
+     them into "the measured world" (white sheet) and "what the system knows"
+     (blue slots). Do not unify them. */
   const grid = keep(new THREE.LineBasicMaterial({
-    color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false,
+    color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false,
   }));
 
   /* The recommended slot. Blue, because it is an OBSERVATION — a proposal the

@@ -346,7 +346,11 @@ export function SectionWork({ n = "05" }: { n?: string }) {
             to the overlay's own bottom-left while the overlay stays on the real
             slot; bleeding the canvas would push the walker away from the type
             that captions them. The scene's author called this out explicitly. */}
-        <div style={{ position: "relative", width: "100%", maxWidth: 1200, margin: "36px auto 0", aspectRatio: "16 / 9" }}>
+        {/* Work passes NO bleed, so its canvas sits exactly in its slot and
+            needs no bleed compensation — the 454px gap measured here was the
+            opposite problem to the others, a hole rather than an overlap.
+            Trimmed to a normal section rhythm. */}
+        <div style={{ position: "relative", width: "100%", maxWidth: 1200, margin: "56px auto 0", aspectRatio: "16 / 9" }}>
           <WorkVisionScene bare />
         </div>
 

@@ -386,7 +386,11 @@ export function SectionTank() {
         {/* demo slot — the 3D scene in the box the ink drawing used to hold, at
             the same aspect and bleed as Container Vision's so both flagships
             sit in the page the same way. No slot border, generous void. */}
-        <div style={{ position: "relative", zIndex: 1, marginTop: 76, marginLeft: 3, width: "calc(100% - 6px)", aspectRatio: "1600 / 680" }}>
+        {/* 278 = bleed 230 + 48 clear. A scene paints its canvas `bleed` px
+            ABOVE its slot, so any spacer smaller than bleed drives the canvas
+            into the headline. At 76 this overran by 154px. See the rule note
+            on SectionCargo below. */}
+        <div style={{ position: "relative", zIndex: 1, marginTop: 278, marginLeft: 3, width: "calc(100% - 6px)", aspectRatio: "1600 / 680" }}>
           <TankVisionScene bare bleed={230} />
         </div>
       </Reveal>
@@ -399,7 +403,8 @@ export function SectionTank() {
         </h2>
         {/* same slot on mobile, at the schematic's aspect rather than a flat
             letterbox the scene was never framed for */}
-        <div style={{ position: "relative", marginTop: 40, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
+        {/* 158 = bleed 130 + 28 clear (mobile's tighter rhythm). */}
+        <div style={{ position: "relative", marginTop: 158, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
           <TankVisionScene bare bleed={130} />
         </div>
       </Reveal>
@@ -577,7 +582,8 @@ export function SectionGate() {
 
           {/* demo slot — the 3D scene inside the same r-2 media frame the
               schematic used, so the section's chrome is unchanged */}
-          <div style={{ position: "relative", marginTop: 48, aspectRatio: "1600 / 680" }}>
+          {/* 278 = bleed 230 + 48 clear. Was 48, i.e. 182px into the copy above. */}
+          <div style={{ position: "relative", marginTop: 278, aspectRatio: "1600 / 680" }}>
             <GateVisionScene bare bleed={230} />
           </div>
 
@@ -616,7 +622,8 @@ export function SectionGate() {
         {/* the mobile export's fixed-height slot, now holding the 3D scene.
             Kept at the schematic's aspect rather than the export's flat 240px
             so the scene isn't squeezed into a letterbox it was never framed for. */}
-        <div style={{ position: "relative", marginTop: 32, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
+        {/* 158 = bleed 130 + 28 clear. */}
+        <div style={{ position: "relative", marginTop: 158, aspectRatio: "1600 / 680", boxSizing: "border-box" }}>
           <GateVisionScene bare bleed={130} />
         </div>
         <div style={{ marginTop: 48, borderTop: `1px solid ${BORDER_D}`, paddingTop: 40 }}>
@@ -879,7 +886,11 @@ export function SectionCargo({ n = "06" }: { n?: string }) {
           </h2>
         </div>
 
-        <div aria-hidden="true" style={{ height: 72 }} />
+        {/* 228 = bleed 180 + 48 clear. Cargo overran BOTH ends: the canvas
+            paints 180px past the slot top AND bottom, so the headline above
+            and the caption below were both being covered. The spacer fixes the
+            top; the caption's own margin below fixes the bottom. */}
+        <div aria-hidden="true" style={{ height: 228 }} />
 
         {/* centered demo slot (4:3) + caption */}
         <div style={{ position: "relative", zIndex: 1, margin: "0 64px", display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -887,7 +898,7 @@ export function SectionCargo({ n = "06" }: { n?: string }) {
           <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3" }}>
             <CargoVisionScene bare bleed={180} />
           </div>
-          <p style={{ margin: "24px 0 0", textAlign: "center", fontFamily: sans, fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>Automatic, accurate count with video proof per session.</p>
+          <p style={{ margin: "228px 0 0", textAlign: "center", fontFamily: sans, fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>Automatic, accurate count with video proof per session.</p>
         </div>
 
         <div aria-hidden="true" style={{ height: 72 }} />
@@ -977,7 +988,9 @@ export function SectionDocument({ n = "07" }: { n?: string }) {
         <h2 style={{ margin: "56px 0 0", textAlign: "center", fontFamily: sans, fontSize: 64, lineHeight: 1.08, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>
           Bill of Lading in. Structured data out.
         </h2>
-        <div aria-hidden="true" style={{ height: 96 }} />
+        {/* 198 = bleed 150 + 48 clear. At 96 the canvas ran 54px into the
+            headline above. */}
+        <div aria-hidden="true" style={{ height: 198 }} />
         {/* The live read, not the flat schematic. 3:2 — the aspect the scene's
             framing is derived against (see the derivation block in scene.tsx
             and the lab twin); fitRad compensates off it, so any other aspect

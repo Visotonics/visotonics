@@ -202,6 +202,32 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         color: "#C9D4DE", transparent: true, opacity: 0, toneMapped: false,
       });
 
+      /* ---- THE ROAD ITSELF ----
+         The lane markings below were painting onto nothing: a drafting grid at
+         14% over the page's own black is a ruling, not a surface, and the
+         truck read as driving through air with two lines floating under it.
+         Same defect cargo-vision had before it got a deck, and the same fix.
+
+         Sized off the lane, not invented: the markings run z -1.5..+1.5 and
+         x +/-11, so the carriageway is 3.0 wide with a 0.55 shoulder either
+         side (4.1 total), and 30 long so it leaves frame at both ends rather
+         than stopping at a visible edge. Receives shadow so the truck and the
+         gantry finally have something to fall on.
+
+         Sits 4mm under the lane lines and 8mm over the grid, so the stack is
+         grid -> road -> paint with no z-fighting; renderOrder is not needed
+         because these are opaque and depth-sorted honestly. */
+      const roadGeo = new THREE.PlaneGeometry(30, 4.1);
+      const roadMat = new THREE.MeshStandardMaterial({
+        color: "#15181D", roughness: 0.95, metalness: 0.0,
+        transparent: true, opacity: 0,
+      });
+      const road = new THREE.Mesh(roadGeo, roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.set(0, GROUND_Y + 0.008, 0);
+      road.receiveShadow = true;
+      scene.add(road);
+
       // the two lane edges the truck runs between
       const laneGeo = new THREE.BufferGeometry();
       laneGeo.setAttribute("position", new THREE.Float32BufferAttribute([
@@ -418,6 +444,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         // shadow is on the ground before the truck is
         shadowMat.opacity = 0.62 * solid;
         setGroundOpacity(ground, solid);
+        roadMat.opacity = solid;
         laneMat.opacity = solid * 0.3;
         stopMat.opacity = solid * 0.5;
         stencilMat.opacity = solid * 0.55;
@@ -604,6 +631,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            disposing it here would leave the next build sampling a dead texture,
            the hazard materials.ts spells out. */
         ground.material.dispose();
+        roadMat.dispose(); roadGeo.dispose();
         laneMat.dispose(); laneGeo.dispose();
         stopMat.dispose(); stopGeo.dispose();
         stencilMat.dispose(); stencilGeo.dispose();

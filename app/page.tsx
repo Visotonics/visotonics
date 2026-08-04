@@ -35,13 +35,21 @@ const TXT_D1 = "#F4F5F7";
 const TXT_D2 = "#A6ADB8";
 const TXT_L1 = "#13151A";
 const TXT_L2 = "#6B7078";
-const GRID_D = "rgba(244,245,247,0.08)";
-const GRID_L = "rgba(19,21,26,0.06)";
-const CROSS_D = "rgba(244,245,247,0.4)";
-const CROSS_L = "rgba(19,21,26,0.30)";
+// accent stops (blue accent system — dark backgrounds get ACCENT_D, light get ACCENT_L)
+const ACCENT_D = "#5CC8FF";
+const ACCENT_L = "#1B7FC4";
+// grids/crosses — hue-shifted to the accent, alpha unchanged from the previous neutral values
+const GRID_D = "rgba(92,200,255,0.08)";
+const GRID_L = "rgba(27,127,196,0.06)";
+const CROSS_D = "rgba(92,200,255,0.4)";
+const CROSS_L = "rgba(27,127,196,0.30)";
 const BORDER_D = "rgba(244,245,247,0.10)";
 const RULE_L = "#D4D6DB";
 const SIGNAL = "#ED510C";
+// ProofPartners-only: the ORIGINAL neutral value, so that section renders
+// identically to before even though CROSS_L above changed hue for every
+// other section (logos are handled separately from the accent system).
+const PP_CROSS_L = "rgba(19,21,26,0.30)";
 
 const mono = "var(--font-plex-mono)";
 const sans = "var(--font-archivo)";
@@ -183,7 +191,7 @@ const HERO_CARD_CSS = `
    where the leader line drawing was masking the fact that nothing else moved. */
 .lab-hc:hover,
 .lab-hc:focus-visible {
-  border-color: rgba(237, 81, 12, 0.55) !important;
+  border-color: rgba(92, 200, 255, 0.55) !important;
   background-color: #13161C !important;
 }
 /* the part number's leader rule DRAWS toward the panel on hover: short and
@@ -387,7 +395,7 @@ function Hero() {
         </div>
         {/* one line, matching the desktop callout's consolidated copy */}
         <div style={{ position: "relative", zIndex: 1, padding: "14px 20px", borderBottom: `1px solid ${GRID_D}` }}>
-          <span style={{ ...eyebrow("rgba(244,245,247,0.3)"), fontSize: 11, letterSpacing: "0.06em" }}>OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS</span>
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 11, letterSpacing: "0.06em" }}>OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS</span>
         </div>
         <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr" }}>
           {HERO_CARDS.map((c, i) => (
@@ -451,11 +459,11 @@ function Statement() {
           <div style={{ position: "absolute", left: 16, bottom: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
           <div style={{ position: "absolute", right: 16, bottom: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
           {/* single signal dot on a gridline */}
-          <Dot style={{ left: "calc(64px + (100% - 128px) * 0.25)", bottom: 148 }} />
+          <Dot color={ACCENT_L} style={{ left: "calc(64px + (100% - 128px) * 0.25)", bottom: 148 }} />
           {/* mono-label callouts in the margins */}
-          <div style={{ position: "absolute", left: 76, top: 653, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>ISO 6346</div>
-          <div style={{ position: "absolute", right: 340, top: 806, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>DET_CONF 0.99</div>
-          <div style={{ position: "absolute", left: 848, top: 150, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: TXT_D2 }}>SCAN 04</div>
+          <div style={{ position: "absolute", left: 76, top: 653, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>ISO 6346</div>
+          <div style={{ position: "absolute", right: 340, top: 806, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>DET_CONF 0.99</div>
+          <div style={{ position: "absolute", left: 848, top: 150, fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: ACCENT_L }}>SCAN 04</div>
           {/* blueprint dimension line, left margin */}
           <div style={{ position: "absolute", left: 32, top: 300, bottom: 300, width: 1, background: "rgba(19,21,26,0.20)" }} />
           <div style={{ position: "absolute", left: 28, top: 300, width: 9, height: 1, background: "rgba(19,21,26,0.20)" }} />
@@ -477,7 +485,7 @@ function Statement() {
           <div style={{ position: "absolute", right: 12, top: 12, width: 12, height: 12, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
           <div style={{ position: "absolute", left: 12, bottom: 12, width: 12, height: 12, borderLeft: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
           <div style={{ position: "absolute", right: 12, bottom: 12, width: 12, height: 12, borderRight: `1px solid ${CROSS_L}`, borderBottom: `1px solid ${CROSS_L}` }} />
-          <div style={{ position: "absolute", left: "50%", bottom: 64, width: 3, height: 3, background: SIGNAL }} />
+          <div style={{ position: "absolute", left: "50%", bottom: 64, width: 3, height: 3, background: ACCENT_L }} />
         </div>
         <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px", boxSizing: "border-box" }}>
           <h2 style={{ margin: 0, fontFamily: sans, fontSize: 26, lineHeight: 1.3, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, textAlign: "center", textWrap: "balance" }}>
@@ -569,7 +577,7 @@ function HowItWorks() {
           <div style={{ marginTop: 80, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", columnGap: 48, alignItems: "start" }}>
             {HIW_CARDS.map((c) => (
               <div key={c.num}>
-                <span style={{ display: "block", fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.08em", color: TXT_D2 }}>{c.num}</span>
+                <span style={{ display: "block", fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.08em", color: ACCENT_D }}>{c.num}</span>
                 <span style={{ display: "block", marginTop: 18, fontSize: 23, lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
                 <span style={{ display: "block", marginTop: 12, fontSize: 17, lineHeight: 1.55, color: TXT_D2 }}>{c.body}</span>
               </div>
@@ -602,7 +610,7 @@ function HowItWorks() {
               <div key={c.num} style={{ boxSizing: "border-box", background: HIW_CARD_BG, border: `1px solid ${BORDER_D}`, borderRadius: 8, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
                 <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>{c.title}</span>
-                  <span style={{ ...eyebrow(TXT_D2), fontSize: 12 }}>{c.num}</span>
+                  <span style={{ ...eyebrow(ACCENT_D), fontSize: 12 }}>{c.num}</span>
                 </span>
                 <span style={{ fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>{c.body}</span>
               </div>
@@ -638,7 +646,7 @@ function Metrics() {
         </div>
 
         <div style={{ position: "relative", zIndex: 1, padding: "96px 64px 64px" }}>
-          <span style={{ ...eyebrow(TXT_L2), display: "block", padding: "0 4px" }}>MEASURED ACROSS LIVE SITES</span>
+          <span style={{ ...eyebrow(ACCENT_L), display: "block", padding: "0 4px" }}>MEASURED ACROSS LIVE SITES</span>
           <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.08, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "18.68ch" }}>
             Same cameras. Different economics.
           </h2>
@@ -659,7 +667,7 @@ function Metrics() {
               >
                 <span style={{ fontFamily: sans, fontSize: 102, lineHeight: 0.9, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value={m.n} /></span>
                 <span style={{ fontSize: 24, lineHeight: 1.4, color: TXT_L2 }}>{m.label}</span>
-                {i === METRICS.length - 1 ? <Dot style={{ left: 0, bottom: -2 }} /> : null}
+                {i === METRICS.length - 1 ? <Dot color={ACCENT_L} style={{ left: 0, bottom: -2 }} /> : null}
               </div>
             ))}
             <div style={{ marginTop: 24, fontFamily: mono, fontSize: 15, letterSpacing: "0.02em", color: TXT_L2 }}>
@@ -671,7 +679,7 @@ function Metrics() {
 
       {/* MOBILE */}
       <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
-        <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 12 }}>MEASURED ACROSS LIVE SITES</span>
+        <span style={{ ...eyebrow(ACCENT_L), display: "block", fontSize: 12 }}>MEASURED ACROSS LIVE SITES</span>
         <h2 style={{ margin: "16px 0 32px", fontFamily: sans, fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
           Same cameras. Different economics.
         </h2>
@@ -691,7 +699,7 @@ function Metrics() {
           >
             <span style={{ fontFamily: sans, fontSize: 52, lineHeight: 0.9, fontWeight: 500, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", color: TXT_L1 }}><CountUp value={m.n} /></span>
             <span style={{ fontSize: 15, lineHeight: 1.4, color: TXT_L2, textAlign: "right" }}>{m.label}</span>
-            {i === METRICS.length - 1 ? <Dot style={{ left: 0, bottom: -2 }} /> : null}
+            {i === METRICS.length - 1 ? <Dot color={ACCENT_L} style={{ left: 0, bottom: -2 }} /> : null}
           </div>
         ))}
         <div style={{ marginTop: 16, fontFamily: mono, fontSize: 12, lineHeight: 1.5, letterSpacing: "0.02em", color: TXT_L2 }}>
@@ -706,10 +714,15 @@ function Metrics() {
    5 · PROOF + PARTNERS  (light)
    ========================================================================= */
 
+// REPROCESSED colour logos: real full-colour marks (public/assets/logos-color/),
+// tight-crop true-alpha PNGs prepared with scripts/trim-logos.mjs. `h` values
+// are re-tuned against the actual reprocessed aspect ratios, not copied from
+// the old mono row — a full-colour mark is not always the same shape as its
+// flattened mono counterpart.
 const DEPLOYED = [
-  { src: "adani", alt: "Adani", h: 44 },
+  { src: "adani", alt: "Adani", h: 43 },
   { src: "dp_world", alt: "DP World", h: 70 },
-  { src: "hind_terminals", alt: "Hind Terminals", h: 26 },
+  { src: "hind_terminals", alt: "Hind Terminals", h: 32 },
   { src: "jnpa", alt: "JNPA", h: 72 },
   { src: "cochin_shipyard", alt: "Cochin Shipyard", h: 72 },
 ];
@@ -718,21 +731,35 @@ const RECOGNISED = [
   { src: "iit_kanpur", alt: "IIT Kanpur", h: 46 },
   { src: "iim_kozhikode", alt: "IIM Kozhikode", h: 46 },
   { src: "nasscom", alt: "NASSCOM", h: 22 },
-  { src: "meity_startup_hub", alt: "MeitY Startup Hub", h: 44 },
+  { src: "meity_startup_hub", alt: "MeitY Startup Hub", h: 48 },
   { src: "nvidia", alt: "NVIDIA", h: 44 },
-  { src: "microsoft_for_startups", alt: "Microsoft for Startups", h: 20 },
+  // No colour source file exists for Microsoft for Startups (not in the
+  // supplied coloured-logos folder). Left pointing at the old flattened-mono
+  // asset rather than fabricating a placeholder — a deliberately mixed
+  // mono+colour row entry.
+  { src: "microsoft_for_startups", alt: "Microsoft for Startups", h: 20, mono: true },
   { src: "startupindia", alt: "Startup India", h: 26 },
 ];
 
-function Logo({ src, alt, h }: { src: string; alt: string; h: number }) {
+function Logo({
+  src, alt, h, mono,
+}: {
+  src: string; alt: string; h: number; mono?: boolean;
+}) {
   // Plain <img> (as in the design): logos have varying intrinsic aspect ratios,
   // so we let the browser scale width from the natural aspect at a fixed height.
+  // A defensive max-width clamp: none of the current colour logos actually
+  // reach it at their chosen `h`, but it stops any single wide logo from
+  // dominating the fixed 5-across DEPLOYED row, which has no wrap and no
+  // width cap of its own.
+  const folder = mono ? "logos-light" : "logos-color";
+
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      src={`/assets/logos-light/${src}.png`}
+      src={`/assets/${folder}/${src}.png`}
       alt={alt}
-      style={{ display: "block", height: h, width: "auto", objectFit: "contain" }}
+      style={{ display: "block", height: h, width: "auto", maxWidth: 200, objectFit: "contain" }}
     />
   );
 }
@@ -746,7 +773,7 @@ function ProofPartners() {
           {/* header band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
             <Dot style={{ left: -2, top: -2 }} />
-            <Cross color={CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 16, display: "block" }}>PROVEN WHERE IT&apos;S HARDEST</span>
             <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "22ch" }}>
               Trusted by Industry Leaders
@@ -764,8 +791,8 @@ function ProofPartners() {
 
           {/* deployed band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={CROSS_L} style={{ left: -4, top: -5 }} />
-            <Cross color={CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>DEPLOYED AT</span>
             <div style={{ marginTop: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 56 }}>
               {DEPLOYED.map((l) => <Logo key={l.src} {...l} />)}
@@ -774,8 +801,8 @@ function ProofPartners() {
 
           {/* recognition band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={CROSS_L} style={{ left: -4, top: -5 }} />
-            <Cross color={CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>BACKED &amp; RECOGNISED BY</span>
             <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 28, columnGap: 48 }}>
               {RECOGNISED.map((l) => <Logo key={l.src} {...l} />)}
@@ -784,7 +811,7 @@ function ProofPartners() {
 
           {/* footnote band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "28px 0 0" }}>
-            <Cross color={CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
             <Dot style={{ right: -2, top: -2 }} />
             <span style={{ display: "block", fontSize: 16, lineHeight: 1.6, color: TXT_L2 }}>CII Best Industry AI Application 2025&nbsp;·&nbsp;Patented Technology</span>
           </div>
@@ -841,13 +868,13 @@ function Testimonials() {
           <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
           <Cross color={CROSS_D} style={{ left: 60, top: "calc(100% - 13px)" }} />
           <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: "calc(100% - 13px)" }} />
-          <Dot style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 71 }} />
+          <Dot color={ACCENT_D} style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 71 }} />
         </div>
 
         <div style={{ position: "relative", zIndex: 1, padding: "98px 64px 64px" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 32 }}>
             <div style={{ maxWidth: 940 }}>
-              <span style={{ ...eyebrow(TXT_D2), display: "block" }}>CUSTOMER PROOF</span>
+              <span style={{ ...eyebrow(ACCENT_D), display: "block" }}>CUSTOMER PROOF</span>
               <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 56, lineHeight: 1.1, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, maxWidth: "24ch" }}>
                 See how industrial sites run inspection <span style={{ color: TXT_D2 }}>— without stopping the operations.</span>
               </h2>
@@ -865,7 +892,7 @@ function Testimonials() {
 
       {/* MOBILE */}
       <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 20px 40px" }}>
-        <span style={{ ...eyebrow(TXT_D2), display: "block", fontSize: 12 }}>CUSTOMER PROOF</span>
+        <span style={{ ...eyebrow(ACCENT_D), display: "block", fontSize: 12 }}>CUSTOMER PROOF</span>
         <h2 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 28, lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>
           See how industrial sites run inspection <span style={{ color: TXT_D2 }}>— without stopping the operations.</span>
         </h2>
@@ -904,7 +931,7 @@ function Convert() {
           <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", top: "calc(50% - 4px)" }} />
           <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: 60 }} />
           <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", bottom: 60 }} />
-          <Dot style={{ left: "50%", top: "calc(50% - 1px)" }} />
+          <Dot color={ACCENT_D} style={{ left: "50%", top: "calc(50% - 1px)" }} />
         </div>
         {/* neutral vignette */}
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", background: "radial-gradient(ellipse 640px 340px at 50% 50%, rgba(0,0,0,0.15), rgba(0,0,0,0) 70%)" }} />
@@ -930,7 +957,7 @@ function Convert() {
           <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", top: 16 }} />
           <Cross color={CROSS_D} style={{ left: 16, bottom: 16 }} />
           <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", bottom: 16 }} />
-          <div style={{ position: "absolute", left: "50%", top: 389, width: 3, height: 3, background: SIGNAL }} />
+          <div style={{ position: "absolute", left: "50%", top: 389, width: 3, height: 3, background: ACCENT_D }} />
         </div>
         <div style={{ position: "absolute", inset: 0, zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 24px", boxSizing: "border-box" }}>
           <h2 style={{ margin: 0, fontFamily: sans, fontSize: 34, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, textWrap: "balance" }}>Join industry leaders running AI-enabled sites with 400,000+ daily reads.</h2>

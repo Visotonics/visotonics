@@ -529,6 +529,15 @@ export interface CargoModel {
   container: { shell: THREE.Mesh[]; hardware: THREE.Mesh[]; edges: THREE.LineSegments };
   /** world-space centre of the door opening — the anchor the stream comes from */
   mouth: THREE.Vector3;
+  /** The pendant lamp over the belt. Exposed because the reveal ramp sets
+      materials by name rather than walking `mats.all`, and because the
+      PointLight's intensity has to ramp too — it is the scene's practical
+      fill, not decoration. */
+  lamp: {
+    shade: THREE.MeshStandardMaterial;
+    bulb: THREE.MeshBasicMaterial;
+    light: THREE.PointLight;
+  };
   /** Advance the stream. `p` is 0..1 through the loop. Pure function of p. */
   advance: (p: number) => void;
   /** geometry this scene OWNS and must dispose. The carton's RoundedBoxGeometry
@@ -857,6 +866,64 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   gear.position.set(BELT_X1 - 0.12, BELT_TOP - 0.30, FRAME_Z + 0.24);
   belt.add(gear);
 
+  /* ---- THE PENDANT LAMP -------------------------------------------------
+     A shop light on a long drop over the belt. It exists for two reasons at
+     once, and that is the point of it: the scene read too dark, and a bare
+     lift in an unlit void has nothing explaining WHY the working surface is
+     the brightest thing in frame. A practical light answers both — the fill
+     it throws is motivated by an object you can see.
+
+     Hung from y = 4.6, well above the top of frame, so the wire runs out of
+     shot the way a real drop does rather than starting at a visible ceiling
+     that does not exist. Shade at 2.05 clears the tallest staged item and
+     still sits low enough to read as "over the belt" rather than as a
+     streetlight. Centred on the belt's own midpoint so it is obviously
+     lighting this machine and not the yard.
+
+     The cone is OPEN-ENDED and DoubleSide: a closed shade seen from slightly
+     below shows its cap and reads as a solid lump. Bulb is a small emissive
+     sphere just inside the mouth — toneMapped false so ACES cannot pull the
+     filament grey, the same rule every signal graphic in this repo follows.
+
+     The PointLight is what actually brightens the scene. Distance-limited so
+     it falls off before it reaches the back row and flattens the fog
+     gradient the depth read depends on. */
+  const LAMP_X = BELT_CX + 0.6;
+  const LAMP_Y = 2.05;
+  const LAMP_Z = FRAME_Z - 0.15;
+
+  const wireGeo = new THREE.CylinderGeometry(0.012, 0.012, 4.6 - LAMP_Y, 6);
+  owned.push(wireGeo);
+  const wire = new THREE.Mesh(wireGeo, m.frame);
+  wire.position.set(LAMP_X, (4.6 + LAMP_Y) / 2, LAMP_Z);
+  belt.add(wire);
+
+  const shadeGeo = new THREE.ConeGeometry(0.30, 0.34, 20, 1, true);
+  owned.push(shadeGeo);
+  const shadeMat = new THREE.MeshStandardMaterial({
+    color: "#3B424C", metalness: 0.55, roughness: 0.42, side: THREE.DoubleSide,
+    transparent: true, opacity: 0,
+  });
+  m.all.push(shadeMat);
+  const shade = new THREE.Mesh(shadeGeo, shadeMat);
+  shade.position.set(LAMP_X, LAMP_Y, LAMP_Z);
+  shade.castShadow = true;
+  belt.add(shade);
+
+  const bulbGeo = new THREE.SphereGeometry(0.075, 12, 10);
+  owned.push(bulbGeo);
+  const bulbMat = new THREE.MeshBasicMaterial({
+    color: "#FFE9C4", toneMapped: false, transparent: true, opacity: 0,
+  });
+  m.all.push(bulbMat);
+  const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+  bulb.position.set(LAMP_X, LAMP_Y - 0.15, LAMP_Z);
+  belt.add(bulb);
+
+  const lampLight = new THREE.PointLight("#FFE2B0", 0, 9.5, 2);
+  lampLight.position.set(LAMP_X, LAMP_Y - 0.20, LAMP_Z);
+  belt.add(lampLight);
+
   /* THE SLATS — the running surface, and the only thing on this belt that
      moves. A featureless belt under featureless cargo has nothing for the eye
      to track, so a viewer cannot tell the belt is running at all; the whole
@@ -1160,6 +1227,11 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
     flagged,
     container: { shell: build.shell, hardware: build.hardware, edges: build.edges },
     mouth,
+    /* Exposed because the reveal ramp in scene.tsx sets every material BY NAME
+       rather than walking mats.all — a lamp pushed into mats.all alone would
+       sit at opacity 0 forever, and its PointLight starts at intensity 0 for
+       the same reason. Both have to be driven with `solid`. */
+    lamp: { shade: shadeMat, bulb: bulbMat, light: lampLight },
     advance,
     owned,
   };

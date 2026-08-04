@@ -315,7 +315,13 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          colour. It sits ON TOP of the flagged carton's routine read, which is
          the point: the same pass that counts the case is the pass that flags
          it. */
-      const tracker = createTracker(dm.warn, { pad: 1.28 });
+      /* pad 1.12, down from 1.28. On a 0.9m carton a 28% pad puts a quarter of
+         a box of air inside the bracket, so the mark reads as loosely gesturing
+         at the case rather than as measuring it — and it sat noticeably slacker
+         than crane-vision's rust bracket doing the same job two sections up.
+         1.12 still clears the crush deformation and the per-item rock without
+         clipping a corner. */
+      const tracker = createTracker(dm.warn, { pad: 1.12 });
       scene.add(tracker.group);
 
       /* ---- the damage callout ----
@@ -636,6 +642,14 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         mats.frame.opacity = solid;
         mats.roller.opacity = solid;
         for (const f of mats.far) f.opacity = solid * 0.85;
+        /* The pendant lamp. Its light is the scene's practical fill, so it
+           ramps with everything else rather than snapping on — a room that
+           lights before its lamp appears reads backwards. 3.4 is tuned to
+           lift the belt and the cargo without washing the fog gradient that
+           carries the depth read. */
+        model.lamp.shade.opacity = solid;
+        model.lamp.bulb.opacity = solid;
+        model.lamp.light.intensity = solid * 3.4;
         /* THE DECK RAMPS ON COLOUR, NOT OPACITY — see the material's own note.
            multiplyScalar works on the LINEAR working value, which is the
            correct space to dim a lit surface in; scaling the sRGB hex instead
@@ -748,11 +762,22 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              under the counter and both readouts stack down the same right edge,
              with the tether running down-left to the flagged carton across
              empty air. */
-          /* The counter no longer lives in the upper right, so the grab is free
-             to sit where the evidence reads best: right of centre, upper third,
-             in the clear air above the run-out and well away from the tally in
-             the opposite corner. */
-          const px = w * 0.63, py = oh * 0.20;
+          /* 0.63 / 0.20 PUT IT UNDER THE CALLOUT. Measured on the section at a
+             1300px viewport: the "Crushed corner" card spans overlay x 588..933
+             and the grab landed at 616..766 — the two pieces of evidence sat on
+             top of each other, which is exactly the failure the note above says
+             a proof panel must never have. The callout anchors to the flagged
+             carton and the grab was placed as a fraction of the same frame, so
+             both chase the same object and collide whenever it is right of
+             centre.
+
+             The fix is to put the grab on the OPPOSITE side of the frame from
+             the card. The callout tracks the carton across the right half
+             during the damage window; the left third stays clear, because the
+             counter now lives bottom-left and the container mouth occupies the
+             upper left only. 0.06 / 0.16 tucks it into that gap with the tether
+             running right-and-down to the carton across open air. */
+          const px = w * 0.06, py = oh * 0.16;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 

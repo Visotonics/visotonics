@@ -39,8 +39,16 @@ import { buildMaterials } from "../container-vision/materials";
 import { createTracker, detectMaterials } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 import {
-  FLAGGED, GROUND, ITEM_N, buildCargo, buildCargoMaterials,
+  FLAGGED, GROUND, ITEM_N, SEQUENCE, buildCargo, buildCargoMaterials,
+  type ItemType,
 } from "./cargo";
+
+/* The deck's concrete, held here rather than in the material because the intro
+   ramp needs the UNDIMMED value every frame to multiply. Authored dark on
+   purpose: five area lights plus a spot, through ACES, land a matte surface far
+   brighter than its hex suggests — the trap cargo.ts documents for the sack and
+   yard-vision documented before that. */
+const DECK_COL = new THREE.Color("#0D1015");
 
 /* 9.0s. Nine items, nine crossings, so the counter ticks once per second — fast
    enough to read as a working line, slow enough that each number is legible.
@@ -145,6 +153,46 @@ const fitRad = (rad: number, aspect: number) =>
 const COUNT_FROM = 47;
 const countAt = (loops: number) => COUNT_FROM + Math.floor(9 * loops + 0.5);
 
+/* ---- and the same number, split by TYPE --------------------------------
+
+   A total on mixed cargo is only interesting if the system can say WHAT it
+   counted, so the readout carries a per-type breakdown. It is derived from the
+   identical crossing arithmetic and never accumulated, for exactly the reasons
+   above — three counters would be three chances to desync from the total.
+
+   WHICH ITEM MAKES THE k-th CROSSING. Item i crosses at p = 0.5 - i/9 (mod 1)
+   and the k-th crossing of a loop happens at p = 1/18 + k/9, so
+
+       1/18 + k/9 = 0.5 - i/9  (mod 1)   ->   i = (4 - k) mod 9
+
+   Check against SEQUENCE: k = 0..8 gives i = 4,3,2,1,0,8,7,6,5, whose types are
+   carton, drum, gunny, carton, carton, gunny, carton, drum, gunny — four
+   cartons, three sacks, two drums, which is exactly SEQUENCE's own census. If
+   that ever stops holding, the assertion below is wrong and so is the total.
+
+   PREFIX is built FROM SEQUENCE rather than written out, so re-ordering the mix
+   cannot leave a hand-typed table behind. */
+const TYPE_ORDER: ItemType[] = ["carton", "gunny", "drum"];
+const PREFIX: number[][] = (() => {
+  const rows: number[][] = [[0, 0, 0]];
+  for (let k = 0; k < ITEM_N; k++) {
+    const prev = rows[k];
+    const t = SEQUENCE[(((4 - k) % ITEM_N) + ITEM_N) % ITEM_N];
+    rows.push(prev.map((v, j) => v + (TYPE_ORDER[j] === t ? 1 : 0)));
+  }
+  return rows;
+})();
+/* The opening balance, split so the three add to COUNT_FROM = 47 in the same
+   4:3:2 proportion a full loop delivers. Arbitrary, like COUNT_FROM itself —
+   but it has to be consistent, or the parts stop summing to the whole. */
+const MIX_FROM = [21, 16, 10];
+const mixAt = (loops: number) => {
+  const n = Math.floor(9 * loops + 0.5);
+  const whole = Math.floor(n / ITEM_N);
+  const rem = n - whole * ITEM_N;
+  return MIX_FROM.map((b, j) => b + whole * PREFIX[ITEM_N][j] + PREFIX[rem][j]);
+};
+
 /* Windows. */
 const W_DAMAGE: [number, number] = [0.55, 0.75];
 const W_PROOF: [number, number] = [0.72, 0.92];
@@ -179,10 +227,34 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          bright band at the higher value, and the items separating from each
          other is the whole readability of the count. */
       const studio = createStudio(wrap, {
-        floorY: GROUND, shadowExtent: 10, spread: 1.8, bare,
+        /* floorY is GROUND + 0.004, NOT GROUND. The deck slab is the visible
+           floor and it lies at exactly GROUND; the studio's shadow catcher has
+           to be a hair ABOVE it rather than coincident, or the two z-fight.
+           Putting the catcher up rather than the deck down is what lets every
+           object in cargo.ts rest at GROUND with no gap — see the note there. */
+        floorY: GROUND + 0.004, shadowExtent: 10, spread: 1.8, bare,
         maxDpr: 1.75, shadowMapSize: 1024, exposure: 1.05,
       });
       const { renderer, scene, camera, bloom, shadowMat } = studio;
+
+      /* ---- AERIAL PERSPECTIVE ----
+         The deck is 120 units square and has to end somewhere. It is NOT given
+         an edge treatment, because at this camera the true horizon sits about
+         3 degrees above the top of frame — the deck runs off the top edge and
+         the far end is never in shot. What IS in shot is everything between 20
+         and 62 units out, which is where the back row stands, and fog is what
+         turns that row from "some boxes behind the subject" into depth.
+
+         The colour is the site's own canvas. Both mounts of this scene are
+         `bare` (no cyclorama, transparent framebuffer), so the deck's far end
+         has to dissolve into the PAGE, not into a backdrop that is not there.
+         Near at 20 keeps the container (15.3 units from the lens) completely
+         untouched, which matters — a fogged subject is a flat subject.
+
+         Set BEFORE compileAsync. Fog is a program define; adding it later would
+         recompile every material in the scene inside a visible frame, which is
+         the seal bug container-vision documents. */
+      scene.fog = new THREE.Fog(PALETTE.bgBottom, 18, 46);
 
       /* ---- subject ---- */
       const cmats = buildMaterials();
@@ -190,14 +262,22 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const model = buildCargo(mats, cmats);
       scene.add(model.root);
 
-      /* The drafting sheet under the bay. One gridline per metre — the cargo's
-         own unit, so the grid reads as scale as well as as ground. Held quiet:
-         this scene already has a ruled run-out on top of it, and two rulings at
-         similar strength beat into moire (the mistake yard-vision documents). */
+      /* The drafting sheet, now ruled ON the deck rather than floating over
+         nothing. It moved from GROUND - 0.012 to GROUND + 0.008: the deck slab
+         sits at exactly GROUND, so at its old height the grid was UNDERNEATH
+         the floor and would have drawn nothing at all. It is also above the
+         shadow catcher at GROUND + 0.004, so the grid does not take the cargo's
+         shadow — a little realism traded for a legible ruling, which is the
+         right way round for an 8.5%-opacity drafting graphic.
+
+         One gridline per metre — the cargo's own unit, so the grid reads as
+         scale as well as as ground. Pulled in tight (fade 0.30 -> 0.62 of a
+         60-unit plane, so it dies at r = 18.6) because it now has to die before
+         the fog starts at 20, or the two falloffs fight each other. */
       const ground = draftingGround({
-        size: 60, y: GROUND - 0.012, step: 1,
-        color: PALETTE.grid, opacity: 0.10, glow: 2.2, majorBoost: 2.2,
-        fadeStart: 0.48, fadeEnd: 0.94,
+        size: 60, y: GROUND + 0.008, step: 1,
+        color: PALETTE.grid, opacity: 0.085, glow: 2.2, majorBoost: 2.2,
+        fadeStart: 0.30, fadeEnd: 0.62,
       });
       scene.add(ground.mesh);
 
@@ -206,10 +286,36 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          line that is already moving reads as a second, unrelated animation. */
       const dm = detectMaterials();
 
-      /* One bracket, on the flagged carton, in orange — the CONCLUSION colour.
+      /* NINE BRACKETS, NOT ONE.
+
+         The scene shipped with a single tracker on the flagged carton, so the
+         entire 9-second loop contained ONE detection — which is why the boxes
+         read as "very infrequent". A destuff line that boxes one case in nine
+         is not a system that counts every case; it is a system that noticed
+         something once. Every item is now bracketed as it crosses the read
+         zone, which is nine detections per loop at one per second.
+
+         EACH TRACKER GETS ITS OWN MATERIAL CLONE. `dm.accent` is one shared
+         MeshBasicMaterial, so nine trackers sharing it could only ever be
+         switched on and off together — the fade has to be per item or the
+         brackets all pop at once. A MeshBasicMaterial clone carries no maps and
+         costs a uniform block; the bar GEOMETRY is still the one shared plane
+         detect.ts hands out.
+
          pad 1.15 is loose enough to clear a 0.9-unit box's silhouette and tight
          enough not to swallow the items either side of it in the stream. */
-      const tracker = createTracker(dm.warn, { pad: 1.15 });
+      const readMats = model.items.map(() => dm.accent.clone());
+      const readers = readMats.map((mat) => {
+        const t = createTracker(mat, { pad: 1.15 });
+        scene.add(t.group);
+        return t;
+      });
+
+      /* And the damage bracket stays separate, in orange — the CONCLUSION
+         colour. It sits ON TOP of the flagged carton's routine read, which is
+         the point: the same pass that counts the case is the pass that flags
+         it. */
+      const tracker = createTracker(dm.warn, { pad: 1.28 });
       scene.add(tracker.group);
 
       /* ---- the damage callout ----
@@ -229,24 +335,49 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
       });
       const marks: Callout[] = [damage];
 
-      /* ---- the counter: this scene's hero graphic ----
-         DOM, not 3D, and fixed in the frame rather than welded to anything. A
-         running total is not a property of any one object in the shot — it is
-         what the system knows about the whole job — so pinning it to the upper
-         right and never moving it is what makes it read as a readout rather than
-         as another label floating over the cargo. */
+      /* ---- the tally: this scene's readout ----
+
+         MOVED FROM TOP-RIGHT TO BOTTOM-LEFT, AND RE-REGISTERED.
+
+         It used to be a 52px accent numeral over a 11px letterspaced caption,
+         parked in the upper right — which is a DISPLAY GRAPHIC. It read as
+         branding laid over the render rather than as a machine reporting, and
+         it was also the largest, brightest thing in a frame whose subject is
+         the cargo.
+
+         The register it now matches is work-vision's shift register: a 10px
+         0.24em head in 42%-alpha ink, and beneath it one row on a 1px accent
+         left rule. Same grammar, same weights, same colours — three scenes on
+         this site now report the same way, which is worth more than any of them
+         having its own look. document-vision's extracted-data column is the
+         same family (10px key / 15px value, accentText on near-black).
+
+         The number keeps a little more weight than work-vision's 13px, because
+         here the number IS the claim; 27px is still instrumentation and not a
+         display. And the type BREAKDOWN beside it is not decoration — it is the
+         thing that makes "every case counted" mean something on MIXED cargo. It
+         is derived from the same crossing arithmetic as the total, so it cannot
+         disagree with it. */
       const counterBox = document.createElement("div");
       counterBox.style.cssText =
-        "position:absolute;right:7%;top:11%;text-align:right;opacity:0;transition:opacity .4s ease;pointer-events:none;";
-      const counterNum = document.createElement("div");
-      counterNum.style.cssText =
-        `font-family:${mono};font-size:52px;font-weight:500;line-height:1;letter-spacing:-0.02em;color:${PALETTE.accent};font-variant-numeric:tabular-nums;`;
+        "position:absolute;left:30px;bottom:26px;opacity:0;transition:opacity .4s ease;pointer-events:none;";
       const counterLabel = document.createElement("div");
       counterLabel.textContent = "CASES COUNTED";
       counterLabel.style.cssText =
-        `font-family:${mono};font-size:11px;font-weight:500;letter-spacing:0.26em;color:rgba(226,234,244,0.52);margin-top:10px;`;
-      counterBox.appendChild(counterNum);
+        `font-family:${mono};font-size:10px;font-weight:500;letter-spacing:0.24em;color:rgba(226,234,244,0.42);padding-bottom:9px;`;
+      const counterRow = document.createElement("div");
+      counterRow.style.cssText =
+        `border-left:1px solid ${PALETTE.accent};padding-left:12px;display:flex;align-items:baseline;gap:14px;`;
+      const counterNum = document.createElement("div");
+      counterNum.style.cssText =
+        `font-family:${mono};font-size:27px;font-weight:500;line-height:1;letter-spacing:-0.01em;color:${PALETTE.accentText};font-variant-numeric:tabular-nums;`;
+      const counterMix = document.createElement("div");
+      counterMix.style.cssText =
+        `font-family:${mono};font-size:11px;font-weight:500;letter-spacing:0.14em;color:rgba(226,234,244,0.46);font-variant-numeric:tabular-nums;white-space:nowrap;`;
+      counterRow.appendChild(counterNum);
+      counterRow.appendChild(counterMix);
       counterBox.appendChild(counterLabel);
+      counterBox.appendChild(counterRow);
       overlay.appendChild(counterBox);
 
       /* ---- type tags ----
@@ -292,12 +423,31 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
 
          Border in warn, not accent: the grab exists because of the damage, and
          orange is the conclusion colour across the whole page. */
+      /* AND IT NOW HAS PIXELS IN IT. Until this pass the panel was a scanline
+         gradient over #0E1116 — literally an empty frame, which is why "the
+         camera screenshot does not show anything" was a completely fair reading
+         of it. See `grabFrame` further down for where the picture comes from.
+
+         The <canvas> is the picture; the border, the scanlines and the burned-in
+         metadata stay on the OUTER div. That separation is not cosmetic: the
+         same file's crane-vision sibling documents a CSS filter eating its own
+         element's border, and keeping the image on an inner layer is the fix
+         that stops that class of bug before it starts. */
       const proof = document.createElement("div");
       proof.style.cssText =
-        "position:absolute;left:0;top:0;width:120px;height:84px;opacity:0;pointer-events:none;will-change:transform,opacity;" +
-        "background:#0E1116;" +
-        "border:1px solid rgba(237,81,12,0.6);" +
-        "background-image:repeating-linear-gradient(to bottom,rgba(255,255,255,0.055) 0px,rgba(255,255,255,0.055) 1px,rgba(0,0,0,0) 1px,rgba(0,0,0,0) 2px);";
+        "position:absolute;left:0;top:0;width:150px;height:105px;opacity:0;pointer-events:none;will-change:transform,opacity;" +
+        "background:#0E1116;overflow:hidden;box-sizing:border-box;" +
+        "border:1px solid rgba(237,81,12,0.6);";
+      const proofPic = document.createElement("canvas");
+      proofPic.width = 300;
+      proofPic.height = 210;
+      proofPic.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
+      proof.appendChild(proofPic);
+      const proofScan = document.createElement("div");
+      proofScan.style.cssText =
+        "position:absolute;inset:0;background-image:repeating-linear-gradient(to bottom," +
+        "rgba(255,255,255,0.055) 0px,rgba(255,255,255,0.055) 1px,rgba(0,0,0,0) 1px,rgba(0,0,0,0) 2px);";
+      proof.appendChild(proofScan);
       const stamp = document.createElement("div");
       stamp.textContent = "14:07:52";
       stamp.style.cssText =
@@ -342,6 +492,95 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
 
       const project = makeProjector(camera, model.root);
 
+      /* ---- THE PROOF GRAB: what the camera actually saw --------------------
+
+         The panel used to be an empty letterbox with scanlines drawn over it.
+         "The camera screenshot does not show anything" was not a bug report
+         about a broken image — there was no image.
+
+         Crane Vision solved the neighbouring problem by cropping a 2D canvas it
+         had already painted (the rust patch on the container's front-face
+         texture) and using the data URL as a tile background. That works there
+         because the defect IS a painted texel. It does not work here: this
+         scene's finding is a COLLAPSED CORNER — geometry, not paint — so no
+         texture in the scene contains a picture of it.
+
+         So the grab is taken off the WebGL canvas itself, which is the honest
+         answer anyway: a CCTV still of a destuff bay is a crop of the camera
+         feed. `drawImage` on a WebGL canvas is only valid before the drawing
+         buffer is presented, so this MUST be called inside the same task as
+         `render()` — which is why it is a separate function called from the
+         loop rather than part of applyFrame. The renderer is not built with
+         `preserveDrawingBuffer` (that is studio.ts's call, not this scene's)
+         and this way it does not need to be: there is a cost to that flag on
+         every frame of every scene on the page, and this needs one frame.
+
+         ONE CAPTURE PER MOUNT. The panel shows a still, and a still that
+         refreshes is a video feed — which would say the opposite of what a
+         frame grab says.
+
+         AND IT IS CHECKED. If the buffer was already presented, or the crop
+         landed off-canvas, the result is a flat fill; a flat fill is detectable
+         (no luminance range) and falls back to the kraft board the flagged case
+         is actually skinned with, cropped tight. That is a worse picture and
+         still a real one — it is that case's own surface. */
+      const proofCtx = proofPic.getContext("2d", { willReadFrequently: true });
+      const PW = proofPic.width, PH = proofPic.height;
+      let grabbed = false;
+      let wantGrab = false;
+
+      const grabFallback = () => {
+        if (!proofCtx) return;
+        proofCtx.fillStyle = "#0E1116";
+        proofCtx.fillRect(0, 0, PW, PH);
+        const src = (mats.cartons[0].map as THREE.CanvasTexture | null)?.image as
+          | HTMLCanvasElement
+          | undefined;
+        if (src && src.width && src.height) {
+          const ch = src.height * 0.34, cw = ch * (PW / PH);
+          proofCtx.globalAlpha = 0.55;   // the board is lit; a grab is not
+          proofCtx.drawImage(src, src.width * 0.22, src.height * 0.30, cw, ch, 0, 0, PW, PH);
+          proofCtx.globalAlpha = 1;
+        }
+        grabbed = true;
+      };
+
+      const grabFrame = (w: number, h: number) => {
+        if (!proofCtx) return;
+        const fg = model.items[FLAGGED].grp;
+        anchor.set(fg.position.x, fg.position.y, fg.position.z);
+        const r = project(anchor, damage.normal, w, h);
+        if (!r) { grabFallback(); return; }
+
+        const gl = renderer.domElement;
+        // project() answers in CSS pixels; the drawing buffer is in device ones
+        const dpr = gl.width / Math.max(1, w);
+        // 0.30 of frame height around the case: tight enough that the crop is
+        // OF the case rather than of the bay it is in
+        const ch = Math.min(gl.height, h * 0.30 * dpr);
+        const cw = ch * (PW / PH);
+
+        proofCtx.fillStyle = "#0E1116";
+        proofCtx.fillRect(0, 0, PW, PH);
+        try {
+          proofCtx.drawImage(
+            gl, r.sx * dpr - cw / 2, r.sy * dpr - ch / 2, cw, ch, 0, 0, PW, PH,
+          );
+        } catch { grabFallback(); return; }
+
+        // did anything actually land? A presented-and-cleared buffer, or a crop
+        // entirely off the canvas, both give a single flat colour.
+        let mn = 255, mn2 = 0;
+        const d = proofCtx.getImageData(0, 0, PW, PH).data;
+        for (let i = 0; i < d.length; i += 4 * 97) {
+          const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+          if (v < mn) mn = v;
+          if (v > mn2) mn2 = v;
+        }
+        if (mn2 - mn < 6) { grabFallback(); return; }
+        grabbed = true;
+      };
+
       /* REVIEW AID: `?phase=0.62` pins the loop at that p and holds it there. A
          9-second loop with a two-beat payload cannot be reviewed by screenshot
          roulette. Time still advances (so the intro settles normally), only the
@@ -385,37 +624,77 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         cmats.steel.opacity = solid;
         cmats.dark.opacity = solid;
         cmats.front.material.opacity = solid;
-        mats.carton.opacity = solid;
+        for (const c of mats.cartons) c.opacity = solid;
         mats.bag.opacity = solid;
         mats.drum.opacity = solid;
         mats.rib.opacity = solid;
         mats.voidM.opacity = solid;
-        mats.lane.opacity = solid * 0.30;
-        mats.threshold.opacity = solid * 0.62;
-        // a transparent mesh still casts a full shadow, so the shadow would
-        // otherwise be on the deck before the cargo is
-        shadowMat.opacity = 0.56 * solid;
+        mats.lane.opacity = solid * 0.55;
+        mats.threshold.opacity = solid * 0.80;
+        mats.belt.opacity = solid;
+        mats.slat.opacity = solid;
+        mats.frame.opacity = solid;
+        mats.roller.opacity = solid;
+        for (const f of mats.far) f.opacity = solid * 0.85;
+        /* THE DECK RAMPS ON COLOUR, NOT OPACITY — see the material's own note.
+           multiplyScalar works on the LINEAR working value, which is the
+           correct space to dim a lit surface in; scaling the sRGB hex instead
+           would gamma-crush the mid-tones on the way up. */
+        mats.deck.color.copy(DECK_COL).multiplyScalar(solid);
+        /* Two catchers. A transparent mesh still casts a full shadow, so both
+           have to ramp with the cargo or the shadows are on the belt before the
+           cases are. The BELT catcher carries more weight than the deck one:
+           it is where the contact actually is, and a contact shadow is the
+           single strongest cue that an object is resting on something rather
+           than hovering over it. */
+        shadowMat.opacity = 0.44 * solid;
+        mats.beltShadow.opacity = 0.60 * solid;
         setGroundOpacity(ground, solid);
 
-        /* ---- the counter ---- */
-        counterNum.textContent = String(countAt(loops));
+        /* ---- the readout ---- */
+        counterNum.textContent = String(countAt(loops)).padStart(3, "0");
+        {
+          const [c, g, d] = mixAt(loops);
+          counterMix.textContent = `CTN ${c} · BAG ${g} · DRM ${d}`;
+        }
 
-        /* ---- type tags ----
+        /* ---- the read: a bracket and a tag, per item, per crossing ----
+
            Visibility is a function of the item's own x, not of p, so it is
            correct for all nine at once and cannot desynchronise from the stream.
-           The window opens 1.1 units before the line and closes 2.15 past it:
-           3.25 units at 1.35 u/s is 2.4 seconds on screen, which is long enough
-           to read eight characters and short enough that no two tags for
-           adjacent items are ever both at full strength. */
+
+           THE WINDOW WAS HALVED. It used to open 1.10 units before the count
+           line and close 2.15 past it — 3.25 units at 1.35 u/s is 2.41 seconds,
+           and a label that sits on an object for two and a half seconds has
+           stopped being a read and become a caption. It now runs -0.70 to
+           +0.95, which is 1.65 units and 1.22 seconds: enough to read eight
+           characters of mono, short enough that the mark reads as an event.
+
+           The window still straddles the line rather than trailing it, so the
+           bracket is on the case AT the moment the number ticks. The ramps at
+           either end are deliberately fast (0.28 and 0.33 units, ~0.2s) — a
+           detector's box appears, it does not dissolve in.
+
+           At a 1.35-unit pitch and a 1.65-unit window there is a brief overlap
+           where two adjacent items are both marked, which is correct for a
+           running line and is the reason each tracker needed its own material. */
         for (let i = 0; i < ITEM_N; i++) {
-          const g = model.items[i].grp;
+          const it = model.items[i];
+          const g = it.grp;
           const x = g.position.x;
           const vis = solid
-            * smoothstep(-1.10, -0.55, x)
-            * (1 - smoothstep(1.55, 2.15, x));
+            * smoothstep(-0.70, -0.42, x)
+            * (1 - smoothstep(0.62, 0.95, x));
+
+          readMats[i].opacity = vis * 0.9;
+          /* The GROUP, not the mesh: a drum's hoops, rims and bung are siblings
+             of its body, so bracketing the body alone would draw a box inside
+             the drum's own silhouette. */
+          readers[i].follow(vis > 0.01 ? it.grp : null, camera);
+
           const el = tags[i];
           if (vis <= 0.01) { el.style.opacity = "0"; continue; }
-          anchor.set(x, g.position.y + 0.55, g.position.z);
+          anchor.set(x, g.position.y + 0.62, g.position.z);
           const r = project(anchor, damage.normal, w, h);
           if (!r) { el.style.opacity = "0"; continue; }
           el.style.transform = `translate(${r.sx}px,${r.sy - bleed}px)`;
@@ -469,7 +748,11 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              under the counter and both readouts stack down the same right edge,
              with the tether running down-left to the flagged carton across
              empty air. */
-          const px = w * 0.63, py = oh * 0.22;
+          /* The counter no longer lives in the upper right, so the grab is free
+             to sit where the evidence reads best: right of centre, upper third,
+             in the clear air above the run-out and well away from the tally in
+             the opposite corner. */
+          const px = w * 0.63, py = oh * 0.20;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 
@@ -478,14 +761,33 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
           if (!pr) { tether.style.opacity = "0"; }
           else {
             // to the grab's BOTTOM-LEFT corner — the corner nearest the cargo,
-            // so the leader never crosses the image it is attached to
-            const dx = px - pr.sx, dy = (py + 84) - (pr.sy - bleed);
+            // so the leader never crosses the image it is attached to.
+            // 105 is the panel's height; it moved with the panel.
+            const dx = px - pr.sx, dy = (py + 105) - (pr.sy - bleed);
             tether.style.width = `${Math.hypot(dx, dy)}px`;
             tether.style.transform =
               `translate(${pr.sx}px,${pr.sy - bleed}px) rotate(${Math.atan2(dy, dx)}rad)`;
             tether.style.opacity = String(proofVis * 0.9);
           }
         }
+
+        /* ---- and the one frame that gets kept ----
+           Arm the grab when the flagged case is bracketed and in clear air, at
+           p 0.62-0.70 — well inside the damage window (0.55-0.72) so the orange
+           bracket is ON the case in the captured pixels, and comfortably before
+           the panel itself appears at 0.72. Under a phase pin or reduced motion
+           the loop never reaches 0.62, so those take the first frame they get.
+           The capture itself cannot happen here: it has to run AFTER the draw,
+           in the same task. See the render loop. */
+        /* AND IT WAITS FOR THE INTRO. `solid` gates it because the first
+           version did not, and under `?phase` — where p is constant, so the
+           0.62-0.70 test is true from frame one — the grab was taken while the
+           whole scene was still at opacity 0. The panel came back a black
+           rectangle, which is precisely the bug this work was fixing. In the
+           unpinned loop p reaches 0.62 at t = 5.6s and solid has been 1 since
+           t = 1.1s, so this changes nothing there. */
+        wantGrab = !grabbed && solid > 0.98
+          && (frozen || holdP !== null || (p >= 0.62 && p <= 0.70));
 
         // nothing on screen during the opening settle
         overlay.style.opacity = String(frozen ? 1 : smoothstep(0.25, 1.0, t));
@@ -531,6 +833,16 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         last = now;
         applyFrame();
         studio.render();
+        /* SAME TASK AS THE DRAW, DELIBERATELY. See grabFrame's note: reading a
+           WebGL canvas after the browser has presented it gives a cleared
+           buffer, and the only guaranteed window is right here. */
+        if (wantGrab) {
+          wantGrab = false;
+          grabFrame(
+            renderer.domElement.clientWidth || wrap.clientWidth,
+            renderer.domElement.clientHeight || wrap.clientHeight,
+          );
+        }
       };
       raf = requestAnimationFrame(loop);
 
@@ -554,6 +866,8 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         model.container.edges.geometry.dispose();
         (model.container.edges.material as THREE.Material).dispose();
         dm.all.forEach((m) => m.dispose());
+        // the nine per-item bracket materials are clones this scene made
+        readMats.forEach((m) => m.dispose());
         ground.material.dispose();
         studio.dispose();
       };

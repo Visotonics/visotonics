@@ -34,6 +34,39 @@ import { cardboardSide } from "../hero-cards/skins";
    the studio's cast-shadow catcher is placed here. */
 export const GROUND = -0.55;
 
+/* THE CONVEYOR'S RUNNING SURFACE.
+
+   0.62 above the deck, and the height is not arbitrary. Three things had to be
+   true at once:
+
+     · the legs have to be tall enough to READ as legs. At the 0.34 a first
+       pass used, the frame sat on the deck like a skid and the whole assembly
+       still read as a painted lane rather than as machinery.
+     · the tallest item (the 0.82 drum) has to clear the container aperture.
+       Interior height is C_H = 2.591 from the container floor at GROUND, so a
+       drum on the belt tops out at GROUND + 0.62 + 0.82 = GROUND + 1.44 —
+       comfortably inside, with over a metre of headroom.
+     · the belt has to nose INTO the door. It starts at x = -3.30, and the
+       door mouth is at worldX -2.41, so 0.89 of belt is inside the opening.
+       That length is hidden behind the door-void plane, which is exactly where
+       the stream's wrap already happens — so the belt appears to come out of
+       the dark with the cargo on it. */
+export const BELT_TOP = GROUND + 0.62;
+
+/* Deterministic hash, 0..1. Every "random-looking" number in this file comes
+   from here — a fixed integer mix on the instance index — so the scene renders
+   byte-identical on every load. `Math.random()` is banned in this codebase for
+   exactly that reason: a scene that reshuffles itself cannot be reviewed. */
+export const rnd = (n: number) => {
+  let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+};
+/** hash mapped to [-1, 1] */
+const sgn = (n: number) => rnd(n) * 2 - 1;
+
 /* ---- the container's pose --------------------------------------------------
 
    YAW IS -0.30 rad, NOT MORE, AND THAT IS A COMPROMISE WORTH NAMING.
@@ -124,10 +157,54 @@ export const SEQUENCE: ItemType[] = [
 export const FLAGGED = 0;
 
 /* Item dimensions. All three sit BETWEEN the near-black canvas and the accent in
-   value — the standing rule for cargo across every scene here. */
-const CARTON = { w: 0.90, h: 0.70, d: 0.70 };
-const BAG = { sx: 0.55, sy: 0.38, sz: 0.45 };
+   value — the standing rule for cargo across every scene here.
+
+   THREE CARTON SIZES, NOT ONE, AND THAT IS THE HEADLINE FIX FOR "CARTOONISH".
+   The first build drew every carton from one 0.90 x 0.70 x 0.70 rounded box at
+   one scale, so nine identical cubes marched past in a line — which is what a
+   primitive looks like, and no amount of material work rescues it. A destuffed
+   container holds mixed cases; the silhouettes have to differ before anything
+   else is worth doing. */
+const CARTONS = [
+  { w: 0.92, h: 0.72, d: 0.68 },
+  { w: 0.76, h: 0.58, d: 0.74 },
+  { w: 1.04, h: 0.54, d: 0.64 },
+] as const;
+const BAG = { sx: 0.60, sy: 0.42, sz: 0.50 };
 const DRUM = { r: 0.32, h: 0.82 };
+
+/* ---- the conveyor -----------------------------------------------------------
+
+   THERE WAS NO CONVEYOR. The scene shipped with two hairline lane edges and a
+   threshold strip painted on the deck, and the cargo floated over them — which
+   is why it "did not look like a conveyor belt at all" and why "the bottom part
+   is missing" was the right diagnosis of a thing that had no parts at all.
+
+   What is built here is a slat belt on a fabricated frame, because those are the
+   two cues that make a belt read as machinery rather than as a plane:
+
+     · THE RUNNING SURFACE IS THE SLATS, not a painted top. The carcass box sits
+       0.016 BELOW the running height and the slats sit ON it, so the 0.065 gap
+       between slats shows dark carcass through it. That gap is the whole reason
+       travel direction is legible: a featureless belt moving under featureless
+       cargo has nothing on it for the eye to track.
+     · THERE IS AN UNDERSIDE. Side channels, four leg bents with cross braces
+       and foot pads, head and tail rollers, five return idlers and the return
+       strand hanging under them, and a drive at the head end. None of it is
+       decoration — a belt with nothing beneath it is a floating rectangle.
+*/
+const BELT_X0 = -3.30;
+const BELT_X1 = 6.95;
+const BELT_LEN = BELT_X1 - BELT_X0;          // 10.25
+const BELT_CX = (BELT_X0 + BELT_X1) / 2;     // 1.825
+const BELT_SURF_W = 2.10;                    // slat length across the belt
+const SLAT_PITCH = 0.30;
+const SLAT_W = 0.235;                        // leaves a 0.065 gap
+const SLAT_T = 0.016;
+const SLAT_N = Math.ceil(BELT_LEN / SLAT_PITCH) + 2;   // 37
+const FRAME_Z = 1.16;
+const LEG_X = [-2.30, 0.55, 3.40, 6.25];
+const LEG_Z = 1.06;
 
 /* ---- staged cargo: stock already unloaded, waiting at the dock -----------
 
@@ -194,7 +271,8 @@ export function warmCargoTextures() {
 }
 
 export interface CargoMaterials {
-  carton: THREE.MeshStandardMaterial;
+  /** three kraft tints — no two neighbouring cases are the same board */
+  cartons: THREE.MeshStandardMaterial[];
   bag: THREE.MeshStandardMaterial;
   drum: THREE.MeshStandardMaterial;
   rib: THREE.MeshStandardMaterial;
@@ -202,6 +280,15 @@ export interface CargoMaterials {
   voidM: THREE.MeshBasicMaterial;
   lane: THREE.LineBasicMaterial;
   threshold: THREE.MeshBasicMaterial;
+  /* ---- the place the bay is in ---- */
+  deck: THREE.MeshStandardMaterial;
+  belt: THREE.MeshStandardMaterial;
+  slat: THREE.MeshStandardMaterial;
+  frame: THREE.MeshStandardMaterial;
+  roller: THREE.MeshStandardMaterial;
+  far: THREE.MeshStandardMaterial[];
+  /** cast shadows land on the BELT, not on the deck — its own catcher */
+  beltShadow: THREE.ShadowMaterial;
   all: THREE.Material[];
   dispose: () => void;
 }
@@ -210,6 +297,12 @@ export function buildCargoMaterials(): CargoMaterials {
   const board = cargoTextures();
   const all: THREE.Material[] = [];
   const keep = <T extends THREE.Material>(m: T) => { all.push(m); return m; };
+  /* Textures this scene OWNS. Only CLONES go in here — the cached originals in
+     skins.ts and metal.ts are never disposed by a scene. A clone shares the
+     `image` and costs one GPU upload, which is the cheap way to get a second
+     `repeat` off a texture that other scenes are also sampling: writing
+     `.repeat` on the shared object would silently re-tile every consumer. */
+  const ownedTex: THREE.Texture[] = [];
 
   /* THE CARTON GETS ONE MATERIAL, NOT A SIX-FACE ARRAY, and that is forced by
      the geometry rather than chosen. metalBox returns a RoundedBoxGeometry,
@@ -223,10 +316,16 @@ export function buildCargoMaterials(): CargoMaterials {
      brighter than the accent counter they are supposed to sit behind. #7E6F52
      knocks the board down to the value band cargo belongs in without touching
      the map, which is shared and cached and must not be regenerated per tint. */
-  const carton = keep(new THREE.MeshStandardMaterial({
-    map: board, color: "#7E6F52", metalness: 0, roughness: 0.94,
-    envMapIntensity: 0.18, transparent: true, opacity: 0,
-  }));
+  /* THREE TINTS, ONE MAP. The map is shared and cached and must not be
+     regenerated per tint, so the variation rides `color` — three clones of one
+     material, sharing every texture, costing three uniform blocks. Nine cases
+     all cut from the same board is a printing plant, not a container. */
+  const cartons = ["#3B3428", "#332E24", "#443C2E"].map((tint) => keep(
+    new THREE.MeshStandardMaterial({
+      map: board, color: tint, metalness: 0, roughness: 0.94,
+      envMapIntensity: 0.18, transparent: true, opacity: 0,
+    }),
+  ));
 
   /* THE SACK. No map, no metalness, roughness at the ceiling: a gunny bag is
      woven jute and the one thing it must not do is catch a specular highlight,
@@ -255,9 +354,26 @@ export function buildCargoMaterials(): CargoMaterials {
      and a curved unmapped surface catches light across its whole silhouette.
      Two objects at the same authored value do not read at the same brightness
      when one is mapped and one is not; the map is worth roughly a stop. */
+  /* AND IT NOW CARRIES A MAP, which is the second half of the same problem.
+     An unmapped diffuse surface returns the identical response from every
+     texel, so a sack lit by five area sources came out as a smooth gradient
+     ramp — the exact signature of a shaded primitive, and the reason these read
+     as "cartoonish" however carefully the value was tuned. Jute and kraft are
+     both coarse plant fibre, so the board map already in the cache is the right
+     surface; it only needs tiling much tighter than a carton would take it, so
+     the weave reads as weave rather than as corrugation.
+     A CLONE, because `repeat` lives on the texture and the original is shared —
+     see ownedTex above. The tint comes back UP to #2E2A21 now that a map is
+     breaking the surface up: the value note below was written against an
+     unmapped sack, and a map is worth roughly a stop. */
+  const bagMap = board.clone();
+  bagMap.wrapS = bagMap.wrapT = THREE.RepeatWrapping;
+  bagMap.repeat.set(3.2, 2.2);
+  bagMap.needsUpdate = true;
+  ownedTex.push(bagMap);
   const bag = keep(new THREE.MeshStandardMaterial({
-    color: "#1F1C16", metalness: 0, roughness: 1.0, envMapIntensity: 0.06,
-    transparent: true, opacity: 0,
+    map: bagMap, color: "#191610", metalness: 0, roughness: 1.0,
+    envMapIntensity: 0.06, transparent: true, opacity: 0,
   }));
 
   /* THE DRUM. Canonical brushed finish, tinted — the recipe metal.ts warms
@@ -272,7 +388,9 @@ export function buildCargoMaterials(): CargoMaterials {
   const rib = keep(tintMetal(brushed.material, "#39414A", { metalness: 0.7 }));
   drum.transparent = true; drum.opacity = 0;
   rib.transparent = true; rib.opacity = 0;
-  brushed.dispose();   // the maps live in metal.ts's cache; this material does not
+  /* `brushed` is NOT disposed here — the conveyor frame and rollers further down
+     tint the same source. It is disposed once, after the last tintMetal call.
+     The MAPS live in metal.ts's cache either way; this material does not. */
 
   /* THE OPEN DOOR END. buildContainer models a CLOSED door end — a flat steel
      plane with locking rods, cams and a lock box on it. This scene needs a hole,
@@ -305,27 +423,107 @@ export function buildCargoMaterials(): CargoMaterials {
     toneMapped: false, depthWrite: false,
   }));
 
+  /* ---- THE PLACE ---------------------------------------------------------
+
+     THE DECK IS OPAQUE AND IT RAMPS ON `color`, NOT ON `opacity`.
+
+     Everything else in this scene fades in by opacity, and the deck deliberately
+     does not, for two reasons that both bite. A 120-unit transparent plane sorts
+     against the studio's own ShadowMaterial catcher — which sits 8mm above it,
+     is also transparent, and writes depth — and the winner of that sort changes
+     with camera azimuth. And a transparent floor cannot be the thing a cast
+     shadow reads against, which is the entire job. So the deck is opaque, its
+     concrete value lives in the VERTEX colours, and `material.color` is driven
+     from black to white by the intro ramp. Fading a lit surface to black lands
+     on #000 rather than on the canvas #0A0B0E, which at these values is a
+     difference nobody can see.
+
+     Authored dark on purpose — #E8EEF6 as a vertex colour times a 0.13 scale is
+     roughly #131519 as an albedo, and under the five-source rig with ACES on top
+     that renders as the mid-charcoal a concrete apron actually looks like. The
+     rule this file already states for the sack applies to floors too: author
+     about half the value you want and check the render, never the swatch. */
+  const deck = keep(new THREE.MeshStandardMaterial({
+    vertexColors: true, color: 0x000000, metalness: 0, roughness: 0.97,
+    envMapIntensity: 0.10,
+  }));
+
+  /* THE BELT. Rubber, so roughness at the top and metalness at zero — the one
+     thing a belt must not do is take a metal highlight, or it reads as a steel
+     table. The carcass is a shade darker than the slats so the gaps between the
+     slats show as real gaps. */
+  const belt = keep(new THREE.MeshStandardMaterial({
+    color: "#06080B", metalness: 0.0, roughness: 0.95,
+    envMapIntensity: 0.10, transparent: true, opacity: 0,
+  }));
+  const slat = keep(new THREE.MeshStandardMaterial({
+    color: "#1E242C", metalness: 0.08, roughness: 0.82,
+    envMapIntensity: 0.16, transparent: true, opacity: 0,
+  }));
+  /* Frame and rollers are the CANONICAL brushed finish tinted, same cache hit
+     as the drum. A conveyor frame is painted steel and the rollers are bare —
+     one step apart in value is enough to tell the fabrication from the parts
+     that turn. */
+  const frame = keep(tintMetal(brushed.material, "#232A32", { metalness: 0.55 }));
+  const roller = keep(tintMetal(brushed.material, "#3E464F", { metalness: 0.8 }));
+  frame.transparent = true; frame.opacity = 0;
+  roller.transparent = true; roller.opacity = 0;
+
+  /* The back row. Three tints so the wall is not one flat mass, all of them
+     well down in value: these sit past the fog's near plane and their entire
+     job is to say the bay has a depth beyond the subject. Anything brighter
+     competes with the cargo, which is the failure hero-cards/ground.ts
+     documents at length for the card-sized scenes. */
+  const far = ["#101519", "#0C1116", "#141A20"].map((c) => keep(
+    new THREE.MeshStandardMaterial({
+      color: c, metalness: 0.18, roughness: 0.9,
+      envMapIntensity: 0.10, transparent: true, opacity: 0,
+    }),
+  ));
+
+  /* A SECOND SHADOW CATCHER, ON THE BELT.
+
+     The studio gives every scene one ShadowMaterial plane at `floorY`, and that
+     is the whole reason this scene had no shadows: the cargo does not sit on the
+     floor any more, it sits 0.62 up on the belt, so every contact shadow the
+     stream cast was being caught 0.62 below the thing casting it — under the
+     conveyor, where nothing can see it. A ShadowMaterial over the belt's own
+     running surface puts the shadow back where the contact is. */
+  const beltShadow = keep(new THREE.ShadowMaterial({ opacity: 0 }));
+
+  brushed.dispose();   // last consumer of the canonical finish in this scene
+
   return {
-    carton, bag, drum, rib, voidM, lane, threshold, all,
-    /* MATERIALS ONLY. The kraft board is cached in hero-cards/skins and the
-       metal maps in metal.ts — disposing either here would leave the next scene
-       sampling a destroyed texture. Same hazard, same reasoning, as yard.ts. */
-    dispose: () => { all.forEach((m) => m.dispose()); },
+    cartons, bag, drum, rib, voidM, lane, threshold,
+    deck, belt, slat, frame, roller, far, beltShadow, all,
+    /* MATERIALS AND SCENE-OWNED TEXTURE CLONES. The kraft board is cached in
+       hero-cards/skins and the metal maps in metal.ts — disposing either here
+       would leave the next scene sampling a destroyed texture. Same hazard, same
+       reasoning, as yard.ts. The clones in ownedTex are ours and nobody else's. */
+    dispose: () => {
+      all.forEach((m) => m.dispose());
+      ownedTex.forEach((t) => t.dispose());
+    },
   };
 }
 
 export interface CargoItem {
-  /** transform carrier. Instanced cartons are not drawn from this node — their
-      matrix is copied into the InstancedMesh — but every item has one so the
-      overlay can project a world position for any of the nine. */
+  /** transform carrier — one per item, so the overlay can project a world
+      position and a tracker can read a world bounding box for any of the nine. */
   grp: THREE.Group;
   type: ItemType;
+  /** the item's own body. EVERY item now has one — see the note on why the
+      InstancedMesh went away. */
+  mesh: THREE.Mesh;
+  /** rest height above the belt, so `advance` can rock the item without
+      floating it. */
+  restY: number;
 }
 
 export interface CargoModel {
   root: THREE.Group;
   items: CargoItem[];
-  /** the flagged carton — an ordinary Mesh so a tracker can read its world box */
+  /** the flagged carton — the one with the collapsed corner */
   flagged: THREE.Mesh;
   /** the container's shell + hardware, so the scene can ramp their opacity */
   container: { shell: THREE.Mesh[]; hardware: THREE.Mesh[]; edges: THREE.LineSegments };
@@ -341,6 +539,116 @@ export interface CargoModel {
 /** Deterministic per-item yaw wobble. A hand-stuffed container never comes out
     square, and `Math.random()` would reshuffle the scene on every page load. */
 const wobble = (i: number) => ((i * 37) % 11 - 5) * 0.012;
+
+const s01 = (t: number) => { const c = Math.min(1, Math.max(0, t)); return c * c * (3 - 2 * c); };
+
+/* ---- WHY THE ITEMS ARE DEFORMED, ONE PASS EACH ---------------------------
+
+   "Very stiff and cartoonish" is a SILHOUETTE complaint before it is a material
+   one, and the silhouettes here were a rounded box, a scaled sphere and a
+   cylinder — three primitives, drawn at one size each, with a couple of degrees
+   of yaw between them. No lighting rig rescues that. Every fix below is one
+   loop over a geometry's vertices, runs once at build, and is driven entirely
+   from `rnd(seed)` so the result is byte-identical on every load.
+--------------------------------------------------------------------------- */
+
+/** Pillow a rounded box into a PACKED case: sides bulge where the contents
+    press out, the lid dishes, the whole thing leans a degree or two off square.
+    `crushed` collapses one top corner — the finding the damage bracket points
+    at, which until now was drawn around a geometrically perfect box. */
+function packCarton(
+  geo: THREE.BufferGeometry, w: number, h: number, d: number,
+  seed: number, crushed: boolean,
+) {
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const bulge = 0.030 + 0.026 * rnd(seed);
+  const lean = 0.020 * sgn(seed + 11);
+  const sag = 0.022 + 0.016 * rnd(seed + 23);
+  const hw = w / 2, hh = h / 2, hd = d / 2;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const t = y / hh;                              // -1 at the base, +1 at the lid
+    const s = 1 + bulge * (1 - t * t);             // widest at mid-height
+    x *= s; z *= s;
+    x += lean * t;                                 // a case never stacks square
+    if (t > 0.5) {
+      // the lid dishes toward the middle — an empty top corner in a full case
+      const r2 = Math.min(1, (x * x) / (hw * hw) + (z * z) / (hd * hd));
+      y -= sag * (1 - r2) * s01((t - 0.5) / 0.5);
+    }
+    if (crushed) {
+      /* One corner, collapsed inward. The weight is the product of three
+         per-axis falloffs, so it peaks exactly at (+hw, +hh, +hd) and is zero
+         by half a box away — a dent, not a taper. */
+      const k =
+        (1 - Math.min(1, Math.abs(x - hw) / (w * 0.42))) *
+        (1 - Math.min(1, Math.abs(y - hh) / (h * 0.52))) *
+        (1 - Math.min(1, Math.abs(z - hd) / (d * 0.42)));
+      if (k > 0) { x -= 0.17 * k; y -= 0.14 * k; z -= 0.14 * k; }
+    }
+    pos.setXYZ(i, x, y, z);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();   // or the shading still describes the primitive
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+}
+
+/** How far a sack's flattened base sits below its own origin, in unit-sphere
+    units. Derived from the flatten below, not guessed: y = -1 maps to
+    -0.70 + (-1 + 0.70) * 0.22 = -0.766. Anything that places a sack on a
+    surface reads this, so the two can never drift apart. */
+const SACK_BOTTOM = 0.766;
+
+/** A filled jute sack. NOT a scaled sphere and not a sphere with a flat spot —
+    those were the two previous attempts, and both still read as an egg.
+
+    Five things, in this order, and the order matters because each one operates
+    on the result of the last:
+      1. LUMPS. Three fixed cosine lobes around the axis, so the waist is
+         irregular. This is what stops the silhouette being a conic section.
+      2. FLATTEN. Below -0.70 the base compresses at a fifth rate — the sack is
+         resting on something, and a resting sack has a footprint.
+      3. SLUMP. The lower half widens by up to 26%, where the contents have
+         settled. Bulging LOW is what makes it read as heavy.
+      4. NECK. Above 0.42 the section pinches to under a third and stretches
+         upward: the gathered, tied ear. Every real gunny bag has one and it is
+         the single most identifiable thing about the silhouette.
+      5. DROOP. A one-sided shoulder sag, phase set from the seed, so no two
+         sacks slump toward the same side. */
+function sackGeometry(seed: number): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 22, 16);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const ph1 = rnd(seed) * Math.PI * 2;
+  const ph2 = rnd(seed + 7) * Math.PI * 2;
+  const ph3 = rnd(seed + 13) * Math.PI * 2;
+  const droopDir = rnd(seed + 29) * Math.PI * 2;
+  for (let i = 0; i < pos.count; i++) {
+    const x0 = pos.getX(i), y0 = pos.getY(i), z0 = pos.getZ(i);
+    const th = Math.atan2(z0, x0);
+
+    const lump =
+      1
+      + 0.090 * Math.cos(3 * th + ph1) * (1 - y0 * y0)
+      + 0.055 * Math.cos(5 * th + ph2) * (0.60 + 0.40 * y0)
+      + 0.045 * Math.cos(2 * th + ph3);
+
+    let y = y0 < -0.70 ? -0.70 + (y0 + 0.70) * 0.22 : y0;
+    const slump = 1 + 0.26 * Math.pow(Math.max(0, -y), 1.3);
+    const neckT = s01((y - 0.42) / 0.58);
+    const neck = 1 - 0.74 * neckT;
+    if (y > 0.42) y = 0.42 + (y - 0.42) * 1.38;   // stretch the tied ear up
+
+    const k = lump * slump * neck;
+    const droop = 0.11 * Math.max(0, y) * Math.cos(th - droopDir);
+    pos.setXYZ(i, x0 * k + droop * 0.4, y - Math.max(0, droop), z0 * k);
+  }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
 
 export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   const root = new THREE.Group();
@@ -378,134 +686,372 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
     .applyAxisAngle(new THREE.Vector3(0, 1, 0), CONT_YAW)
     .add(CONT_POS);
 
-  /* ---- the run-out ------------------------------------------------------
-     Two lane edges and the count line. Not scenery: the run-out is what makes a
-     stream of floating objects read as cargo coming off a deck, and the count
-     line is the thing the counter in the overlay is counting against — without
-     it drawn, the number increments for no visible reason. */
-  const LANE_Y = GROUND + 0.008;
+  /* ---- THE DECK -----------------------------------------------------------
+
+     A REAL, LIT, OPAQUE FLOOR. What was here before was a drafting grid at 10%
+     over the bare cyclorama, which is the exact failure DECISIONS.md already
+     records once: a hairline grid over nothing is not a floor. It is also why
+     this scene had no shadows — the studio's ShadowMaterial catcher darkens
+     whatever is BEHIND it, and behind it was #0A0B0E. A shadow on black is
+     black.
+
+     120 units square and it does not need an edge treatment, because
+     scene.fog dissolves it long before it ends (see scene.tsx). At the camera's
+     18-degree elevation the true horizon sits 3 degrees ABOVE the top of frame,
+     so the deck runs off the top edge and the only thing the viewer ever sees
+     is the haze. `receiveShadow` on top of the studio catcher is deliberate:
+     the catcher supplies a hard contact shadow, the lit surface supplies the
+     soft falloff, and together they read as one shadow rather than as a decal.
+
+     THE MOTTLE IS A VERTEX-COLOUR MULTIPLIER AROUND 1.0, NOT A COLOUR. Vertex
+     colours are raw linear multipliers on `material.color`, with no sRGB
+     conversion applied — so authoring the concrete's VALUE here would mean
+     hand-converting it, and getting that wrong is how a floor ends up eight
+     times too dark (see the colorspace note in studio.ts). Value lives in
+     `material.color`, which is set from a hex and is colour-managed; this array
+     only says "this patch is 12% lighter than that one". */
+  const DECK_SEG = 48;
+  const deckGeo = new THREE.PlaneGeometry(120, 120, DECK_SEG, DECK_SEG);
+  {
+    const n = (DECK_SEG + 1) * (DECK_SEG + 1);
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const ix = i % (DECK_SEG + 1), iy = (i / (DECK_SEG + 1)) | 0;
+      // one tight hash plus one broad one: pitting on top of pour patches
+      const fine = 0.86 + 0.28 * rnd(ix * 131 + iy * 977);
+      const broad = 0.92 + 0.16 * rnd(((ix / 6) | 0) * 31 + ((iy / 6) | 0) * 17 + 5);
+      const v = fine * broad;
+      col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v;
+    }
+    deckGeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  }
+  owned.push(deckGeo);
+  const deck = new THREE.Mesh(deckGeo, m.deck);
+  deck.rotation.x = -Math.PI / 2;
+  /* EXACTLY GROUND, and the studio's shadow catcher is what moved instead.
+
+     The first arrangement put the deck 8mm BELOW GROUND to clear the catcher,
+     which meant every object resting at GROUND — all ten staged items, the
+     conveyor's four leg bents and their foot pads — floated 8mm over the only
+     surface a viewer can actually see. The catcher is a plane the studio places
+     at `floorY`, and `floorY` is a scene's to choose: scene.tsx now asks for
+     GROUND + 0.004, so the catcher sits 4mm ABOVE the deck instead and every
+     bottom in this file lands on the floor to the millimetre. 4mm is ~7x the
+     depth buffer's resolution at the far corner of the catcher, so it does not
+     z-fight either. */
+  deck.position.y = GROUND;
+  deck.receiveShadow = true;
+  deck.renderOrder = -2;
+  root.add(deck);
+
+  /* ---- THE BACK ROW -------------------------------------------------------
+     Five containers, two tiers, 9-11 units behind the bay. Not scenery for its
+     own sake: the complaint was "no environment", and what an environment does
+     here is give the fog something to act ON. An empty haze is still an empty
+     frame. They are dim, they never cast (they are outside the shadow camera's
+     10-unit extent anyway) and they are built from metalBox's shared cache. */
+  const FAR_ROW: [number, number, number, number][] = [
+    // x, y-tier, z, tint index
+    [-7.4, 0, -9.7, 0], [0.2, 0, -10.5, 1], [7.8, 0, -9.9, 2],
+    [-7.4, 1, -9.7, 2], [0.2, 1, -10.5, 0],
+  ];
+  for (let i = 0; i < FAR_ROW.length; i++) {
+    const [fx, tier, fz, ti] = FAR_ROW[i];
+    const box = metalBox(C_L, C_H, 2.438, m.far[ti]);
+    box.position.set(fx, GROUND + C_H / 2 + tier * (C_H + 0.02), fz);
+    box.rotation.y = sgn(i + 91) * 0.035;
+    box.castShadow = false;
+    box.receiveShadow = false;
+    root.add(box);
+  }
+
+  /* ---- THE CONVEYOR -------------------------------------------------------
+     See the block at the top of this file for what each part is for. Built
+     bottom-up so the arithmetic is checkable in reading order. */
+  const belt = new THREE.Group();
+  root.add(belt);
+
+  // carcass — the belt's body. Its top sits SLAT_T below the running height,
+  // so the slats laid on it are the surface and the gaps show carcass.
+  const carcass = metalBox(BELT_LEN, 0.11, BELT_SURF_W + 0.08, m.belt, 0.012);
+  carcass.position.set(BELT_CX, BELT_TOP - SLAT_T - 0.055, 0);
+  carcass.castShadow = true;
+  carcass.receiveShadow = true;
+  belt.add(carcass);
+
+  // side channels — the fabricated frame, standing 0.055 proud of the running
+  // surface so they read as a lip that keeps cargo on the belt
+  /* FLUSH WITH THE RUNNING SURFACE, not proud of it. The first pass stood the
+     channels 0.055 above the slats to read as a retaining lip, and at an 18-
+     degree camera that lip is nearly edge-on: the near channel occluded most of
+     the belt's own top face, so the slats — the only thing on this machine that
+     moves — were hidden behind the frame that was supposed to frame them. Top
+     at exactly BELT_TOP opens the whole surface to the lens. */
+  for (const sz of [-1, 1]) {
+    const ch = metalBox(BELT_LEN, 0.22, 0.085, m.frame, 0.012);
+    ch.position.set(BELT_CX, BELT_TOP - 0.11, sz * FRAME_Z);
+    ch.castShadow = true;
+    ch.receiveShadow = true;
+    belt.add(ch);
+  }
+
+  /* leg bents. Top at BELT_TOP - 0.126 (the carcass underside), foot at
+     GROUND, so height = (BELT_TOP - 0.126) - GROUND = 0.494 and the centre is
+     the midpoint of those two, -0.303. Nothing here is eyeballed: if BELT_TOP
+     moves, both numbers follow it. */
+  const LEG_TOP = BELT_TOP - 0.126;
+  const LEG_H = LEG_TOP - GROUND;
+  const LEG_CY = (LEG_TOP + GROUND) / 2;
+  for (let i = 0; i < LEG_X.length; i++) {
+    for (const sz of [-1, 1]) {
+      const leg = metalBox(0.085, LEG_H, 0.085, m.frame, 0.010);
+      leg.position.set(LEG_X[i], LEG_CY, sz * LEG_Z);
+      leg.castShadow = true;
+      belt.add(leg);
+      const pad = metalBox(0.20, 0.022, 0.20, m.frame, 0.006);
+      pad.position.set(LEG_X[i], GROUND + 0.011, sz * LEG_Z);
+      pad.receiveShadow = true;
+      belt.add(pad);
+    }
+    const brace = metalBox(0.055, 0.055, LEG_Z * 2 - 0.085, m.frame, 0.010);
+    brace.position.set(LEG_X[i], GROUND + 0.16, 0);
+    belt.add(brace);
+  }
+
+  /* head and tail rollers. r = 0.10 with the axle at BELT_TOP - 0.10 puts the
+     crown exactly at the running height, which is where a belt actually turns
+     over its pulley. */
+  const rollerGeo = new THREE.CylinderGeometry(0.10, 0.10, BELT_SURF_W + 0.06, 18);
+  owned.push(rollerGeo);
+  for (const rx of [BELT_X0 - 0.02, BELT_X1 + 0.02]) {
+    const r = new THREE.Mesh(rollerGeo, m.roller);
+    r.rotation.x = Math.PI / 2;
+    r.position.set(rx, BELT_TOP - 0.10, 0);
+    r.castShadow = true;
+    belt.add(r);
+  }
+
+  // return idlers, and the return strand hanging on them
+  const idlerGeo = new THREE.CylinderGeometry(0.06, 0.06, BELT_SURF_W - 0.06, 12);
+  owned.push(idlerGeo);
+  for (const rx of [-2.0, 0.2, 2.4, 4.6, 6.4]) {
+    const r = new THREE.Mesh(idlerGeo, m.roller);
+    r.rotation.x = Math.PI / 2;
+    r.position.set(rx, BELT_TOP - 0.40, 0);
+    belt.add(r);
+  }
+  const ret = metalBox(BELT_LEN - 0.2, 0.018, BELT_SURF_W - 0.10, m.belt, 0.006);
+  ret.position.set(BELT_CX, BELT_TOP - 0.331, 0);
+  belt.add(ret);
+
+  // the drive at the head end — a motor and a gearbox, the cue that says the
+  // belt is powered rather than a slide
+  const motor = metalBox(0.42, 0.34, 0.30, m.frame, 0.03);
+  motor.position.set(BELT_X1 - 0.45, BELT_TOP - 0.30, FRAME_Z + 0.24);
+  motor.castShadow = true;
+  belt.add(motor);
+  const gearGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.22, 14);
+  owned.push(gearGeo);
+  const gear = new THREE.Mesh(gearGeo, m.roller);
+  gear.rotation.z = Math.PI / 2;
+  gear.position.set(BELT_X1 - 0.12, BELT_TOP - 0.30, FRAME_Z + 0.24);
+  belt.add(gear);
+
+  /* THE SLATS — the running surface, and the only thing on this belt that
+     moves. A featureless belt under featureless cargo has nothing for the eye
+     to track, so a viewer cannot tell the belt is running at all; the whole
+     "it does not look like a conveyor" note comes down to this. Instanced,
+     DynamicDrawUsage, matrices written in `advance`. castShadow OFF — a 16mm
+     slat casting onto the catcher 4mm above it is shadow acne, not detail. */
+  const slatGeo = new THREE.BoxGeometry(SLAT_W, SLAT_T, BELT_SURF_W);
+  owned.push(slatGeo);
+  const slats = new THREE.InstancedMesh(slatGeo, m.slat, SLAT_N);
+  slats.castShadow = false;
+  slats.receiveShadow = true;
+  slats.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  belt.add(slats);
+
+  /* THE BELT'S OWN SHADOW CATCHER — see the material's note. Without this the
+     cargo's contact shadow is caught 0.62 below the cargo, under the machine. */
+  const bsGeo = new THREE.PlaneGeometry(BELT_LEN, BELT_SURF_W + 0.04);
+  owned.push(bsGeo);
+  const beltShadow = new THREE.Mesh(bsGeo, m.beltShadow);
+  beltShadow.rotation.x = -Math.PI / 2;
+  beltShadow.position.set(BELT_CX, BELT_TOP + 0.004, 0);
+  beltShadow.receiveShadow = true;
+  belt.add(beltShadow);
+
+  /* ---- the count station --------------------------------------------------
+     The threshold now sits ON THE BELT, because that is where the crossing
+     happens. The old version painted it on the deck 0.62 below the cargo, so
+     the number incremented against a line nothing ever touched.
+
+     The two lane rules that used to run down the deck are gone: the belt's own
+     side channels are the lane now, and two rulings at similar strength beat
+     into moire — the mistake yard-vision documents. `lane` is spent instead on
+     a pair of registration ticks either side of the count line, which is what
+     the drafting language actually has to say here. */
+  const thrGeo = new THREE.PlaneGeometry(0.09, BELT_SURF_W);
+  owned.push(thrGeo);
+  const threshold = new THREE.Mesh(thrGeo, m.threshold);
+  threshold.rotation.x = -Math.PI / 2;
+  threshold.position.set(THRESHOLD_X, BELT_TOP + 0.010, 0);
+  root.add(threshold);
+
+  /* ON THE DECK, LYING FLAT — not standing in the air beside the belt.
+
+     The first version put these at belt height with 0.26 vertical risers, which
+     on screen was a small pale wedge hanging off the belt's near edge at the
+     count station. It read as a stray artefact rather than as a mark, for the
+     reason a drafting tick always fails when it leaves the surface it is
+     measuring: a registration mark belongs ON the thing, and anything floating
+     beside a machine is read as part of the machine and then found to be
+     nothing. Flat on the deck at the count-station station line, running
+     outward from under the conveyor, they read as painted floor marking. */
+  const TICK_Y = GROUND + 0.010;
   const laneGeo = new THREE.BufferGeometry();
   laneGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-    -2.9, LANE_Y, -1.10, 6.6, LANE_Y, -1.10,
-    -2.9, LANE_Y, 1.10, 6.6, LANE_Y, 1.10,
+    THRESHOLD_X, TICK_Y, FRAME_Z + 0.20, THRESHOLD_X, TICK_Y, FRAME_Z + 0.95,
+    THRESHOLD_X, TICK_Y, -FRAME_Z - 0.20, THRESHOLD_X, TICK_Y, -FRAME_Z - 0.95,
+    THRESHOLD_X - 0.22, TICK_Y, FRAME_Z + 0.95, THRESHOLD_X + 0.22, TICK_Y, FRAME_Z + 0.95,
+    THRESHOLD_X - 0.22, TICK_Y, -FRAME_Z - 0.95, THRESHOLD_X + 0.22, TICK_Y, -FRAME_Z - 0.95,
   ], 3));
   owned.push(laneGeo);
   root.add(new THREE.LineSegments(laneGeo, m.lane));
 
-  const thrGeo = new THREE.PlaneGeometry(0.06, 2.20);
-  owned.push(thrGeo);
-  const threshold = new THREE.Mesh(thrGeo, m.threshold);
-  threshold.rotation.x = -Math.PI / 2;
-  threshold.position.set(THRESHOLD_X, GROUND + 0.014, 0);
-  root.add(threshold);
+  /* ---- item geometry -----------------------------------------------------
 
-  /* ---- item geometry ----------------------------------------------------- */
+     THESE ARE CLONES, AND THAT IS A DELIBERATE STEP AWAY FROM THE CACHE.
+     metalBox hands out metal.ts's SHARED RoundedBoxGeometry, which is exactly
+     right when a scene wants forty identical boxes and completely wrong when
+     the problem is that every box is identical. Cloning gives this scene a
+     geometry it owns and may deform; the clone is pushed into `owned` and
+     disposed, and the cached original is never touched. Three cartons plus one
+     crushed variant plus three sacks is seven small buffers — against 96 in the
+     Data card, which is the count that made the cache worth having. */
+  const cartonGeos = CARTONS.map((c, k) => {
+    const g = metalBox(c.w, c.h, c.d, m.cartons[0]).geometry.clone();
+    packCarton(g, c.w, c.h, c.d, k * 17 + 3, false);
+    owned.push(g);
+    return g;
+  });
+  /* The flagged case: variant 0, with one top corner collapsed. Until now the
+     damage bracket was drawn around a geometrically perfect box and the callout
+     claimed a crushed corner that did not exist anywhere in the scene. */
+  const crushedGeo = metalBox(CARTONS[0].w, CARTONS[0].h, CARTONS[0].d, m.cartons[0]).geometry.clone();
+  packCarton(crushedGeo, CARTONS[0].w, CARTONS[0].h, CARTONS[0].d, 3, true);
+  owned.push(crushedGeo);
 
-  /* CARTON. metalBox is the only route to metal.ts's cached RoundedBoxGeometry,
-     so a throwaway Mesh is built purely to lift the geometry off it. That
-     geometry is SHARED and cached — it is deliberately not in `owned`. */
-  const cartonGeo = metalBox(CARTON.w, CARTON.h, CARTON.d, m.carton).geometry;
+  /* Three sacks, three different lump phases and droop directions. Nine bags
+     cut from one mesh is the same failure as nine identical cartons. */
+  const bagGeos = [0, 1, 2].map((k) => {
+    const g = sackGeometry(k * 29 + 5);
+    owned.push(g);
+    return g;
+  });
+  const BAG_BOTTOM = SACK_BOTTOM * BAG.sy;   // 0.322 below the sack's origin
 
-  /* GUNNY BAG — a sphere, slumped. A plain scaled sphere is an egg; a sack that
-     has been thrown down has a flattened base it is resting on and a bulge just
-     above it where the contents have settled. Both are one pass over the
-     vertices, and together they are the difference between "soft" and "round".
-
-       base:  y below -0.72 is compressed toward -0.72 at a quarter rate, so the
-              bottom cap flattens without the silhouette developing a crease.
-              min y ends at -0.79, i.e. -0.300 after the 0.38 y-scale.
-       bulge: x and z widen by up to 14% in the lower half.
-
-     computeVertexNormals() afterwards or the shading still describes a sphere. */
-  const bagGeo = new THREE.SphereGeometry(1, 18, 12);
-  {
-    const pos = bagGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const ny = y < -0.72 ? -0.72 + (y + 0.72) * 0.25 : y;
-      const spread = 1 + 0.14 * Math.max(0, -ny);
-      pos.setXYZ(i, x * spread, ny, z * spread);
-    }
-    bagGeo.computeVertexNormals();
-  }
-  owned.push(bagGeo);
-  const BAG_BOTTOM = 0.79 * BAG.sy;   // 0.300 — how far the sack sits below its origin
-
-  /* DRUM — upright cylinder plus two rolling ribs. The ribs are what stop a
-     cylinder reading as a bollard: a 205-litre drum is identified by its hoops
-     long before its proportions register. */
+  /* DRUM — upright cylinder, two rolling hoops, a rolled rim top and bottom and
+     a bung on the lid. The hoops were already here and they are what stop a
+     cylinder reading as a bollard; the rims and the bung are new, and they are
+     what stop the ENDS reading as a cylinder's flat caps. A 205-litre drum is
+     identified by its hoops long before its proportions register, and by its
+     chimes immediately after. */
   const drumGeo = new THREE.CylinderGeometry(DRUM.r, DRUM.r, DRUM.h, 24);
   owned.push(drumGeo);
   const ribGeo = new THREE.TorusGeometry(DRUM.r + 0.005, 0.022, 6, 24);
   owned.push(ribGeo);
+  const rimGeo = new THREE.CylinderGeometry(DRUM.r + 0.026, DRUM.r + 0.026, 0.055, 24);
+  owned.push(rimGeo);
+  const bungGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.028, 10);
+  owned.push(bungGeo);
 
-  /* ---- the stream -------------------------------------------------------- */
+  /** One drum, built the same way wherever it stands. */
+  const makeDrum = (g: THREE.Group) => {
+    const body = new THREE.Mesh(drumGeo, m.drum);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+    for (const ry of [-0.22, 0.22]) {
+      const hoop = new THREE.Mesh(ribGeo, m.rib);
+      hoop.rotation.x = -Math.PI / 2;
+      hoop.position.y = ry;
+      g.add(hoop);
+    }
+    /* 0.0285, not 0.026. The rim is 0.055 deep, so its half-height is 0.0275 —
+       at 0.026 the lower chime hangs 1.5mm BELOW the drum's own base and the
+       drum stands on its rim instead of its floor. Small, and exactly the class
+       of thing the bottom-vs-floor sweep exists to catch. */
+    for (const ry of [-DRUM.h / 2 + 0.0285, DRUM.h / 2 - 0.0285]) {
+      const rim = new THREE.Mesh(rimGeo, m.rib);
+      rim.position.y = ry;
+      rim.castShadow = true;
+      g.add(rim);
+    }
+    const bung = new THREE.Mesh(bungGeo, m.rib);
+    bung.position.set(DRUM.r * 0.52, DRUM.h / 2 + 0.006, DRUM.r * 0.18);
+    g.add(bung);
+    return body;
+  };
 
-  /* CARTONS ARE INSTANCED, exactly as yard.ts instances its containers: one
-     shared geometry, one draw call, matrices written per frame.
+  /* ---- the stream --------------------------------------------------------
 
-     WITH ONE CARVE-OUT — the flagged carton is an ordinary Mesh. yard.ts makes
-     the same exception for the same reason: a tracker bracket derives its size
-     and position from `Box3.setFromObject(target)`, and an INSTANCE is not an
-     Object3D, so it has no world bounding box to read. One exception, not four.
-
-     Three cartons are instanced (indices 1, 4, 7); index 0 is the flagged Mesh.
-     Small counts, but the idiom is the point — and this scene's instance
-     matrices change every frame, so DynamicDrawUsage, unlike the yard's static
-     one. */
-  const instanced: number[] = [];
-  for (let i = 0; i < ITEM_N; i++) if (SEQUENCE[i] === "carton" && i !== FLAGGED) instanced.push(i);
-
-  const cartonMesh = new THREE.InstancedMesh(cartonGeo, m.carton, instanced.length);
-  cartonMesh.castShadow = true;
-  cartonMesh.receiveShadow = true;
-  cartonMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  root.add(cartonMesh);
-
+     THE CARTONS ARE NO LONGER INSTANCED, and dropping that is the point rather
+     than a regression. The InstancedMesh existed to draw three identical
+     cartons in one call, and "identical" is precisely the defect being fixed —
+     three sizes cannot share an instance buffer, and three InstancedMeshes of
+     one instance each is strictly worse than three Meshes. yard.ts's 55
+     containers are the case that justifies the idiom; four cartons are not.
+     It also removes the carve-out that existed only so ONE carton could have a
+     world bounding box: now every item has one, so every item can be tracked. */
   const items: CargoItem[] = [];
   let flagged: THREE.Mesh | null = null;
+
+  /* Which geometry each stream slot uses. Fixed table, walked in order, so
+     neighbours never share a variant — a run of two identical cases is the one
+     thing that undoes all of the above. */
+  const CARTON_PICK = [0, 1, 2, 0, 1, 2, 0, 1, 2];
+  const BAG_PICK = [0, 1, 2, 0, 1, 2, 0, 1, 2];
 
   for (let i = 0; i < ITEM_N; i++) {
     const type = SEQUENCE[i];
     const grp = new THREE.Group();
     grp.rotation.y = wobble(i);
+    let mesh: THREE.Mesh;
+    let restY: number;
 
     if (type === "carton") {
-      grp.position.y = GROUND + CARTON.h / 2;
-      if (i === FLAGGED) {
-        const mesh = new THREE.Mesh(cartonGeo, m.carton);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        grp.add(mesh);
-        flagged = mesh;
-      }
-      /* Instanced cartons add NOTHING to their group. The group is still added
-         to the root so its world matrix is maintained by the normal update —
-         `advance` copies that matrix into the InstancedMesh, and the overlay
-         projects tags off the same node. An empty Group costs a matrix. */
+      const vi = CARTON_PICK[i];
+      const c = CARTONS[i === FLAGGED ? 0 : vi];
+      restY = BELT_TOP + c.h / 2;
+      mesh = new THREE.Mesh(i === FLAGGED ? crushedGeo : cartonGeos[vi], m.cartons[vi]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      grp.add(mesh);
+      if (i === FLAGGED) flagged = mesh;
     } else if (type === "gunny") {
-      grp.position.y = GROUND + BAG_BOTTOM;
-      const mesh = new THREE.Mesh(bagGeo, m.bag);
-      mesh.scale.set(BAG.sx, BAG.sy, BAG.sz);
+      restY = BELT_TOP + BAG_BOTTOM;
+      mesh = new THREE.Mesh(bagGeos[BAG_PICK[i]], m.bag);
+      /* Per-sack scale as well as per-sack mesh: a sack is a size as much as a
+         shape, and three meshes at one scale still read as three copies.
+         THE Y SCALE IS NOT TOUCHED. BAG_BOTTOM is SACK_BOTTOM * BAG.sy, and
+         every rest height in this file derives from it — varying sy per item
+         would float or sink each sack by up to 5% of 0.322, which is 16mm of
+         gap under a bag that is supposed to be sitting on a belt. Width and
+         depth are free; height is load-bearing. */
+      const k = 0.90 + 0.20 * rnd(i + 61);
+      mesh.scale.set(BAG.sx * k, BAG.sy, BAG.sz * (1.9 - k));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       grp.add(mesh);
     } else {
-      grp.position.y = GROUND + DRUM.h / 2;
-      const body = new THREE.Mesh(drumGeo, m.drum);
-      body.castShadow = true;
-      body.receiveShadow = true;
-      grp.add(body);
-      for (const ry of [-0.22, 0.22]) {
-        const hoop = new THREE.Mesh(ribGeo, m.rib);
-        hoop.rotation.x = -Math.PI / 2;
-        hoop.position.y = ry;
-        grp.add(hoop);
-      }
+      restY = BELT_TOP + DRUM.h / 2;
+      mesh = makeDrum(grp);
     }
 
+    grp.position.y = restY;
     root.add(grp);
-    items.push({ grp, type });
+    items.push({ grp, type, mesh, restY });
   }
 
   if (!flagged) throw new Error("[cargo-vision] FLAGGED index is not a carton");
@@ -514,22 +1060,26 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      Same construction as the stream loop above, minus the group-per-item
      indirection: nothing here is ever repositioned, so there is no `advance`
      to feed and no need for a transform carrier. Wobble uses `i + ITEM_N` so
-     the staged pile's angles never repeat the stream's own sequence. */
+     the staged pile's angles never repeat the stream's own sequence. Staged
+     stock stands on the DECK, not on the belt — it has already come off. */
   for (let i = 0; i < STAGE.length; i++) {
     const s = STAGE[i];
-    const yaw = wobble(i + ITEM_N);
+    const yaw = wobble(i + ITEM_N) + sgn(i + 41) * 0.16;
+    const vi = i % 3;
     if (s.type === "carton") {
-      const mesh = new THREE.Mesh(cartonGeo, m.carton);
-      mesh.position.set(s.x, GROUND + CARTON.h / 2, s.z);
+      const c = CARTONS[vi];
+      const mesh = new THREE.Mesh(cartonGeos[vi], m.cartons[(i + 1) % 3]);
+      mesh.position.set(s.x, GROUND + c.h / 2, s.z);
       mesh.rotation.y = yaw;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       root.add(mesh);
     } else if (s.type === "gunny") {
-      const mesh = new THREE.Mesh(bagGeo, m.bag);
+      const mesh = new THREE.Mesh(bagGeos[vi], m.bag);
       mesh.position.set(s.x, GROUND + BAG_BOTTOM, s.z);
       mesh.rotation.y = yaw;
-      mesh.scale.set(BAG.sx, BAG.sy, BAG.sz);
+      const k = 0.90 + 0.20 * rnd(i + 137);
+      mesh.scale.set(BAG.sx * k, BAG.sy, BAG.sz * k);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       root.add(mesh);
@@ -537,16 +1087,7 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
       const grp = new THREE.Group();
       grp.position.set(s.x, GROUND + DRUM.h / 2, s.z);
       grp.rotation.y = yaw;
-      const body = new THREE.Mesh(drumGeo, m.drum);
-      body.castShadow = true;
-      body.receiveShadow = true;
-      grp.add(body);
-      for (const ry of [-0.22, 0.22]) {
-        const hoop = new THREE.Mesh(ribGeo, m.rib);
-        hoop.rotation.x = -Math.PI / 2;
-        hoop.position.y = ry;
-        grp.add(hoop);
-      }
+      makeDrum(grp);
       root.add(grp);
     }
   }
@@ -554,27 +1095,63 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   /* ---- advance ------------------------------------------------------------
      The factory-belt idiom, verbatim: travel is p * SPAN and the wrap is a
      `while` subtracting SPAN. Every item's x is a pure function of p, so the
-     stream is periodic by construction and holds under `?phase` pinning. */
+     stream is periodic by construction and holds under `?phase` pinning.
+
+     EVERYTHING ADDED HERE IS ALSO A PURE FUNCTION OF x, WHICH IS A PURE
+     FUNCTION OF p. The rock, the bob and the yaw drift are driven off the
+     item's own position rather than off elapsed time, so a pinned phase gives a
+     pinned pose and the loop still closes exactly at the wrap — an item reborn
+     at -SPAN/2 arrives with precisely the attitude its upstream neighbour had.
+     Time-driven wobble would break both of those and is the obvious thing to
+     reach for; it is why this is spelled out. */
   const mat4 = new THREE.Matrix4();
+  const sPos = new THREE.Vector3();
+  const sQuat = new THREE.Quaternion();
+  const sScale = new THREE.Vector3(1, 1, 1);
+  const sZero = new THREE.Vector3(0, 0, 0);
+  /* How much each type moves. A sack is soft and heavy and settles visibly; a
+     drum is a steel cylinder standing on its base and barely moves. Handing all
+     three the same amplitude is what made the previous stream read as one rigid
+     rail of objects. */
+  const ROCK: Record<ItemType, number> = { carton: 1.0, gunny: 1.5, drum: 0.45 };
+
   const advance = (p: number) => {
     const travel = p * SPAN;
     for (let i = 0; i < ITEM_N; i++) {
       let x = -SPAN / 2 + i * PITCH + travel;
       while (x > SPAN / 2) x -= SPAN;
-      items[i].grp.position.x = x;
+      const it = items[i];
+      const g = it.grp;
+      const ph = i * 1.97;
+      const a = ROCK[it.type];
+      g.position.x = x;
+      /* THE BOB ONLY EVER GOES DOWN. (sin - 1) / 2 maps to [-1, 0], so an item
+         settles INTO the belt by up to 7mm and never lifts off it. A symmetric
+         bob would put a visible gap under a case for half of every cycle, which
+         is the one artefact that reads worse than no motion at all. */
+      g.position.y = it.restY + a * 0.007 * (Math.sin(x * 3.1 + ph) - 1) * 0.5;
+      g.rotation.z = a * 0.017 * Math.sin(x * 2.3 + ph);
+      g.rotation.x = a * 0.013 * Math.sin(x * 1.7 + ph * 0.7);
+      g.rotation.y = wobble(i) + a * 0.022 * Math.sin(x * 1.3 + ph * 1.4);
     }
+
+    /* THE SLATS. One offset for all of them — the belt is rigid, so every slat
+       shares the same phase. `travel % SLAT_PITCH` is the whole animation: the
+       row shifts by up to one pitch and then the next slat takes over, so the
+       surface runs continuously and the geometry never accumulates. Slats that
+       fall off either end are collapsed to zero scale rather than culled, which
+       keeps the instance count fixed and the buffer contiguous. */
+    const off = ((travel % SLAT_PITCH) + SLAT_PITCH) % SLAT_PITCH;
+    for (let k = 0; k < SLAT_N; k++) {
+      const sx = BELT_X0 - SLAT_PITCH + k * SLAT_PITCH + off;
+      const on = sx >= BELT_X0 && sx <= BELT_X1;
+      sPos.set(sx, BELT_TOP - SLAT_T / 2, 0);
+      mat4.compose(sPos, sQuat, on ? sScale : sZero);
+      slats.setMatrixAt(k, mat4);
+    }
+    slats.instanceMatrix.needsUpdate = true;
+
     root.updateMatrixWorld(true);
-    /* The instanced cartons' matrices are their groups' world matrices taken
-       back into the InstancedMesh's own space. Both live directly under `root`
-       and the mesh has an identity transform, so the group's LOCAL matrix is
-       already the right one — no inverse needed, and worth stating because the
-       moment either node gains a parent transform this stops being true. */
-    for (let k = 0; k < instanced.length; k++) {
-      const g = items[instanced[k]].grp;
-      mat4.compose(g.position, g.quaternion, g.scale);
-      cartonMesh.setMatrixAt(k, mat4);
-    }
-    cartonMesh.instanceMatrix.needsUpdate = true;
   };
 
   return {

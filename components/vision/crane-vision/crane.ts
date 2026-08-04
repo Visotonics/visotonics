@@ -231,22 +231,56 @@ export function buildCrane(mats: CraneMaterials, cmats: MaterialSet): CraneModel
 
   /* ---- camera heads ----
      Same construction as gate-vision's gantry heads — body, stalk, lens — but
-     mounted on the INSIDE face of each leg at mid-height and yawed to look
+     mounted on the OUTSIDE face of each leg at mid-height and yawed to look
      across at the load. Mid-height is y = 0, which is the middle of the frame,
-     which is where the container is at the middle of its rise. */
+     which is where the container is at the middle of its rise.
+
+     THE HEAD MOUNTS INBOARD, AND EVERY PART OF IT MOVES TOGETHER. This block
+     has now been got wrong twice, in opposite directions, so the reasoning is
+     written out in full.
+
+     The leg is 0.55 wide centred on LEG_X = 3.7, so it occupies |x| 3.425 ..
+     3.975. The camera looks ACROSS at the load, which hangs at x ~ 0 — i.e.
+     it looks INBOARD, toward smaller |x|.
+
+     Mistake 1: the body sat at `sx * LEG_X`, dead-centred on the leg and
+     narrower than it (0.42 vs 0.55). Fully swallowed — a socket cut into the
+     column, not a unit bolted to it.
+
+     Mistake 2: the body was pushed OUTBOARD to `LEG_X + 0.25`. That does make
+     it protrude, but on the far side from the thing it is looking at, so the
+     leg itself now stands between the lens and the load. A camera cannot be
+     behind its own mast.
+
+     So the housing hangs off the leg's INNER face and protrudes toward the
+     load. BODY_IN = 0.40 puts the body centre at |x| 3.30, spanning 3.09 ..
+     3.51: it overlaps the leg's inner face (3.425) by 0.085 — enough to read
+     as bolted on — and stands 0.335 clear of it into open air.
+
+     LENS AND `heads` MOVE WITH IT, and must. A lens left at the old
+     `LEG_X - 0.30` = 3.40 sits inside the leg's own volume, which is exactly
+     the "cameras are inside the rails" failure. The lens now sits at
+     `LEG_X - 0.65` = 3.05, just proud of the housing's inner face (3.09), and
+     the `heads[]` apex 0.03 ahead of it at 3.02.
+
+     Moving `heads[]` is safe and correct: scene.tsx derives the cone apex,
+     target and half-angle FROM `heads[]` every mount, so the cone re-solves
+     itself. A cone whose apex is buried in the leg is not geometry worth
+     preserving. */
+  const BODY_IN = 0.40;
   const heads: THREE.Vector3[] = [];
   const lensGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.07, 18);
   owned.push(lensGeo);
   for (const sx of [-1, 1]) {
-    const body = addF(box(0.42, 0.34, 0.62, mats.dark), sx * LEG_X, 0, 0.55);
+    const body = addF(box(0.42, 0.34, 0.62, mats.dark), sx * (LEG_X - BODY_IN), 0, 0.55);
     body.rotation.y = -sx * 0.5;
-    // stalk back to the leg
-    addF(box(0.09, 0.22, 0.09, mats.dark), sx * LEG_X, 0.26, 0.42);
+    // mounting boss bridging the leg's inner face to the housing
+    addF(box(0.16, 0.22, 0.16, mats.dark), sx * (LEG_X - 0.16), 0.20, 0.50);
     const lens = new THREE.Mesh(lensGeo, mats.lens);
     lens.rotation.z = Math.PI / 2;                 // cylinder axis along X
-    lens.position.set(sx * (LEG_X - 0.30), -0.06, 0.62);
+    lens.position.set(sx * (LEG_X - 0.65), -0.06, 0.62);
     fixed.add(lens);
-    heads.push(new THREE.Vector3(sx * (LEG_X - 0.34), -0.06, 0.62));
+    heads.push(new THREE.Vector3(sx * (LEG_X - 0.68), -0.06, 0.62));
   }
 
   /* ---- callout anchors, in LIFT-local space ----

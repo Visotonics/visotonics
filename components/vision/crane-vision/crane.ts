@@ -31,7 +31,7 @@
 --------------------------------------------------------------------------- */
 import * as THREE from "three";
 import { buildContainer } from "../container-vision/container";
-import { H as C_H, L as C_L } from "../container-vision/container";
+import { DEFECT_UV, H as C_H, L as C_L } from "../container-vision/container";
 import { warmContainerTextures } from "../container-vision/materials";
 import type { MaterialSet } from "../container-vision/materials";
 import { CANONICAL_BRUSHED, makeMetal, metalBox, tintMetal } from "../_vision/metal";
@@ -300,9 +300,38 @@ export function buildCrane(mats: CraneMaterials, cmats: MaterialSet): CraneModel
       pos: new THREE.Vector3(-1.70, -DROP + 0.95, 1.26),
       normal: new THREE.Vector3(0, 0, 1),
     },
+    /* ON THE DENT, which is where it should always have been.
+
+       This anchor was at (-1.00, -DROP - 0.95): a bare stretch of lower-left
+       panel with nothing on it. The label attached to it says the load has a
+       severe finding, and its leader ran to undamaged steel 1.24m below the
+       damage — so the one thing the callout exists to do, point at the defect,
+       it did not do.
+
+       The dent is real geometry, not a decal: container.ts sculpts it into the
+       front panel at DEFECT_UV.dent = (0.371, 0.388). Converting through the
+       same (u,v) -> local mapping every other mark in this scene uses,
+
+           x = (0.371 - 0.5) * C_L  = (0.371 - 0.5) * 6.058 = -0.781
+           y = (0.5 - 0.388) * C_H  = (0.5 - 0.388) * 2.591 =  0.290
+
+       so lift-local (-0.781, -DROP + 0.290). It also lands inside the severity
+       heatmap's own footprint (centred (-1.0, -DROP + 0.05), 2.8 x 1.9), which
+       is the check that the three graphics finally agree about where the
+       damage is.
+
+       The old anchor was low on purpose — a high anchor plus an UPWARD leader
+       runs the card past the overlay's top bound near the end of the rise and
+       placeCallout drops it. That constraint is satisfied by the lane, not by
+       the anchor: the lane below is DOWN, so the card hangs beneath the dot
+       and only the dot itself has to stay in frame. */
     severity: {
       id: "severity",
-      pos: new THREE.Vector3(-1.00, -DROP - 0.95, 1.26),
+      pos: new THREE.Vector3(
+        (DEFECT_UV.dent.u - 0.5) * C_L,
+        -DROP + (0.5 - DEFECT_UV.dent.v) * C_H,
+        1.26,
+      ),
       normal: new THREE.Vector3(0, 0, 1),
     },
   };

@@ -46,11 +46,11 @@ export const GROUND = -0.55;
        Interior height is C_H = 2.591 from the container floor at GROUND, so a
        drum on the belt tops out at GROUND + 0.62 + 0.82 = GROUND + 1.44 —
        comfortably inside, with over a metre of headroom.
-     · the belt has to nose INTO the door. It starts at x = -3.30, and the
-       door mouth is at worldX -2.41, so 0.89 of belt is inside the opening.
-       That length is hidden behind the door-void plane, which is exactly where
-       the stream's wrap already happens — so the belt appears to come out of
-       the dark with the cargo on it. */
+     · the belt has to MEET the door without entering it. It starts at
+       x = -2.28 and the mouth is at worldX -2.41, so the tail roller's crown
+       lands flush on the door plane. The cargo behind that plane is hidden by
+       the door void, so the stream still appears out of the dark — it just
+       does so at the threshold rather than from inside the box. */
 export const BELT_TOP = GROUND + 0.62;
 
 /* Deterministic hash, 0..1. Every "random-looking" number in this file comes
@@ -193,17 +193,35 @@ const DRUM = { r: 0.32, h: 0.82 };
        strand hanging under them, and a drive at the head end. None of it is
        decoration — a belt with nothing beneath it is a floating rectangle.
 */
-const BELT_X0 = -3.30;
+/* THE BELT STOPS AT THE DOOR, IT DOES NOT GO THROUGH IT.
+
+   X0 was -3.30, which put 0.89 of belt inside the container. The intent was
+   "the cargo comes out of the dark on the belt"; what it actually read as was
+   a conveyor driven through the back of a steel box — the frame, the legs and
+   the side channels all intersected the door aperture and the near sill, and
+   from an 18-degree camera you see that intersection clearly.
+
+   -2.28 puts the running surface just OUTSIDE the mouth (worldX -2.41). The
+   tail roller sits at X0 - 0.02 with r = 0.10, so its crown reaches -2.40 —
+   flush with the door plane, touching it and not entering it. Cargo behind
+   the mouth is hidden by the door-void plane either way, so the stream still
+   emerges from the dark; it now lands ON the belt head at the threshold
+   instead of already being carried inside a container it is being taken out
+   of. */
+const BELT_X0 = -2.28;
 const BELT_X1 = 6.95;
-const BELT_LEN = BELT_X1 - BELT_X0;          // 10.25
-const BELT_CX = (BELT_X0 + BELT_X1) / 2;     // 1.825
+const BELT_LEN = BELT_X1 - BELT_X0;          // 9.23
+const BELT_CX = (BELT_X0 + BELT_X1) / 2;     // 2.335
 const BELT_SURF_W = 2.10;                    // slat length across the belt
 const SLAT_PITCH = 0.30;
 const SLAT_W = 0.235;                        // leaves a 0.065 gap
 const SLAT_T = 0.016;
-const SLAT_N = Math.ceil(BELT_LEN / SLAT_PITCH) + 2;   // 37
+const SLAT_N = Math.ceil(BELT_LEN / SLAT_PITCH) + 2;   // 33
 const FRAME_Z = 1.16;
-const LEG_X = [-2.30, 0.55, 3.40, 6.25];
+/* Four bents, inset 0.38 from each end of the shortened frame and evenly
+   spaced at 2.823 between — derived from BELT_X0/X1 rather than eyeballed, so
+   shortening the belt again cannot leave a leg hanging off the end of it. */
+const LEG_X = [-1.90, 0.92, 3.75, 6.57];
 const LEG_Z = 1.06;
 
 /* ---- staged cargo: stock already unloaded, waiting at the dock -----------
@@ -536,6 +554,8 @@ export interface CargoModel {
   lamp: {
     shade: THREE.MeshStandardMaterial;
     bulb: THREE.MeshBasicMaterial;
+    halo: THREE.MeshBasicMaterial;
+    beam: THREE.MeshBasicMaterial;
     light: THREE.PointLight;
   };
   /** Advance the stream. `p` is 0..1 through the loop. Pure function of p. */
@@ -888,9 +908,19 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      The PointLight is what actually brightens the scene. Distance-limited so
      it falls off before it reaches the back row and flattens the fog
      gradient the depth read depends on. */
+  /* OVER THE BELT'S CENTRELINE, AND LOWER. At Z = FRAME_Z - 0.15 the lamp
+     hung over the near side channel rather than over the running surface, so
+     the brightest part of its pool fell on the frame and the deck beside it —
+     which is why it read as a light hanging next to the conveyor instead of
+     lighting it. Z = 0.10 is the belt's own centreline.
+
+     2.05 -> 1.70 drops it 0.35: the tallest staged item is the 0.82 drum
+     topping out at BELT_TOP + 0.82 = 0.87, so there is still 0.83 of
+     clearance, and halving the drop distance to the surface quadruples the
+     illuminance there at decay 2. */
   const LAMP_X = BELT_CX + 0.6;
-  const LAMP_Y = 2.05;
-  const LAMP_Z = FRAME_Z - 0.15;
+  const LAMP_Y = 1.70;
+  const LAMP_Z = 0.10;
 
   const wireGeo = new THREE.CylinderGeometry(0.012, 0.012, 4.6 - LAMP_Y, 6);
   owned.push(wireGeo);
@@ -910,17 +940,81 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   shade.castShadow = true;
   belt.add(shade);
 
-  const bulbGeo = new THREE.SphereGeometry(0.075, 12, 10);
+  /* THE BULB IS LIT, NOT DECORATIVE. It was a small pale sphere with a
+     point light too weak to survive the five-source rig: at decay 2 and
+     intensity 3.4, the belt 1.6 units below was receiving 3.4/1.6² = 1.3,
+     which is under the ambient it was competing with, so the lamp hung there
+     unlit. 14 gives 5.5 at the running surface — a clear warm pool under the
+     shade that falls off before it reaches the back row and flattens the fog.
+
+     The filament sphere is bigger (0.11) and pushed to a true hot white so it
+     reads as the SOURCE of that pool rather than as a bead hanging in it. A
+     second, wider sphere at 0.22 in a dim warm carries the halo: bloom picks
+     up the inner one and the outer one gives the glow a body, which is what
+     an incandescent under a shade actually looks like. Both toneMapped false
+     — ACES would pull a filament grey, the standing rule for every emissive
+     graphic in this repo. */
+  const bulbGeo = new THREE.SphereGeometry(0.11, 14, 12);
   owned.push(bulbGeo);
   const bulbMat = new THREE.MeshBasicMaterial({
-    color: "#FFE9C4", toneMapped: false, transparent: true, opacity: 0,
+    color: "#FFF3D8", toneMapped: false, transparent: true, opacity: 0,
   });
   m.all.push(bulbMat);
+  /* BELOW THE RIM, NOT INSIDE IT. The shade is a 0.34-tall cone centred on
+     LAMP_Y with its wide end DOWN, so its mouth is at LAMP_Y - 0.17. A bulb at
+     LAMP_Y - 0.14 sat 0.03 ABOVE that mouth, i.e. up inside the shade, where
+     an 18-degree camera looking slightly down sees almost none of it — which
+     is why the lamp lit the cargo correctly and still did not look lit itself.
+     LAMP_Y - 0.21 hangs it 0.04 proud of the rim: fully visible, and still
+     close enough to the shade to read as being in it. */
   const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-  bulb.position.set(LAMP_X, LAMP_Y - 0.15, LAMP_Z);
+  bulb.position.set(LAMP_X, LAMP_Y - 0.21, LAMP_Z);
   belt.add(bulb);
 
-  const lampLight = new THREE.PointLight("#FFE2B0", 0, 9.5, 2);
+  const haloGeo = new THREE.SphereGeometry(0.30, 14, 12);
+  owned.push(haloGeo);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: "#FFCD7A", toneMapped: false,
+    transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  m.all.push(haloMat);
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  halo.position.copy(bulb.position);
+  belt.add(halo);
+
+  /* THE BEAM. A hollow cone of additive warm hanging from the bulb down to
+     the running surface — the light you can SEE, as opposed to the light that
+     is doing the work.
+
+     This is not a volumetric solve and does not pretend to be. It is the same
+     trick createSightCone uses two files over: an open-ended cone, additive,
+     no depth write, at an opacity low enough that it tints rather than
+     occludes. A destuff bay is a dusty room and a shop light in one has a
+     visible shaft; without it the pool on the cargo has no stated cause and
+     the lamp reads as a prop that happens to hang near a bright patch.
+
+     Geometry: apex at the bulb, base on the belt. Height = bulb height above
+     BELT_TOP = (LAMP_Y - 0.21) - BELT_TOP, and the base radius is 0.85 —
+     a ~30-degree half-angle, which is roughly what a 0.30 shade at this drop
+     actually throws.
+
+     NOTHING HERE PULSES. The scene's standing rule after the strobe was
+     reverted: no repeating brightness cycle anywhere. The beam ramps once
+     with the intro and then holds. */
+  const BEAM_H = (LAMP_Y - 0.21) - BELT_TOP;
+  const beamGeo = new THREE.ConeGeometry(0.85, BEAM_H, 24, 1, true);
+  owned.push(beamGeo);
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: "#FFB863", toneMapped: false, transparent: true, opacity: 0,
+    depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+  });
+  m.all.push(beamMat);
+  const beam = new THREE.Mesh(beamGeo, beamMat);
+  beam.position.set(LAMP_X, BELT_TOP + BEAM_H / 2, LAMP_Z);
+  belt.add(beam);
+
+  const lampLight = new THREE.PointLight("#FFD9A0", 0, 9.5, 2);
   lampLight.position.set(LAMP_X, LAMP_Y - 0.20, LAMP_Z);
   belt.add(lampLight);
 
@@ -1231,7 +1325,7 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
        rather than walking mats.all — a lamp pushed into mats.all alone would
        sit at opacity 0 forever, and its PointLight starts at intensity 0 for
        the same reason. Both have to be driven with `solid`. */
-    lamp: { shade: shadeMat, bulb: bulbMat, light: lampLight },
+    lamp: { shade: shadeMat, bulb: bulbMat, halo: haloMat, beam: beamMat, light: lampLight },
     advance,
     owned,
   };

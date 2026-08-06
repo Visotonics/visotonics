@@ -369,17 +369,33 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         "position:absolute;left:30px;bottom:26px;opacity:0;transition:opacity .4s ease;pointer-events:none;";
       const counterLabel = document.createElement("div");
       counterLabel.textContent = "CASES COUNTED";
+      /* SIZED UP AND LIFTED OFF THE DECK. The register above is right, but it
+         was authored against the overlay's near-black and this scene no longer
+         has one under the readout: the lit deck and the warm pool from the
+         pendant both sit behind the bottom-left corner, and 42%-alpha ink at
+         10px on a lit concrete slab is not readable. Three changes, all
+         contrast rather than restyling:
+
+           · the number goes 27 -> 38px, the head 10 -> 12px, the breakdown
+             11 -> 13px. It is still instrumentation and not a display graphic.
+           · alphas go 0.42/0.46 -> 0.78/0.72, and the number takes a plain
+             white-hot accentText rather than sitting at the same value as its
+             own caption.
+           · a text-shadow, NOT a plate. A filled panel behind the readout
+             would be a UI card laid on the render, which is the thing the
+             original note is arguing against; a 1px dark shadow buys the same
+             separation and keeps the type sitting IN the frame. */
       counterLabel.style.cssText =
-        `font-family:${mono};font-size:10px;font-weight:500;letter-spacing:0.24em;color:rgba(226,234,244,0.42);padding-bottom:9px;`;
+        `font-family:${mono};font-size:12px;font-weight:500;letter-spacing:0.24em;color:rgba(226,234,244,0.78);padding-bottom:10px;text-shadow:0 1px 3px rgba(0,0,0,0.85);`;
       const counterRow = document.createElement("div");
       counterRow.style.cssText =
-        `border-left:1px solid ${PALETTE.accent};padding-left:12px;display:flex;align-items:baseline;gap:14px;`;
+        `border-left:2px solid ${PALETTE.accent};padding-left:14px;display:flex;align-items:baseline;gap:16px;`;
       const counterNum = document.createElement("div");
       counterNum.style.cssText =
-        `font-family:${mono};font-size:27px;font-weight:500;line-height:1;letter-spacing:-0.01em;color:${PALETTE.accentText};font-variant-numeric:tabular-nums;`;
+        `font-family:${mono};font-size:38px;font-weight:500;line-height:1;letter-spacing:-0.01em;color:${PALETTE.accentText};font-variant-numeric:tabular-nums;text-shadow:0 2px 6px rgba(0,0,0,0.9);`;
       const counterMix = document.createElement("div");
       counterMix.style.cssText =
-        `font-family:${mono};font-size:11px;font-weight:500;letter-spacing:0.14em;color:rgba(226,234,244,0.46);font-variant-numeric:tabular-nums;white-space:nowrap;`;
+        `font-family:${mono};font-size:13px;font-weight:500;letter-spacing:0.14em;color:rgba(226,234,244,0.72);font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,0.85);`;
       counterRow.appendChild(counterNum);
       counterRow.appendChild(counterMix);
       counterBox.appendChild(counterLabel);
@@ -649,7 +665,27 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
            carries the depth read. */
         model.lamp.shade.opacity = solid;
         model.lamp.bulb.opacity = solid;
-        model.lamp.light.intensity = solid * 3.4;
+        model.lamp.halo.opacity = solid * 0.55;
+        /* 0.085 — deliberately at the bottom of what registers. An additive
+           shaft is very easy to overdo, and past about 0.12 it stops reading
+           as air and starts reading as a translucent solid standing on the
+           belt. */
+        model.lamp.beam.opacity = solid * 0.085;
+        /* 40, up from 3.4 — and 14 on the way, which was measured and found
+           still too weak. At decay 2 the belt is 1.63 units under the bulb, so
+           the illuminance there is intensity / 1.63² = intensity / 2.66:
+
+               3.4  ->  1.3    invisible against the five-source rig
+               14   ->  5.3    comparable to the key; reads as a faint tint
+               40   ->  15.0   about 2.7x the key box (5.6), which is what a
+                               practical has to be to look like the reason the
+                               surface under it is bright
+
+           The pool still dies before it matters: at the back row 6+ units out
+           it is under 1.1, so the fog gradient that carries the depth read is
+           untouched. That falloff is the reason this is a PointLight with a
+           hard distance limit rather than another area light. */
+        model.lamp.light.intensity = solid * 40;
         /* THE DECK RAMPS ON COLOUR, NOT OPACITY — see the material's own note.
            multiplyScalar works on the LINEAR working value, which is the
            correct space to dim a lit surface in; scaling the sRGB hex instead

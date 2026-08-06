@@ -224,18 +224,47 @@ const W_CAPTURE: [number, number] = [0.08, 0.90];
    the words were legible for well under a second. A label nobody can finish
    reading is worse than no label: it registers as a flash.
 
-   [0.38, 0.86] is 0.48 of the loop = 2.3s, better than double, and it now also
-   starts earlier so the panel and the callout come up together rather than the
-   card trailing the tiles it is describing. */
-const W_SELECT: [number, number] = [0.38, 0.86];
-/* Nudged to start with the select beat's tail rather than after it, so the
-   severity conclusion lands while the evidence is still up. */
-const W_SEVERE: [number, number] = [0.66, 0.96];
+   [0.38, 0.86] was 0.48 of the loop = 2.3s, better than double. STILL NOT
+   ENOUGH, and the reason is that the window is a fraction of a 4.8-second loop
+   — widening the fraction runs out of loop long before it runs out of need.
+   A two-line card with a name, a confidence and a location is roughly twelve
+   words; at a normal reading rate that is 3 seconds of eyes-on plus the fade
+   at each end.
+
+   LOOP STAYS AT 4.8. Lengthening it is the obvious lever and it is the wrong
+   one: the travel is ~12.67m, so 4.8s is already 2.64 m/s and anything past
+   about 5.1s drops the lift under the ~2.5 m/s floor that made every earlier
+   version read as a load going up on a string. The windows have to find the
+   time inside the loop they have.
+
+   The other half of the answer is the rise itself: it now eases in (see the
+   note at model.lift.position.y), which keeps the container in frame to
+   p ~= 0.81 instead of p ~= 0.70. A window is only worth what the subject
+   under it is worth, and these two windows are now sized to the shot rather
+   than to the loop.
+
+   The numbers land just below — roughly triple and double what they held
+   before, and both now play out ON the container rather than over the sky it
+   has left.
+
+   THEY NOW OVERLAP FROM 0.52 TO 0.94, ON PURPOSE. Two findings on one
+   container is the honest picture of a damage survey, and the two cards do not
+   collide: the corrosion sits right of the container's centre and leads UP,
+   the dent sits left of it and leads DOWN. */
+/* Both tails pulled in after measuring the lab slot at p = 0.85: the container
+   is still in frame there, but the DENT anchor sits above its centre, so by
+   then it is close enough to the top edge that placeCallout's `top > h*0.03`
+   test rejects the card and the label silently vanishes. The window has to end
+   while its own anchor is comfortably inside the frame, not merely while the
+   subject is. */
+const W_SELECT: [number, number] = [0.18, 0.74];   // 0.56 of 4.8s = 2.69s
+const W_SEVERE: [number, number] = [0.38, 0.80];   // 0.42 = 2.02s
 /** The frame-stack DOM panel: starts just after the container has cleared
  *  the camera heads (p_clear ~= 0.246 at the reference aspect — see the
  *  derivation at panelVis in applyFrame) and holds through most of the rest
  *  of the loop, fading out before the wrap. */
-const W_PANEL: [number, number] = [0.30, 0.96];
+/* 0.44, up from 0.30 — the eased rise moved p_clear from 0.246 to 0.41. */
+const W_PANEL: [number, number] = [0.44, 0.96];
 
 /** Steady opacity for both cones for the whole of W_CAPTURE. Meaningfully up
  *  from the old flat 0.28 (which was dim by design for nothing in particular
@@ -453,7 +482,19 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          arm 0.22 is deliberately under h/2 (0.43); at the old 0.3 on a 0.42-tall
          box the top and bottom arms overran each other through the middle and
          the "corner marks" closed into a solid rectangle. */
-      const idBox = bracket(2.6, 0.86, ID_MAT, 0.22, 0.09);
+      /* AND NOW BACK IN, TO 1.95 x 0.54. 2.6 x 0.86 overshot: it framed the
+         whole plaque panel including the empty steel above and below the
+         stencil run, so the box was visibly larger than the thing inside it
+         and read as gesturing at a region rather than as a reading of an ID.
+
+         The measured run is ~0.269 in u (1.63m) and ~0.078 in v (0.20m). 1.95
+         x 0.54 is that run plus roughly 0.16m of margin on every side — tight
+         to the characters, still clear of them. At ~30 px/m that is 59 x 16
+         PIXELS, so the earlier legibility failure has to be answered by WEIGHT
+         rather than by size: thickness stays at 0.075 (2.2px, which reads) and
+         the arms drop to 0.17, comfortably under h/2 = 0.27 so the corner
+         marks stay corner marks instead of closing into a rectangle. */
+      const idBox = bracket(1.95, 0.54, ID_MAT, 0.17, 0.075);
       idBox.position.copy(ID_LOCAL);
       model.lift.add(idBox);
       const rustBox = bracket(0.66, 0.55, RUST_MAT, 0.16, 0.03);
@@ -528,6 +569,28 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const foundMark = bracket(0.62, 0.46, FOUND_MAT, 0.16, 0.03);
       foundMark.position.copy(model.anchors.sharp.pos);
       model.lift.add(foundMark);
+
+      /* ---- and a MARK on the dent ----
+         The severity callout now leads to the dent (see crane.ts's anchor
+         note), but a leader ending on bare panel still asks the viewer to take
+         the system's word for where the damage is. The corrosion has the rust
+         box; the dent had only the heatmap, which is a graded FIELD — good at
+         saying "roughly here, and it gets worse toward the middle", useless at
+         saying "this, exactly".
+
+         In PALETTE.warn, not accent, and that is the one place in this scene
+         where the distinction matters: the ID and rust boxes are the system
+         OBSERVING (#5CC8FF) while this is the system's CONCLUSION about a
+         severe finding, which is the orange half of the site's two-accent
+         rule. 1.05 x 0.78 covers the sculpted deformation, which spreads along
+         the panel rather than sitting in a disc — the same elliptical bias the
+         heatmap shader already assumes. */
+      const DENT_MAT = new THREE.MeshBasicMaterial({
+        color: PALETTE.warn, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+      });
+      const dentBox = bracket(1.05, 0.78, DENT_MAT, 0.22, 0.05);
+      dentBox.position.copy(model.anchors.severity.pos);
+      model.lift.add(dentBox);
 
       /* ---- the selection panel: DOM, not 3D ----
          ONE large, crisp hero frame — the sharpest-frame selection — plus FOUR
@@ -797,10 +860,21 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         lane: { dir: "up", len: 96 },
         win: W_SELECT,
       });
+      /* AND IT NAMES THE DEFECT. "High severity / flagged for surveyor" is a
+         VERDICT with no finding attached: a reader looking at it cannot tell
+         what was found, where, or how sure the system is — which is the whole
+         payload of a damage read. Every other callout on this site leads with
+         the finding and its confidence (gate's ID, cargo's crushed corner,
+         document's field); this one led with its own escalation policy.
+
+         "Dent · 0.84" and "412 mm² · panel 2" are container.ts's own numbers
+         for DEFECT_UV.dent, so the card cannot drift from the geometry it is
+         pointing at. The severity verdict survives where it belongs, as the
+         consequence on the end of the second line. */
       const severeLabel = createCallout(overlay, {
         id: "severe",
-        title: "High severity",
-        detail: "flagged for surveyor · 14:07:52",
+        title: "Dent · 0.84",
+        detail: "412 mm² · panel 2 · flagged for surveyor",
         pos: model.anchors.severity.pos,
         normal: model.anchors.severity.normal,
         severe: true,
@@ -810,7 +884,15 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
            bound and placeCallout drops it on every frame — the finding lights up
            and the words never come. Downward hangs into the clear air the load
            has just left. */
-        lane: { dir: "down", len: 58 },
+        /* 110, up from 58. Measured at p = 0.55: with the corrosion card
+           hanging above the container on a 96px up-lane and this one 58px
+           below its own anchor, the two cards stacked into a single block of
+           chrome across the middle of the load — between them they covered
+           most of the thing they were describing. 110 drops this one clear of
+           the container's bottom edge into the empty air under it, which is
+           where the frame stack has not yet reached at this point in the loop.
+           Still DOWN for the reason below. */
+        lane: { dir: "down", len: 110 },
         win: W_SEVERE,
       });
       const marks: Callout[] = [sharpLabel, severeLabel];
@@ -863,9 +945,30 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         camera.updateMatrixWorld(true);
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
 
-        /* ---- rise and sway ---- */
+        /* ---- rise and sway ----
+
+           THE RISE EASES IN. It was linear in p, which is why every label on
+           this scene was reported as flashing past: measured on the real slot
+           (520 x 876, so aspect 0.594 — the fitRad clamp bites at 2.6 and the
+           frame is tighter than the reference derivation assumes), the
+           container was fully framed at p = 0.40 and almost entirely gone by
+           p = 0.70. The two payoff beats were landing on a subject that had
+           left. Widening their windows inside a linear rise cannot fix that:
+           it just holds a card over empty sky.
+
+           pow(p, 1.55) is the shape a real lift has anyway — a spreader with
+           thirty tonnes under it does not step to full hoist speed, it takes
+           up the load and accelerates. It also spends its slow half where the
+           camera is looking. The container now stays in frame to about
+           p = 0.81 (pow(0.81, 1.55) = 0.72, the old exit point) and still
+           clears completely by p = 1, because pow(1, k) = 1 — the endpoints
+           are untouched, so riseFrom/riseTo and every derivation off them
+           still hold. Only the distribution between them changes.
+
+           Consequence for W_PANEL: p_clear moves from 0.246 to 0.246^(1/1.55)
+           = 0.41, so the frame stack now comes up at 0.44 rather than 0.30. */
         const from = riseFrom(halfH);
-        model.lift.position.y = from + (riseTo(halfH) - from) * p;
+        model.lift.position.y = from + (riseTo(halfH) - from) * Math.pow(p, 1.55);
         model.lift.rotation.z = swayAt(p);
         model.lift.updateMatrixWorld(true);
         model.fixed.updateMatrixWorld(true);
@@ -948,6 +1051,9 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
           ? 0
           : smoothstep(W_SELECT[0], W_SELECT[0] + 0.04, p) * (1 - smoothstep(W_SELECT[1] - 0.05, W_SELECT[1], p));
         FOUND_MAT.opacity = solid * selectVis;
+        /* The dent mark rides the SEVERITY envelope, not the capture one: it
+           is the conclusion, so it appears with the card that states it and
+           leaves with it. Computed below (severeVis) — assigned there. */
 
         /* ---- the frame-stack panel: timed to when the bottom of frame is
            actually empty ----
@@ -971,6 +1077,7 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
           smoothstep(W_SEVERE[0], W_SEVERE[0] + 0.04, p) *
           (1 - smoothstep(W_SEVERE[1] - 0.05, W_SEVERE[1], p));
         heatMat.uniforms.uOp.value = solid * severeVis;
+        DENT_MAT.opacity = solid * severeVis;
 
         /* ---- labels ---- */
         const place = (c: Callout, win: [number, number]) => {
@@ -1053,8 +1160,16 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         const disposeBracket = (g: THREE.Group) => {
           g.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
         };
+        /* All four brackets, not just foundMark — idBox and rustBox were built
+           by the same allocator and were being left behind on every unmount. */
         disposeBracket(foundMark);
+        disposeBracket(dentBox);
+        disposeBracket(idBox);
+        disposeBracket(rustBox);
         FOUND_MAT.dispose();
+        DENT_MAT.dispose();
+        ID_MAT.dispose();
+        RUST_MAT.dispose();
         model.owned.forEach((g) => g.dispose());
         mats.dispose();
         cmats.dispose();

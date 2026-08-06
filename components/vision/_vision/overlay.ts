@@ -63,7 +63,21 @@ export function createCallout(overlay: HTMLElement, d: CalloutSpec): Callout {
   /* Held well below the label's title colour so the hierarchy is unchanged: the
      leader has to be VISIBLE, not loud. It is still a drafting line, just drawn
      in white ink on a dark sheet instead of black ink on a light one. */
-  const ink = d.onDark ? "rgba(226,234,244,0.45)" : "#05070C";
+  /* 0.45 -> 0.72, and the rule below goes 1.5px -> 2px.
+
+     "Held well below the title colour" was the right instinct and the wrong
+     number. A 1.5px hairline at 45% alpha over a near-black scene is roughly
+     a 40:1 luminance ratio against the page — that is a line you can find if
+     you already know it is there, and Crane Vision's review found it was not
+     visible at all. The problem is compounded by scale: these canvases render
+     downscaled inside their slots, so a sub-2px rule loses most of its
+     coverage to antialiasing before it ever reaches the eye.
+
+     2px at 72% is still a drafting line and still far below the 21px title in
+     both weight and salience, so the hierarchy the header states is intact.
+     The dark-ground ink alone changes — the light-ground "#05070C" was
+     already reading correctly against Tank and the hero cards. */
+  const ink = d.onDark ? "rgba(226,234,244,0.72)" : "#05070C";
 
   const w = document.createElement("div");
   w.style.cssText = "position:absolute;left:0;top:0;opacity:0;transition:opacity .4s ease;pointer-events:none;will-change:transform,opacity;";
@@ -73,7 +87,7 @@ export function createCallout(overlay: HTMLElement, d: CalloutSpec): Callout {
   w.appendChild(dot);
   // plain black leader — a drafting line, not a light beam
   const leader = document.createElement("div");
-  leader.style.cssText = `position:absolute;left:0;${up ? "bottom" : "top"}:6px;width:1.5px;height:${d.lane.len}px;transform:translateX(-50%);background:${ink};`;
+  leader.style.cssText = `position:absolute;left:0;${up ? "bottom" : "top"}:6px;width:2px;height:${d.lane.len}px;transform:translateX(-50%);background:${ink};`;
   w.appendChild(leader);
   const label = document.createElement("div");
   label.style.cssText = `position:absolute;left:0;${up ? "bottom" : "top"}:${d.lane.len + 4}px;transform:translateX(-50%);white-space:nowrap;text-align:center;font-family:${sans};border-radius:3px;padding:14px 26px;background:rgba(3,5,9,0.9);`;

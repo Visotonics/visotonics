@@ -412,112 +412,6 @@ export function SectionTank() {
   );
 }
 
-/* =========================================================================
-   PLATFORM BAND  (light) — one record, four checkpoints (the timeline)
-   No rail id. Orange detection is DRAWN here (see census flag in the report).
-   ========================================================================= */
-
-// the 4 checkpoint stations sit at the midpoints of the 4 grid columns
-const STATIONS = ["GATE IN", "CRANE ON", "CRANE OFF", "GATE OUT"];
-const stationX = (i: number) => `calc(64px + (100% - 128px) * ${0.125 + 0.25 * i})`;
-const gridX = (frac: number) => `calc(64px + (100% - 128px) * ${frac})`;
-
-function CheckpointBox({ detection = false }: { detection?: boolean }) {
-  const b = "1px solid rgba(19,21,26,0.8)";
-  return (
-    <div aria-hidden="true" style={{ position: "absolute", top: 458, left: -36, width: 72, height: 44 }}>
-      <div style={{ position: "absolute", inset: 0, border: b }} />
-      <div style={{ position: "absolute", left: -3, top: -3, width: 7, height: 7, borderTop: b, borderLeft: b }} />
-      <div style={{ position: "absolute", right: -3, top: -3, width: 7, height: 7, borderTop: b, borderRight: b }} />
-      <div style={{ position: "absolute", left: -3, bottom: -3, width: 7, height: 7, borderBottom: b, borderLeft: b }} />
-      <div style={{ position: "absolute", right: -3, bottom: -3, width: 7, height: 7, borderBottom: b, borderRight: b }} />
-      {detection ? (
-        <div style={{ position: "absolute", left: 34, top: 6, width: 26, height: 22, border: `1.5px solid ${SIGNAL}`, background: "rgba(237,81,12,0.14)" }} />
-      ) : null}
-    </div>
-  );
-}
-
-export function PlatformBand() {
-  const LEDGER = [
-    "CHECKPOINT DIFF — auditable damage attribution between any two checkpoints",
-    "TAMPER-EVIDENT LOGBOOK — per container movement",
-    "CHAIN OF CUSTODY — vessel → yard → gate",
-  ];
-  return (
-    <section className="on-light" style={{ position: "relative", background: CANVAS_LIGHT, boxSizing: "border-box", overflow: "hidden" }}>
-      <LightBandChrome />
-
-      {/* DESKTOP */}
-      <Reveal as="div" className="hidden md:block" style={{ position: "relative", zIndex: 1, height: 840 }}>
-        <p style={{ ...eyebrow(TXT_L2), position: "absolute", left: 88, top: 112, margin: 0 }}>THE PLATFORM — ONE RECORD, FOUR CHECKPOINTS</p>
-        <h2 style={{ position: "absolute", left: 70, top: 166, margin: 0, width: 1200, fontFamily: sans, fontSize: 56, lineHeight: 1.04, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
-          Every movement, on the record.
-        </h2>
-
-        {/* timeline datum */}
-        <div aria-hidden="true" style={{ position: "absolute", left: 64, right: 64, top: 430, height: 1, background: TXT_L1 }} />
-        {/* diff markers on the datum (grid cols 2 & 4) */}
-        <Cross color={TXT_L1} style={{ left: `calc(${gridX(0.25)} - 4px)`, top: 426, zIndex: 2 }} />
-        <Cross color={TXT_L1} style={{ left: `calc(${gridX(0.75)} - 4px)`, top: 426, zIndex: 2 }} />
-
-        {/* stations */}
-        {STATIONS.map((label, i) => (
-          <div key={label} style={{ position: "absolute", left: stationX(i), top: 0, bottom: 0, width: 0 }}>
-            <div style={{ position: "absolute", top: 396, left: -80, width: 160, textAlign: "center", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", color: TXT_L1 }}>
-              {label}
-            </div>
-            <div aria-hidden="true" style={{ position: "absolute", top: 424, left: 0, width: 1, height: 13, background: TXT_L1 }} />
-            <CheckpointBox detection={label === "CRANE OFF"} />
-          </div>
-        ))}
-
-        {/* orange leader + attribution label off CRANE OFF (drawn detection UI) */}
-        <div aria-hidden="true" style={{ position: "absolute", left: `calc(${stationX(2)} + 11px)`, top: 486, width: 1, height: 40, background: SIGNAL, zIndex: 1 }} />
-        <div style={{ position: "absolute", left: stationX(2), top: 532, transform: "translateX(-50%)", whiteSpace: "nowrap", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.06em", color: SIGNAL, zIndex: 1 }}>
-          NEW DAMAGE — ATTRIBUTED TO CRANE OFF → GATE OUT
-        </div>
-
-        {/* ledger */}
-        <div style={{ position: "absolute", left: 88, right: 64, top: 640, display: "flex", flexDirection: "column", gap: 26, zIndex: 1 }}>
-          {LEDGER.map((l) => (
-            <span key={l} style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: TXT_L2 }}>{l}</span>
-          ))}
-        </div>
-      </Reveal>
-
-      {/* MOBILE — timeline stacks vertically */}
-      <Reveal as="div" className="md:hidden" style={{ position: "relative", zIndex: 1, padding: "56px 24px 56px 40px" }}>
-        <p style={{ ...eyebrow(TXT_L2), margin: 0, fontSize: 11 }}>THE PLATFORM — ONE RECORD, FOUR CHECKPOINTS</p>
-        <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 32, lineHeight: 1.08, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>
-          Every movement, on the record.
-        </h2>
-        <div style={{ margin: "40px 0 0", display: "flex", flexDirection: "column" }}>
-          {STATIONS.map((label, i) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 16, paddingLeft: 4 }}>
-              <span style={{ position: "relative", flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <span aria-hidden="true" style={{ width: 10, height: 10, border: "1px solid rgba(19,21,26,0.8)", background: label === "CRANE OFF" ? "rgba(237,81,12,0.14)" : "transparent", borderColor: label === "CRANE OFF" ? SIGNAL : "rgba(19,21,26,0.8)" }} />
-                {i < STATIONS.length - 1 ? <span aria-hidden="true" style={{ width: 1, height: 40, background: TXT_L1 }} /> : null}
-              </span>
-              <span style={{ paddingBottom: i < STATIONS.length - 1 ? 40 : 0, fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", color: TXT_L1 }}>
-                {label}
-                {label === "CRANE OFF" ? (
-                  <span style={{ display: "block", marginTop: 6, fontSize: 12, letterSpacing: "0.06em", color: SIGNAL }}>NEW DAMAGE — ATTRIBUTED TO CRANE OFF → GATE OUT</span>
-                ) : null}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 20 }}>
-          {LEDGER.map((l) => (
-            <span key={l} style={{ fontFamily: mono, fontSize: 12, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: TXT_L2, lineHeight: 1.5 }}>{l}</span>
-          ))}
-        </div>
-      </Reveal>
-    </section>
-  );
-}
-
 const MUTED = "#6C7480";
 
 // dark-section eyebrow-row chrome: horizontal gridline through the eyebrow +
@@ -892,10 +786,20 @@ export function SectionCargo({ n = "06" }: { n?: string }) {
             top; the caption's own margin below fixes the bottom. */}
         <div aria-hidden="true" style={{ height: 228 }} />
 
-        {/* centered demo slot (4:3) + caption */}
+        {/* centered demo slot + caption */}
         <div style={{ position: "relative", zIndex: 1, margin: "0 64px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          {/* the live destuff count, at the 4:3 the scene was framed for */}
-          <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3" }}>
+          {/* 16:10, DOWN FROM 4:3 — 17% off the bottom of the slot.
+              This is a crop, not a rescale, and that is the point. The scene's
+              camera compensates for aspect (fitRad in scene.tsx) so that its
+              horizontal window is invariant: the subject stays exactly the
+              size it was and only the empty deck under it goes. 4:3 left a
+              band of unoccupied concrete beneath the conveyor that the eye
+              read as the section running on past its own content.
+              16:9 measured at a 1440 viewport: at 4:3 the subject occupied the
+              top 55% of a 838px slot and the lower 380px was bare concrete.
+              Both ends of the frame were dead — void above, deck below — so a
+              symmetric crop takes the waste off both and costs nothing. */}
+          <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9" }}>
             <CargoVisionScene bare bleed={180} />
           </div>
           <p style={{ margin: "228px 0 0", textAlign: "center", fontFamily: sans, fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>Automatic, accurate count with video proof per session.</p>

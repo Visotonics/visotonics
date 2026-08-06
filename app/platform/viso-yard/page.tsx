@@ -5,7 +5,6 @@ import { Reveal } from "@/components/motion";
 import { YardRailDesktop, YardRulerMobile } from "./rail";
 import { Convert } from "./convert";
 import {
-  PlatformBand,
   SectionCargo,
   SectionContainer,
   SectionCrane,
@@ -228,8 +227,6 @@ export default function VisoYardPage() {
                   <Reveal as="div"><SectionGate /></Reveal>
                   <Reveal as="div"><SectionYard /></Reveal>
                   <Reveal as="div"><SectionCrane /></Reveal>
-                  {/* PlatformBand is a light band — same reason as Tank */}
-                  <PlatformBand />
                   <Reveal as="div"><SectionCargo /></Reveal>
                   <Reveal as="div"><SectionDocument /></Reveal>
                   <Reveal as="div"><SectionWork n="08" /></Reveal>

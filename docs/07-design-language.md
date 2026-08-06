@@ -33,6 +33,44 @@ Blue used to have two values — `#1B7FC4` for a light ground, `#5CC8FF` for dar
 
 Yard Vision ships both together and Document Vision followed that precedent on purpose. This has been "fixed" into one colour before — reconciled, shipped, and reverted — because collapsing them destroys the label-vs-mark distinction and the blast radius is wider than it looks (a Yard card's physical painted warning flag is also tinted from this pair). **Do not unify these again.** If a third warm colour ever seems needed, it almost certainly isn't — pick whichever of the two matches whether the thing being drawn is a NAME or a MARK.
 
+### The one place the two accents are used together, on purpose
+
+The rule above is static — this is the dynamic version of it, and it is the
+strongest single moment any of these loops has.
+
+**A sight cone is blue while it is reading and turns orange for the one beat
+where the read becomes a finding.** Cargo Vision's cone tracks case after case
+down the belt in `PALETTE.accent`, and takes SIGNAL orange only while the
+crushed case is under it. The colour is not decorating the cone; it is stating
+what the system currently thinks, and it changes at the exact instant the
+system changes its mind.
+
+Three constraints on doing it again:
+
+- **Spend it once per loop.** Two orange beats and neither is a conclusion.
+- **Drive the flip from what the cone is looking at**, never from a separate
+  timing window — those drift, and the failure mode is silent (see
+  `09-scene-craft-and-learnings.md`, where exactly this fired for 130ms on an
+  item the cone had already left).
+- **Choose the warm value against the SCENE.** `PALETTE.warn` (#FFB020) is the
+  label colour and sits close to any warm practical light in frame; over a
+  pendant's own pool it vanished. #ED510C is 60° clear of both the accent and
+  that lamp. Lift the alpha with the hue — against a lit surface, hue alone is
+  not enough.
+
+### One deliberate exception to the two-accent rule, on record
+
+**Crane Vision's dent bracket is BLUE, not orange.** By the rule above a
+confirmed dent is a conclusion and should be warm; it is drawn in
+`PALETTE.accent` on explicit product-owner instruction, so all three of that
+scene's detection brackets read as one consistent family of marks. It is
+recorded in `DECISIONS.md` and in an in-code comment at `DENT_MAT` so a later
+pass does not "correct" it back.
+
+Worth knowing: the `Dent · 0.84` callout's TITLE is still warm (`severe: true`
+on the callout), so in that scene the label and its own bracket currently
+disagree in colour. That is an open item, not a considered choice.
+
 ### `toneMapped: false` on every signal graphic
 
 ACES tone-mapping desaturates as it compresses highlights — correct for a lit metal surface, wrong for a graphic whose colour *is* data. Every accent marker, bracket, cone and gridline in the 3D scenes sets `toneMapped: false`, or it renders as a grey-green smudge instead of its authored hex. `detectMaterials()` and `createSightCone()` always do this; any new scene-local `MeshBasicMaterial` or `LineBasicMaterial` has to be told explicitly.
@@ -66,6 +104,20 @@ Two families: `--font-archivo` (sans, all display/body/UI type) and `--font-plex
 | `--text-mono-log` | 14px, no transform | Console/log/telemetry text |
 
 `--text-metric`'s comment is explicit that tabular-nums + this scale is reserved for numbers that are actually verified claims, not any large numeral.
+
+### A readout is either instrumentation or a claim — decide which before styling it
+
+Both registers exist on the site and they are not interchangeable:
+
+- **Instrumentation** — 10–13px mono, letterspaced, 40–60% ink, on a 1px accent rule. The system reporting a side-channel fact. Work Vision's shift register and Document Vision's extracted-field table are this.
+- **A claim** — the sans display face, 68–72px, `-0.03em`, solid white, tabular-nums. Cargo Vision's case counter is this, because that section's headline is *"Every case counted"* — the number **is** the argument, not telemetry beside it.
+
+Cargo's counter shipped as instrumentation first and it was wrong. The test is simple: **if the headline is about the number, the number is display type.**
+
+Two things that go with the display treatment:
+
+- **White, not accent.** A large figure in the observing colour competes with every bracket in frame for that colour's meaning. The accent survives as the rule down the left edge, where it still says "the system is stating this".
+- **No text-shadow.** Shadows get added when small grey type is losing to a lit surface — but the fix for that is the type, not a halo. 72px of solid white at 600 needs no help, and a soft black glow under display type is the one thing this drafting register never does. `tabular-nums` stays regardless: on a counter that ticks, proportional figures shift the whole number sideways every time a digit changes.
 
 ## The drafting-sheet motif
 

@@ -58,6 +58,30 @@ The one exception that looks like it breaks this and doesn't: the sight-cone's g
 - **Absolutely-sized type inside a percentage-sized box overflows at narrow viewports.** A readout column positioned by percentage width with a hardcoded pixel font size will push text outside the canvas once the viewport narrows enough. Derive font size from the container's actual width instead.
 - **CSS `filter: blur()` on an element eats its own border**, because the blur kernel samples outside the element's box, including the transparent area past its edge — a bordered tile with `blur()` applied directly gets a feathered, edgeless smudge instead of a crisp blurred image with a sharp frame. Fix: blur an inner layer inset by `2×blurPx` and clip with `overflow:hidden`, so the kernel always has real pixels to sample at its own edges.
 
+## The detection camera — the standard, and how to build one
+
+Settled across Crane Vision and Cargo Vision. Any new scene that wants to show a machine reading something should build it this way rather than reinvent it.
+
+**Put the camera in shot, off-centre.** A bracket that appears from nowhere asserts a detection; a cone thrown from a lens you can see demonstrates one. The housing belongs toward a corner — it is the instrument, not the subject, and centring it makes the frame about the equipment.
+
+**Site the camera where the read actually happens, not where it looks tidy.** Cargo's pole stands at `x = 0` because that is the count line — the exact place `advance()` puts a crossing and the counter ticks. A camera aimed anywhere else is watching the wrong metre of belt. It also stands on the FAR side of the conveyor from the lens (`z = -1.85` against side channels at ±1.16) so it never crosses the cargo it is watching, and on the opposite side from the pendant lamp so the two never fight.
+
+**Derive the head's pitch, don't eyeball it.** `head.rotation.x = -atan2(CAM_Y - BELT_TOP, |CAM_Z|)` aims at the running surface by construction, so moving the pole or the belt cannot leave the camera staring at nothing.
+
+**One cone, re-aimed. Never one per target.** Nine cones over nine items is nine overlapping volumes across the middle of the frame, and it says the machine watches everything at once — which is both untrue and less interesting than the truth. Re-aiming is what makes the hand-off legible: the cone swings to the next case as it reaches the line, which is the visual statement of "every case, in turn".
+
+**Derive the cone's target from the SAME test that drives the brackets.** Cargo picks the item with the highest read-window visibility, which is by definition the one nearest the count line — so the cone and the bracket cannot disagree about which case is being read. A separate "which item is closest" search is a second source of truth and will drift.
+
+**Re-derive the half-angle from the live range every frame**: `atan(CONE_R / distance(lens, target))`. Without it the cone fans wider as its target recedes and the footprint on the subject grows; with it the footprint stays constant, which is what a real lens looks like.
+
+**Aim direction and cone LENGTH are separate problems.** Truncating a cone at its aim point puts the subject at the very tip where the range falloff has already killed the volume — the beam visibly stops at the thing it is looking at. Aim sets the axis; the floor (or belt) sets the length. `createSightCone`'s ground-pool fade is what forces this, and work-vision documents the correction in `detect.ts`.
+
+**Colour states what the cone is looking at, so drive it from what the cone is looking at.** Cargo's flip was first tied to the damage window and could never fire: the flagged case is under the cone from p 0.448 to 0.570 and the damage window opened at 0.55, so the two overlapped for 0.02 of the loop — orange for ~130ms on an item the cone had already left. Tie the colour to the cone's own target visibility and move the finding's window to match, not the other way round.
+
+**Pick the warm value by contrast against the SCENE, not against the palette.** `PALETTE.warn` (#FFB020) is the severity *label* colour and sits close to a warm practical light; at 34% additive over the pool a pendant lamp throws, the flip was invisible. #ED510C (SIGNAL) is 60° of hue clear of both the accent and the lamp. Lift alpha alongside hue so the change separates by value too — hue alone is not enough against a lit surface.
+
+**`createSightCone` has no colour setter.** It exposes `material`, so write `material.uniforms.uColor.value.copy(c)`. The ground pool has its own material and its own uniforms; only `setOpacity` drives both.
+
 ## Draw order — the trap that cost four passes
 
 - **`depthTest: false` defeats the depth BUFFER, not the draw ORDER.** Every object in a scene whose materials are `transparent: true` — which includes any subject that ramps its opacity during an intro — lands in three.js's transparent queue, and that queue is drawn in per-object bounding-sphere distance order. An overlay graphic sitting 0.1 units proud of a panel will still be painted over by that panel whenever the panel's *centre* happens to sort nearer. The symptom is maddening because it is per-object and therefore looks arbitrary: in Crane Vision one detection bracket vanished completely, a second lost only its left-hand bars, and a third a metre away rendered perfectly. **Set an explicit `renderOrder` on anything that must sit on top.**

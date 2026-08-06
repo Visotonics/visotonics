@@ -6,6 +6,30 @@ Known-broken or unfinished things visible in the codebase today. For prioritizin
 
 Four product sections (Audit Vision, Dimension Vision, Secure Vision, Production Vision) show a static SVG diagram where a 3D scene like the other 8 would go. See `02-products-and-scenes.md`. This is the single biggest visible gap between "what the site implies" and "what's actually built."
 
+## Work Vision is mid-rebuild — do not demo it
+
+It was restructured from one racking aisle into three hard-cut acts (aisle →
+inbound dock → pack line), the same worker seen by three cameras with a
+re-identification count that climbs. The act structure, the camera cuts, the
+escalating labels and the resolve line are in. **The environments are not.**
+Right now:
+
+- the three acts are not visually distinct — the dressing reads as blobs;
+- only act 1 has a camera, a detection bracket and a label; acts 2 and 3 have
+  none;
+- a stray object draws in all three acts and should not be there.
+
+This is the largest open piece of scene work. Everything else in this file is
+smaller.
+
+## Two copy/colour inconsistencies left by the crane pass
+
+- The Crane Vision ledger still reads **"Severity heatmap; high severity alerts
+  a surveyor for immediate review."** The heatmap was removed on review. Either
+  the copy changes or the heatmap comes back — do not leave both.
+- Crane's `Dent · 0.84` callout title is warm while its bracket is blue, so a
+  label and its own mark disagree in colour. See `07-design-language.md`.
+
 ## Homepage background video — waiting on one file drop
 
 The homepage "Statement" section is built to show real annotated inspection footage as a background video, but the footage hasn't been produced yet. Today it shows a static poster image instead — the code is fully wired (lazy-loads on scroll, respects reduced-motion, falls back cleanly) and needs only the actual video files dropped in, no code change, once footage exists.

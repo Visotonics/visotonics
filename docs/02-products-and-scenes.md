@@ -14,10 +14,12 @@ All 8 real scenes are hand-built, vanilla three.js (no template, no react-three-
 | Tank Vision | A tank inspected for shell corrosion, seal, valve condition | 7.4s | Viso Yard §2 | `/lab/tank-vision` |
 | Gate Vision | A truck's plate and seal read at a gate, barrier responds | 4.6s | Viso Yard §3 | `/lab/gate-vision` |
 | Yard Vision | Aerial survey of a full container yard, one slot located | 9.4s | Viso Yard §4 | `/lab/yard-vision` |
-| Crane Vision | A gantry crane lifting/placing a container | 4.8s | Viso Yard §5 | `/lab/crane-vision` |
-| Cargo Vision | Mixed cargo counted as it's unloaded | 9.0s | Viso Yard §6 | `/lab/cargo-vision` |
-| Document Vision | Paperwork/labels read and matched to a shipment | 8.5s | Yard §7, **and** Warehouse, **and** Factory | `/lab/document-vision` |
-| Work Vision | Worker/floor activity monitored for safety | 9.0s | Warehouse §5, **and** Yard §8, **and** Factory §4 | `/lab/work-vision` |
+| Crane Vision | A gantry crane lifting a container; ID read, then corrosion and a dent found | 6.6s | Viso Yard §5 | `/lab/crane-vision` |
+| Cargo Vision | Mixed cargo counted off a conveyor as it's destuffed; one crushed case found | 9.0s | Viso Yard §6 | `/lab/cargo-vision` |
+| Document Vision | A bill of lading scanned once, its fields filling a table that was already on screen | 9.0s | Yard §7, **and** Warehouse, **and** Factory | `/lab/document-vision` |
+| Work Vision | One worker seen by three cameras in three places, resolving to one identity | 13.5s | Warehouse §5, **and** Yard §8, **and** Factory §4 | `/lab/work-vision` |
+
+**Work Vision is mid-rebuild and is the one scene not to show anyone right now.** It was restructured from a single aisle into three hard-cut acts; the act structure and labels are in, the environments are not — they read as undifferentiated blobs, two of the three acts are missing their camera and detection marks, and there is a stray object drawing in all three. Treat it as work in progress until this note is removed.
 
 **Document Vision and Work Vision each appear on three product pages at once**, not one — they're shared code, not three separate builds. See `04-change-risk.md` before editing either.
 
@@ -39,6 +41,37 @@ If leadership wants these to eventually look and feel like the other 8, that's n
 ## Parked / not shipped
 
 **ASCII Hero** — an ASCII-halftone background effect, under active tuning as a possible future homepage hero treatment. Lives only at `/lab/ascii-hero`. Not on any live page. Treat anything about it as subject to change or being dropped.
+
+## How a detection reads — the house standard
+
+Every scene that claims the system SAW something now says so the same way, and
+new scenes should follow it rather than invent their own vocabulary. The
+pattern was settled on Crane Vision and completed on Cargo Vision:
+
+1. **The camera is in shot.** A detection that arrives from nowhere is an
+   assertion; one thrown from a lens you can see is evidence. Crane has two
+   heads on the gantry legs, Cargo has a pole camera behind the belt at the
+   count line, Work has one per act. The housing sits toward a corner of the
+   frame, not centred — it is the instrument, not the subject.
+2. **A sight cone connects the lens to the thing being read**, so the read has
+   a visible source and direction.
+3. **The cone follows the subject and hands off.** One cone re-aimed, never
+   one per target: the machine attends to one thing, concludes, and moves on.
+   Cargo's cone swings from case to case down the belt; Crane's left head
+   holds the ID plate and then slews onto the dent.
+4. **A bracket marks what was found**, tight to the feature and hairline —
+   never a slab, never a filled shape.
+5. **A label names it with a confidence**, in the same grammar everywhere:
+   `Corrosion · 0.94`, `Dent · 0.84`, `VSTU 907032 1 · 0.99`.
+6. **Blue while observing, orange on a conclusion.** The cone is
+   `PALETTE.accent` for a routine read and turns SIGNAL orange for the one
+   beat where the read becomes a finding. That flip is the strongest single
+   moment in a loop and should be spent once.
+
+Two hard-won rules that go with it, both in `09-scene-craft-and-learnings.md`
+in full: the colour flip must be driven by **what the cone is actually looking
+at**, not by a separate window that can drift out of sync with it; and marks
+need an explicit `renderOrder` or subject geometry will paint over them.
 
 ## Reviewing a scene
 

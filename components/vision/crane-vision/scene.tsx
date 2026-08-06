@@ -46,7 +46,26 @@ import {
 /* 4.8 — cut again from 6.5 after START_FRAC's one-container-length raise (see
    riseFrom below) shortened the travel to ~12.67m; 6.5 would have dropped the
    lift to ~1.95 m/s, under the ~2.5 m/s floor. 12.67/4.8 = 2.64 m/s. */
-const LOOP = 4.8;
+/* 6.6s, up from 4.8. Reviewed on screen the hoist read as too fast.
+
+   The note above defends 4.8 on the grounds that 12.667m of travel at 6.5s
+   would be 1.95 m/s, under a ~2.5 m/s floor below which earlier versions read
+   as "a load going up on a string". That floor was measured against a LINEAR
+   rise, and the rise is no longer linear — it eases in on pow(p, 1.55), so
+   the average is not what a viewer perceives. What they see is the speed over
+   the part of the loop the container is actually in frame, and easing puts
+   the slow half there and spends the fast half leaving.
+
+   At 6.6s the average is 1.92 m/s but the instantaneous speed while the load
+   is framed (p up to ~0.81) runs from near zero to about 2.4 m/s, which is
+   the range the old linear 2.64 sat at the top of. Slower to watch, no slower
+   where it matters.
+
+   Every window in this file is a FRACTION of the loop, so they all lengthen
+   with it and no beat needs retiming: the ID read goes 1.63s -> 2.24s, the
+   corrosion label 2.69 -> 3.70s, the severity 2.02 -> 2.77s. The sway is a
+   function of p at an integer 2.0 cycles, so the seam stays clean. */
+const LOOP = 6.6;
 const SETTLE = 0.95;        // the rig fades up over this many seconds
 const FROZEN_T = 8.2;       // reduced-motion still frame: parked on the
 const FROZEN_P = 0.78;      //   severity beat, which states the outcome
@@ -1019,7 +1038,38 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         lane: { dir: "down", len: 110 },
         win: W_SEVERE,
       });
-      const marks: Callout[] = [sharpLabel, severeLabel];
+      /* ---- AND THE ID READ GETS A LABEL ----------------------------------
+
+         The scene's header used to argue for exactly two callouts, on the
+         grounds that "the capture beat speaks through its cones". That was
+         true when the ID bracket was on for the whole loop and said nothing;
+         it is not true now. The bracket takes its own window and closes on a
+         specific reading, and a box drawn round a container number without
+         the number beside it is the one thing an OCR scene must not do — the
+         whole claim is that the system RESOLVED those characters, and a
+         bracket alone only claims it looked at them.
+
+         So the label carries the decoded value and its confidence, which is
+         the same grammar gate-vision uses for the same event, and the ISO
+         type code — which is genuinely on the plate two lines below the
+         number and is what a yard actually keys off alongside it.
+
+         UP, because the ID sits in the container's upper-left and the load is
+         still low in frame through W_IDREAD (0.08..0.42, ending well before
+         the rise carries it up). 104 clears the top rail without reaching the
+         corrosion card, which hangs off a point on the far RIGHT of the box
+         and 132 up — the two never share a column. */
+      const idLabel = createCallout(overlay, {
+        id: "idread",
+        title: "VSTU 907032 1",
+        detail: "ISO 22G1 · check digit valid · 0.99",
+        pos: ID_LOCAL.clone().setZ(ID_LOCAL.z + 0.04),
+        normal: new THREE.Vector3(0, 0, 1),
+        onDark: true,
+        lane: { dir: "up", len: 104 },
+        win: W_IDREAD,
+      });
+      const marks: Callout[] = [sharpLabel, severeLabel, idLabel];
 
       const ro = new ResizeObserver(studio.size);
       ro.observe(wrap);
@@ -1224,6 +1274,7 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         };
         place(sharpLabel, W_SELECT);
         place(severeLabel, W_SEVERE);
+        place(idLabel, W_IDREAD);
 
         // nothing on screen during the opening
         overlay.style.opacity = String(frozen ? 1 : smoothstep(0.2, 0.95, t));

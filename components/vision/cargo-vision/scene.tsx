@@ -200,6 +200,9 @@ const W_PROOF: [number, number] = [0.72, 0.92];
 const TAG_TEXT = { carton: "CARTON", gunny: "GUNNY BAG", drum: "DRUM" } as const;
 
 const mono = "var(--font-plex-mono)";
+/* the display face — the counter is a claim, not a telemetry line. See the
+   note at counterNum. */
+const sans = "var(--font-archivo)";
 
 /** `bare` lifts the scene out of its frame — see ContainerVisionScene. */
 export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: boolean; bleed?: number } = {}) {
@@ -385,17 +388,46 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              would be a UI card laid on the render, which is the thing the
              original note is arguing against; a 1px dark shadow buys the same
              separation and keeps the type sitting IN the frame. */
+      /* THE READOUT NOW USES THE SITE'S OWN DISPLAY TYPOGRAPHY.
+
+         Everything in the note above is the history of treating this count as
+         instrumentation — mono, small, deliberately quiet, matched to
+         work-vision's shift register. That was the wrong call for THIS scene,
+         and the reason is in the section's own headline: "Every case counted,
+         with video proof attached." The number IS the claim here, not
+         telemetry sitting beside the claim, and the site already has a
+         register for a number that is the claim.
+
+         So the numeral moves to the SANS display face at 68px on -0.03em,
+         which is the treatment `--text-metric` gives a verified figure and
+         the same negative tracking every headline on the site carries.
+         tabular-nums STAYS: with proportional figures a `1` is narrower than
+         a `0`, so the whole number shifts sideways every time a digit
+         changes, and on a counter that ticks once a second that jitter is the
+         most distracting thing in the frame.
+
+         The head and the breakdown come up with it (13px / 15px, near-solid
+         white), because a 68px numeral over 10px grey chrome reads as a
+         number that lost its caption. The block is one legible statement now
+         rather than a big figure and two whispers.
+
+         WHITE, NOT ACCENT. Blue was right while this was instrumentation —
+         the system reporting — but a display figure in the OBSERVING colour
+         competes with every bracket in the frame for that colour's meaning.
+         White is the site's own value colour and what the homepage metrics
+         use; the accent survives as the 2px rule down the left, which is
+         where it still means "the system is saying this". */
       counterLabel.style.cssText =
-        `font-family:${mono};font-size:12px;font-weight:500;letter-spacing:0.24em;color:rgba(226,234,244,0.78);padding-bottom:10px;text-shadow:0 1px 3px rgba(0,0,0,0.85);`;
+        `font-family:${mono};font-size:13px;font-weight:500;letter-spacing:0.26em;color:rgba(255,255,255,0.9);padding-bottom:14px;text-shadow:0 1px 4px rgba(0,0,0,0.9);`;
       const counterRow = document.createElement("div");
       counterRow.style.cssText =
-        `border-left:2px solid ${PALETTE.accent};padding-left:14px;display:flex;align-items:baseline;gap:16px;`;
+        `border-left:2px solid ${PALETTE.accent};padding-left:18px;display:flex;align-items:baseline;gap:20px;`;
       const counterNum = document.createElement("div");
       counterNum.style.cssText =
-        `font-family:${mono};font-size:38px;font-weight:500;line-height:1;letter-spacing:-0.01em;color:${PALETTE.accentText};font-variant-numeric:tabular-nums;text-shadow:0 2px 6px rgba(0,0,0,0.9);`;
+        `font-family:${sans};font-size:68px;font-weight:600;line-height:0.92;letter-spacing:-0.03em;color:#FFFFFF;font-variant-numeric:tabular-nums;text-shadow:0 3px 14px rgba(0,0,0,0.95);`;
       const counterMix = document.createElement("div");
       counterMix.style.cssText =
-        `font-family:${mono};font-size:13px;font-weight:500;letter-spacing:0.14em;color:rgba(226,234,244,0.72);font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,0.85);`;
+        `font-family:${mono};font-size:15px;font-weight:500;letter-spacing:0.14em;color:rgba(255,255,255,0.84);font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,0.9);`;
       counterRow.appendChild(counterNum);
       counterRow.appendChild(counterMix);
       counterBox.appendChild(counterLabel);
@@ -813,7 +845,35 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              counter now lives bottom-left and the container mouth occupies the
              upper left only. 0.06 / 0.16 tucks it into that gap with the tether
              running right-and-down to the carton across open air. */
-          const px = w * 0.06, py = oh * 0.16;
+          /* 0.62 / 0.60 — THE NEGATIVE SPACE, RIGHT AND BELOW THE BELT.
+
+             Every previous position for this panel was somewhere ON the
+             subject: 0.44 put it over the run-out and covered a type tag,
+             0.63/0.20 collided with the damage callout, and 0.06/0.16 tucked
+             it into the top-left, which is where the container mouth is —
+             so a frame grab of a case sat on top of the container it came
+             out of.
+
+             The frame has exactly one genuinely empty region and it is the
+             open deck right of centre and below the conveyor. Nothing is
+             staged there: the belt runs across the upper-middle, the counter
+             owns the bottom-left, and the back row is fogged out above. A
+             piece of evidence belongs in clear air, not over the thing it is
+             evidence OF, and this is the only clear air there is.
+
+             MEASURED on the 1200x900 lab canvas rather than guessed: the belt
+             and its cargo occupy down to about y 600, the counter's block
+             ends at about x 460, and the staged pile on the right starts
+             around x 930. That leaves a clear rectangle of roughly
+             x 460..930, y 600..800 — and 0.56/0.66 puts the panel's 150x105
+             at 672..822, 594..699, wholly inside it with margin on every
+             side.
+
+             0.56 rather than further right because the right edge of that
+             gap is the cargo pile, not the frame: pushing the panel to 0.7+
+             would clear the belt and land on the drums instead, which is the
+             same mistake in a different direction. */
+          const px = w * 0.56, py = oh * 0.66;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 
@@ -821,10 +881,14 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
           const pr = project(anchor, damage.normal, w, h);
           if (!pr) { tether.style.opacity = "0"; }
           else {
-            // to the grab's BOTTOM-LEFT corner — the corner nearest the cargo,
-            // so the leader never crosses the image it is attached to.
-            // 105 is the panel's height; it moved with the panel.
-            const dx = px - pr.sx, dy = (py + 105) - (pr.sy - bleed);
+            /* TO THE PANEL'S TOP-LEFT CORNER now that it hangs below and
+               right of the cargo. The corner the tether lands on has to be
+               the one NEAREST the flagged case, or the leader crosses the
+               image it is attached to on its way in — which is why it used to
+               aim at the bottom-left when the panel sat above the belt. The
+               flagged carton is up and to the left of the new position, so
+               top-left is that corner and the run is clean across open deck. */
+            const dx = px - pr.sx, dy = py - (pr.sy - bleed);
             tether.style.width = `${Math.hypot(dx, dy)}px`;
             tether.style.transform =
               `translate(${pr.sx}px,${pr.sy - bleed}px) rotate(${Math.atan2(dy, dx)}rad)`;

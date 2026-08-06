@@ -554,8 +554,8 @@ export interface CargoModel {
   lamp: {
     shade: THREE.MeshStandardMaterial;
     bulb: THREE.MeshBasicMaterial;
-    halo: THREE.MeshBasicMaterial;
-    beam: THREE.MeshBasicMaterial;
+    halo: THREE.ShaderMaterial;
+    beam: THREE.ShaderMaterial;
     light: THREE.PointLight;
   };
   /** Advance the stream. `p` is 0..1 through the loop. Pure function of p. */
@@ -971,12 +971,54 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   bulb.position.set(LAMP_X, LAMP_Y - 0.21, LAMP_Z);
   belt.add(bulb);
 
-  const haloGeo = new THREE.SphereGeometry(0.30, 14, 12);
+  /* A SOFT GLOW, NOT A SPHERE. A uniformly-coloured additive sphere has a hard
+     silhouette — the sphere reads as a flat disc with a visible rim the moment
+     it is lit from one side, because every silhouette pixel has the same
+     alpha as the centre. The fix is a view-facing billboard with a radial
+     alpha gradient instead: a plane that always faces the camera (billboarded
+     in the vertex shader by taking the mesh's WORLD TRANSLATION only and
+     adding the local xy offset directly in view space, so the quad's own
+     rotation — always identity here — never matters and it can never be seen
+     edge-on) with alpha falling off smoothly from centre to rim. */
+  const HALO_SIZE = 0.62;
+  const haloGeo = new THREE.PlaneGeometry(HALO_SIZE, HALO_SIZE);
   owned.push(haloGeo);
-  const haloMat = new THREE.MeshBasicMaterial({
-    color: "#FFCD7A", toneMapped: false,
-    transparent: true, opacity: 0, depthWrite: false,
-    blending: THREE.AdditiveBlending,
+  const HALO_VERT = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec3 worldPos = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+      vec4 mvPosition = viewMatrix * vec4(worldPos, 1.0);
+      mvPosition.xy += position.xy;
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
+  const HALO_FRAG = `
+    varying vec2 vUv;
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    void main() {
+      // CircleGeometry-style radial parameter: 0 at the centre, 1 at the rim.
+      float r = length(vUv - vec2(0.5)) * 2.0;
+      float a = 1.0 - smoothstep(0.0, 1.0, r);
+      a *= a;   // steepen the core so it reads as a glow, not a soft-edged disc
+      float alpha = a * uOpacity;
+      if (alpha < 0.004) discard;
+      gl_FragColor = vec4(uColor, alpha);
+      #include <colorspace_fragment>
+    }
+  `;
+  const haloMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color("#FFCD7A") }, uOpacity: { value: 0 } },
+    vertexShader: HALO_VERT,
+    fragmentShader: HALO_FRAG,
+    transparent: true, depthWrite: false,
+    toneMapped: false, blending: THREE.AdditiveBlending,
+  });
+  Object.defineProperty(haloMat, "opacity", {
+    get: () => haloMat.uniforms.uOpacity.value as number,
+    set: (v: number) => { haloMat.uniforms.uOpacity.value = v; },
+    configurable: true,
   });
   m.all.push(haloMat);
   const halo = new THREE.Mesh(haloGeo, haloMat);
@@ -1005,9 +1047,71 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   const BEAM_H = (LAMP_Y - 0.21) - BELT_TOP;
   const beamGeo = new THREE.ConeGeometry(0.85, BEAM_H, 24, 1, true);
   owned.push(beamGeo);
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: "#FFB863", toneMapped: false, transparent: true, opacity: 0,
-    depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+  /* DIFFUSED, NOT DRAWN. A flat-coloured additive cone has a hard silhouette —
+     the same trap createSightCone (hero-cards/detect.ts) already solved once
+     for the sight-line volumes. Same fix here: a ShaderMaterial whose alpha
+     falls off along the cone's length (so it dies before it reads as a solid
+     edge at the belt) AND toward the silhouette rim via a fresnel term (face-on
+     pixels stay, grazing/edge-on pixels — which is what draws the crisp outline
+     of an additive DoubleSide cone — fade toward zero). Nothing here touches
+     the PointLight; the actual illumination on the cargo is untouched. */
+  const BEAM_VERT = `
+    varying vec2 vUv;
+    varying vec3 vN;
+    varying vec3 vV;
+    void main() {
+      vUv = uv;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vN = normalize(normalMatrix * normal);
+      vV = normalize(-mv.xyz);
+      gl_Position = projectionMatrix * mv;
+    }
+  `;
+  const BEAM_FRAG = `
+    varying vec2 vUv;
+    varying vec3 vN;
+    varying vec3 vV;
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    void main() {
+      /* ConeGeometry's v runs 0 at the base (the belt) to 1 at the apex (the
+         bulb), so 1.0 - vUv.y is the axial parameter t: 0 at the source,
+         1 at the belt. */
+      float t = 1.0 - vUv.y;
+      // fades in off the apex singularity, then dies out over the last 45%
+      // of the drop so it never resolves into a hard ring at the belt.
+      float near = smoothstep(0.0, 0.10, t);
+      float far = 1.0 - smoothstep(0.55, 1.0, t);
+      // fresnel rim: face-on pixels (where the volume actually reads as haze)
+      // stay, grazing pixels — the ones that draw the cone's crisp outline —
+      // fade toward the 0.18 floor rather than a hard edge.
+      vec3 n = normalize(vN);
+      vec3 v = normalize(vV);
+      float rim = 1.0 - abs(dot(n, v));
+      float body = 0.18 + 0.82 * (1.0 - smoothstep(0.55, 1.0, rim));
+      float alpha = near * far * body * uOpacity;
+      if (alpha < 0.004) discard;
+      gl_FragColor = vec4(uColor, alpha);
+      /* REQUIRED — three converts uColor sRGB->linear on the way in and a
+         custom shader gets none of the output plumbing back without this;
+         documented trap, already paid for twice in this repo. */
+      #include <colorspace_fragment>
+    }
+  `;
+  const beamMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color("#FFB863") }, uOpacity: { value: 0 } },
+    vertexShader: BEAM_VERT,
+    fragmentShader: BEAM_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    toneMapped: false, blending: THREE.AdditiveBlending,
+  });
+  /* `.opacity` aliased onto the uniform — a ShaderMaterial's own `opacity`
+     field is inert, and scene.tsx's reveal ramp writes `model.lamp.beam.opacity`
+     directly, the same convention createSightCone documents at length. */
+  Object.defineProperty(beamMat, "opacity", {
+    get: () => beamMat.uniforms.uOpacity.value as number,
+    set: (v: number) => { beamMat.uniforms.uOpacity.value = v; },
+    configurable: true,
   });
   m.all.push(beamMat);
   const beam = new THREE.Mesh(beamGeo, beamMat);

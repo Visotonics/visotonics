@@ -368,8 +368,14 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          is derived from the same crossing arithmetic as the total, so it cannot
          disagree with it. */
       const counterBox = document.createElement("div");
+      /* SEATED IN THE CORNER PROPERLY. 30/26 was close enough to the canvas
+         edge that the block read as having slipped off the composition rather
+         than being placed in it — the site's own sheet margin is 64px and
+         nothing else on this page hugs an edge at 26. 46/44 gives it the same
+         kind of seat the drafting grid gives everything else, and puts the
+         number's baseline clear of the deck's own perspective lines. */
       counterBox.style.cssText =
-        "position:absolute;left:30px;bottom:26px;opacity:0;transition:opacity .4s ease;pointer-events:none;";
+        "position:absolute;left:46px;bottom:44px;opacity:0;transition:opacity .4s ease;pointer-events:none;";
       const counterLabel = document.createElement("div");
       counterLabel.textContent = "CASES COUNTED";
       /* SIZED UP AND LIFTED OFF THE DECK. The register above is right, but it
@@ -417,17 +423,34 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          White is the site's own value colour and what the homepage metrics
          use; the accent survives as the 2px rule down the left, which is
          where it still means "the system is saying this". */
+      /* NO TEXT-SHADOW ANYWHERE IN THIS BLOCK.
+
+         The shadows were added when the type was 10-13px grey and genuinely
+         losing to the lit deck behind it. That problem was solved by the type
+         itself: 68px of solid white at 600 weight does not need help
+         separating from anything, and a soft black halo under display type
+         reads as a cheap glow — the one thing the site's drafting-sheet
+         register never does. Contrast now comes from value and size, which is
+         where it should come from.
+
+         THE BREAKDOWN MOVES UNDER THE NUMBER. Baseline-aligned beside a 68px
+         numeral, a 15px mono row sat in the numeral's optical shadow and
+         forced the whole block into a wide, awkward L. Stacked, the three
+         lines read top-to-bottom as one column — caption, figure, breakdown —
+         which is the same vertical hierarchy every readout on the site uses,
+         and the accent rule can then run the full height of the block instead
+         of only the number's line. */
       counterLabel.style.cssText =
-        `font-family:${mono};font-size:13px;font-weight:500;letter-spacing:0.26em;color:rgba(255,255,255,0.9);padding-bottom:14px;text-shadow:0 1px 4px rgba(0,0,0,0.9);`;
+        `font-family:${mono};font-size:12px;font-weight:500;letter-spacing:0.26em;color:rgba(255,255,255,0.72);padding-bottom:12px;`;
       const counterRow = document.createElement("div");
       counterRow.style.cssText =
-        `border-left:2px solid ${PALETTE.accent};padding-left:18px;display:flex;align-items:baseline;gap:20px;`;
+        `border-left:2px solid ${PALETTE.accent};padding-left:18px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;`;
       const counterNum = document.createElement("div");
       counterNum.style.cssText =
-        `font-family:${sans};font-size:68px;font-weight:600;line-height:0.92;letter-spacing:-0.03em;color:#FFFFFF;font-variant-numeric:tabular-nums;text-shadow:0 3px 14px rgba(0,0,0,0.95);`;
+        `font-family:${sans};font-size:72px;font-weight:600;line-height:0.86;letter-spacing:-0.035em;color:#FFFFFF;font-variant-numeric:tabular-nums;`;
       const counterMix = document.createElement("div");
       counterMix.style.cssText =
-        `font-family:${mono};font-size:15px;font-weight:500;letter-spacing:0.14em;color:rgba(255,255,255,0.84);font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,0.9);`;
+        `font-family:${mono};font-size:14px;font-weight:500;letter-spacing:0.16em;color:rgba(255,255,255,0.62);font-variant-numeric:tabular-nums;white-space:nowrap;`;
       counterRow.appendChild(counterNum);
       counterRow.appendChild(counterMix);
       counterBox.appendChild(counterLabel);
@@ -869,11 +892,17 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              at 672..822, 594..699, wholly inside it with margin on every
              side.
 
-             0.56 rather than further right because the right edge of that
-             gap is the cargo pile, not the frame: pushing the panel to 0.7+
-             would clear the belt and land on the drums instead, which is the
-             same mistake in a different direction. */
-          const px = w * 0.56, py = oh * 0.66;
+             PUSHED FURTHER INTO THE CORNER on review. 0.56/0.66 was inside
+             the clear rectangle but still close enough to the staged cargo to
+             read as crowding it, and it left the deepest part of the frame —
+             the bottom-right, where nothing is staged at any point in the
+             loop — completely empty. 0.70/0.76 puts the panel's 150x105 at
+             canvas 840..990, 684..789 on the 1200x900 review canvas: hard
+             into that corner with roughly 200px of clear deck still to its
+             right and 110 below, and diagonally as far from the counter in
+             the opposite corner as the frame allows. The two readouts now
+             bracket the composition instead of sharing a half of it. */
+          const px = w * 0.70, py = oh * 0.76;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 

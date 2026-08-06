@@ -113,12 +113,19 @@ const ACTS = [
   {
     // ACT 1 — racking aisle. Housing top-right.
     az: 0.10, dRef: 7.50, elevDeg: 6, tx: 0.18, ty: 1.50, tz: 0, dir: 1,
-    housing: { x: 0.55, y: 0.33, z: -1.6, ry: -0.35 },   // top-right
+    /* y 0.33 -> 0.15. MEASURED with `?debug=1`: at 0.33 the housing spanned
+       canvas y -114..159, so its mounting plate and most of its bracket were
+       ABOVE the top of frame and only the barrel survived — a dark cylinder
+       hanging in the corner with no visible mount, which is exactly what "the
+       mystery block" was. A camera reads as a camera because it is attached to
+       something; crop the attachment and it is just a shape. 0.15 brings the
+       whole prop, plate included, inside the frame. */
+    housing: { x: 0.55, y: 0.15, z: -1.6, ry: -0.35 },   // top-right
   },
   {
     // ACT 2 — inbound dock, opposite direction. Housing top-left.
     az: -0.14, dRef: 6.9, elevDeg: 7, tx: -0.20, ty: 1.55, tz: 0, dir: -1,
-    housing: { x: -0.55, y: 0.33, z: -1.6, ry: 0.35 },   // top-left
+    housing: { x: -0.55, y: 0.16, z: -1.6, ry: 0.35 },   // top-left
   },
   {
     // ACT 3 — pack line, lower and closer. Housing top-right.
@@ -245,10 +252,27 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          adding read; the bracket alone already says "a machine is watching"
          in every act, and act 1 is where a held static shot benefits most
          from also showing the field of view. */
+      /* THE CONE TRACKS THE WALKER. It used to be aimed ONCE, here at build
+         time, at a fixed point on the floor — so it was a static wedge of
+         light the subject happened to walk through, and it could not do the
+         one thing a sight cone is for: show that the camera is FOLLOWING
+         something.
+
+         Cargo Vision's read camera is the reference and this now matches it:
+         re-aim every frame at the subject's chest, with the half-angle
+         re-derived from the live apex->target range so the cone's footprint
+         on the subject stays constant instead of fanning wider as he walks
+         away down the aisle. Same correction, same reason, same house
+         standard — see docs/09-scene-craft-and-learnings.md.
+
+         CONE_HALF_ANGLE is now a FLOOR rather than the value: at the far end
+         of the walk the range is long enough that a constant footprint would
+         ask for a needle-thin cone, which reads as a laser rather than a
+         field of view. */
       const sightCone = createSightCone({ color: PALETTE.accent, footprintY: GROUND_Y });
-      const coneTarget = model.lens.clone().addScaledVector(model.dir, model.coneLen);
-      sightCone.aim(model.lens, coneTarget, CONE_HALF_ANGLE);
       scene.add(sightCone.group);
+      const coneAim = new THREE.Vector3();
+      const CONE_FOOT = 0.85;   // target footprint radius on the subject, m
 
       /* ---- the detection bracket, one tracker for all three acts ----
          CRITICAL: every subject material ramps opacity (transparent: true),
@@ -358,6 +382,70 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
 
       const project = makeProjector(camera, model.root);
 
+      /* ---- REVIEW INSTRUMENT: `?debug=1` -----------------------------------
+
+         Publishes the live scene graph on `window.__work` so a reviewer can
+         ask what is actually on screen instead of inferring it from a
+         screenshot. This exists because "what is the block that is appearing
+         on all of the screens" was answered twice by guessing, and both
+         guesses were wrong.
+
+         `list(act)` returns every visible mesh with its name, its world
+         position and — the part that settles the question — its projected
+         canvas rectangle, so an object can be matched to a shape in the
+         picture by coordinates rather than by opinion. `hide(name)` toggles
+         one off, which identifies anything the coordinates leave ambiguous.
+
+         Query-gated: one string check at build and nothing in the frame loop.
+         The `scene` reference is only reachable when the flag is on. */
+      const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
+      if (DEBUG) {
+        const box = new THREE.Box3();
+        const v = new THREE.Vector3();
+        (window as unknown as Record<string, unknown>).__work = {
+          scene,
+          camera,
+          list: () => {
+            const w = renderer.domElement.clientWidth;
+            const h = renderer.domElement.clientHeight;
+            const out: unknown[] = [];
+            scene.traverse((o) => {
+              if (!(o instanceof THREE.Mesh) || !o.visible) return;
+              let p: THREE.Object3D | null = o.parent;
+              while (p) { if (!p.visible) return; p = p.parent; }
+              box.setFromObject(o);
+              if (box.isEmpty()) return;
+              const pts: number[][] = [];
+              for (const cx of [box.min.x, box.max.x])
+                for (const cy of [box.min.y, box.max.y])
+                  for (const cz of [box.min.z, box.max.z]) {
+                    v.set(cx, cy, cz).project(camera);
+                    pts.push([(v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h]);
+                  }
+              const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+              // walk up for the nearest NAMED ancestor — the groups carry the
+              // names, so this reports which subsystem a mesh belongs to
+              let owner = o.name;
+              let a: THREE.Object3D | null = o.parent;
+              while (!owner && a) { owner = a.name; a = a.parent; }
+              out.push({
+                name: owner || "(unnamed)",
+                geo: o.geometry.type,
+                world: [+o.position.x.toFixed(2), +o.position.y.toFixed(2), +o.position.z.toFixed(2)],
+                px: [Math.round(Math.min(...xs)), Math.round(Math.min(...ys)),
+                     Math.round(Math.max(...xs)), Math.round(Math.max(...ys))],
+              });
+            });
+            return out;
+          },
+          hide: (name: string) => {
+            let n = 0;
+            scene.traverse((o) => { if (o.name === name) { o.visible = false; n++; } });
+            return n;
+          },
+        };
+      }
+
       const applyFrame = () => {
         const frozen = reduce;
         const t = frozen ? FROZEN_T : clock.getElapsedTime();
@@ -440,6 +528,13 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         /* ---- 6. the read: cone (act 1 only) + bracket (every act) ---- */
         const walkOn = win(q, WALK_WIN);
         const coneOn = act === 0 ? solid * 0.30 * walkOn : 0;
+        /* re-aim at the walker's chest — see the note at createSightCone */
+        if (coneOn > 0.001) {
+          coneAim.set(model.figure.position.x, GROUND_Y + 1.05, model.figure.position.z);
+          const range = Math.max(model.lens.distanceTo(coneAim), 0.01);
+          sightCone.aim(model.lens, coneAim,
+            Math.max(CONE_HALF_ANGLE, Math.atan(CONE_FOOT / range)));
+        }
         sightCone.setOpacity(coneOn);
         sightCone.tick(frozen ? 1.4 : t);
 

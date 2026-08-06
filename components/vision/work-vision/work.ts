@@ -208,6 +208,7 @@ export function buildWork(m: WorkMaterials): WorkModel {
      it without re-deriving all three. */
   const root = new THREE.Group();
   const figure = new THREE.Group();
+  figure.name = 'walker';
   figure.rotation.y = Math.PI / 2;
   root.add(figure);
 
@@ -279,6 +280,7 @@ export function buildWork(m: WorkMaterials): WorkModel {
 
   /* ======================= ACT 1's ONE CAMERA ======================= */
   const fixed = new THREE.Group();
+  fixed.name = 'act1pole';
   const POLE_TOP = HEAD_Y + 0.15;
 
   const aim = new THREE.Vector3(AIM_X, AIM_Y, 0);
@@ -392,6 +394,7 @@ export function buildWork(m: WorkMaterials): WorkModel {
     return g;
   };
   const housings = [buildHousing(), buildHousing(), buildHousing()];
+  housings.forEach((h, i) => { h.name = `housing${i + 1}`; });
 
   /* ======================= THE THREE ENVIRONMENTS =======================
      One group per act. envActs[0] is the floor slab plus act 1's dressing
@@ -400,9 +403,13 @@ export function buildWork(m: WorkMaterials): WorkModel {
      ever re-parented or rebuilt — a cut is a visibility swap, not a scene
      change. */
   const envShared = new THREE.Group();  // the one physical floor every act stands on
+  envShared.name='envShared';
   const env1 = new THREE.Group();
+  env1.name='act1';
   const env2 = new THREE.Group();
+  env2.name='act2';
   const env3 = new THREE.Group();
+  env3.name='act3';
   env2.visible = false;
   env3.visible = false;
 
@@ -498,13 +505,19 @@ export function buildWork(m: WorkMaterials): WorkModel {
     env1.add(l);
   }
 
-  /* And a wall closing the run, so the aisle ends somewhere instead of
-     dissolving into the clear colour. Far enough back that it never reads as
-     a backdrop the racking is pasted onto. */
-  const backGeo = new THREE.BoxGeometry(34, 5.2, 0.30);
-  const back1 = envMesh(backGeo, m.dock, true);
-  back1.position.set(0, GROUND_Y + 2.6, FAR_Z - 3.2);
-  env1.add(back1);
+  /* NO BACK WALL. One was added here and immediately removed, and the reason
+     is worth keeping: measured with `?debug=1`, a 34 x 5.2 panel at
+     z = -10.8 projected to canvas x -515..2136, y -13..426 — it filled the
+     ENTIRE frame. Every bit of depth the second rack run had just bought was
+     erased, because behind the racking sat one flat slab at a uniform value,
+     and a receding structure only reads as receding if there is darkness
+     behind it to recede INTO.
+
+     The scene already has the right tool: `scene.fog` runs 6 to 26, so the
+     far run at z = -7.6 is genuinely dimmer than the near one at -3.6 and the
+     aisle dissolves into the page's own black. That IS the end of the aisle.
+     Cargo Vision closes its deck the same way and for the same reason — see
+     its note on aerial perspective. */
 
   /* ================= ACT 2 — INBOUND DOCK =================
      The dock/shutter surface brought forward as the back wall, no racking,

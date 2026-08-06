@@ -455,6 +455,30 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         shadowMat.opacity = 0.5 * solid;
         setGroundOpacity(ground, solid);
 
+        /* ---- act 1's pendant ----
+           DRIVEN BY NAME, not by the mats.all sweep above: the lamp's
+           materials are owned by the shared builder and are not in this
+           scene's material list, so a lamp left to that sweep would sit at
+           opacity 0 forever and its PointLight at intensity 0 — the exact
+           defect cargo-vision shipped once. Both have to be written here.
+
+           GATED ON ACT 1. The pendant belongs to env1, which is hidden in
+           acts 2 and 3 — but a PointLight is NOT hidden by its parent group's
+           visibility in three.js, it keeps illuminating the whole scene. Left
+           on, act 1's lamp would light the dock and the pack line from a
+           fixture neither of them contains.
+
+           40 at decay 2 over a 2.55 drop delivers 40 / 2.55^2 = 6.2 at the
+           aisle floor, comfortably over the studio key box's 5.6, which is
+           the bar a practical has to clear to read as the reason a surface is
+           lit rather than as decoration hanging near one. */
+        const lampOn = act === 0 ? solid : 0;
+        model.lamp.shade.opacity = lampOn;
+        model.lamp.bulb.opacity = lampOn;
+        model.lamp.halo.opacity = lampOn * 0.55;
+        model.lamp.beam.opacity = lampOn * 0.085;
+        model.lamp.light.intensity = lampOn * 40;
+
         /* ---- 6. the read: cone (act 1 only) + bracket (every act) ---- */
         const walkOn = win(q, WALK_WIN);
         const coneOn = act === 0 ? solid * 0.30 * walkOn : 0;

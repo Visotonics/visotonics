@@ -32,6 +32,7 @@ import * as THREE from "three";
 import { lerp } from "../_vision/camera";
 import { makeMetal } from "../_vision/metal";
 import { cardboardSide } from "../hero-cards/skins";
+import { buildPendantLamp, type Pendant } from "../_vision/lamp";
 
 /** Floor height. Zero, deliberately: every vertical number in this file is
     then also a height above ground. */
@@ -207,6 +208,10 @@ export interface WorkModel {
       always visible; scene.tsx toggles [1]/[2]/[3] on the hard cut so
       exactly one of them is visible at a time. */
   envActs: THREE.Group[];
+  /** act 1's pendant. Its materials and its PointLight are ramped by name in
+   *  scene.tsx — a lamp left to the generic mats.all sweep would sit at
+   *  opacity 0 forever and its light at intensity 0. */
+  lamp: Pendant;
   /** Act 1's one sight cone: apex, aim point, unit direction, length to the
       floor along that axis (not to the aim point — see the note in the old
       derivation this keeps). */
@@ -647,6 +652,42 @@ export function buildWork(m: WorkMaterials): WorkModel {
     env1.add(box);
   }
 
+  /* ---- THE HIGH-BAY PENDANT, OVER THE AISLE ------------------------------
+
+     The same lamp Cargo Vision hangs over its conveyor, from the same shared
+     builder (`_vision/lamp.ts`) rather than a second implementation — so the
+     two scenes' practical lights are literally the same object, which is what
+     "a family of animations" has to mean at the code level and not just the
+     art level.
+
+     It answers the same question here that it answers there: the aisle floor
+     is the brightest surface in frame and nothing in shot said why. A shop
+     light on a drop states the cause with an object you can see.
+
+     SITED OVER THE WALK LINE (z = 0), not over the racking. The subject is
+     the person; the light that motivates the frame should be the light he
+     walks under. x = 1.15 puts it right of the pole camera at x = -0.6 so
+     the two pieces of ceiling equipment do not stack into one silhouette,
+     and still inside the stretch of aisle the walker crosses at mid-act.
+
+     HEIGHT 2.55. The walker's crown is at 1.815 and the hat clears at the top
+     of the gait bob, so 2.55 leaves ~0.7 of headroom — he passes UNDER it,
+     which is the whole point, and the shade never collides with the tracking
+     bracket that rides above his head.
+
+     beamR 1.05 rather than the 0.85 default: this drop is 2.55 to the floor
+     against cargo's 1.49 to the belt, and a beam that keeps the default
+     radius over a longer throw reads as a narrow column rather than a cone. */
+  const lamp = buildPendantLamp({
+    x: 1.15, y: 2.55, z: 0,
+    planeY: GROUND_Y,
+    ceilingY: 5.4,
+    wireMat: m.dark,
+    beamR: 1.05,
+  });
+  env1.add(lamp.group);
+  owned.push(...lamp.owned);
+
   /* NO BACK WALL. One was added here and immediately removed, and the reason
      is worth keeping: measured with `?debug=1`, a 34 x 5.2 panel at
      z = -10.8 projected to canvas x -515..2136, y -13..426 — it filled the
@@ -737,8 +778,13 @@ export function buildWork(m: WorkMaterials): WorkModel {
     headAnchor: new THREE.Vector3(0, 1.90, 0),
     fixed,
     envActs: [envShared, env1, env2, env3],
+    lamp,
     lens, aim, dir, coneLen,
     owned,
-    dispose: () => { owned.forEach((g) => g.dispose()); },
+    /* The lamp's GEOMETRY is already in `owned` (pushed where it is built),
+       so only its MATERIALS need its own dispose — the shared builder hands
+       those back separately because it owns them and this scene's mats.all
+       does not know about them. */
+    dispose: () => { owned.forEach((g) => g.dispose()); lamp.dispose(); },
   };
 }

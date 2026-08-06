@@ -9,8 +9,9 @@
    the same person walking through each in turn. See scene.tsx for the
    act/loop timing and the camera cuts; this module builds what each act
    needs — its own dressing group, toggled `.visible`, plus the one sight
-   cone act 1 keeps and the three small "own housing" corner props scene.tsx
-   parents onto the render camera.
+   cone act 1 keeps. Acts 2 and 3 currently have no camera in shot: the
+   camera-locked corner props that used to stand in for one were removed on
+   review (see scene.tsx) and each act needs a REAL camera in the world.
 
    Layout (metres, ground at GROUND_Y = 0), SHARED ACROSS ALL THREE ACTS:
      · the walker travels along X at constant speed, in PROFILE to the
@@ -165,11 +166,6 @@ export interface WorkModel {
       always visible; scene.tsx toggles [1]/[2]/[3] on the hard cut so
       exactly one of them is visible at a time. */
   envActs: THREE.Group[];
-  /** Three small camera-housing props. Not parented anywhere by this module —
-      scene.tsx attaches whichever one is active as a CHILD OF THE RENDER
-      CAMERA, so it rides along in a fixed camera-space corner without any
-      per-frame placement math. */
-  housings: THREE.Group[];
   /** Act 1's one sight cone: apex, aim point, unit direction, length to the
       floor along that axis (not to the aim point — see the note in the old
       derivation this keeps). */
@@ -328,73 +324,6 @@ export function buildWork(m: WorkMaterials): WorkModel {
      own local +Z-out convention closely enough that the silhouette reads the
      same way): scene.tsx rotates each group to angle the lens back toward
      the centre of frame, away from its corner. */
-  /* REBUILT AS A BULLET CAMERA, because the box read as a block.
-
-     The first version was a 0.20 x 0.15 x 0.30 box with a small cylinder on
-     one end. At the size it renders — about 16% of frame width, close to the
-     lens — a plain dark box in a dark scene has no silhouette cue at all, and
-     it was reported exactly as it looked: "what is the block that is
-     appearing on all of the screens". It also meant acts 2 and 3 read as
-     having NO camera, since the only thing marking their camera was that
-     block.
-
-     A CCTV camera is identifiable by a specific outline, not by detail, so
-     this is built from the four things that outline is made of and nothing
-     else:
-
-       · a CYLINDRICAL barrel, not a box. This is the single strongest cue —
-         nothing else in a warehouse is a horizontal tube on a bracket.
-       · a SUN HOOD, a slightly larger cylinder over the barrel's front half,
-         open at the front. Every fixed outdoor/dock camera has one and its
-         overhang is instantly readable.
-       · a GLASS FACE recessed inside the hood, in `lens` (near-black, very
-         low roughness), so the front reads as an aperture rather than a cap.
-       · an L-BRACKET rising to a ceiling plate. A camera floating with no
-         visible mount is a prop; one bolted to something is equipment.
-
-     Smaller than before overall (barrel r 0.045 against the old 0.15 box
-     half-height) because the corner it sits in is furniture, not subject —
-     the earlier version competed with the walker for attention.
-
-     Built along local -Z, which is the group's "looking" axis; scene.tsx
-     yaws each instance so the lens angles back toward frame centre. */
-  const buildHousing = () => {
-    const g = new THREE.Group();
-
-    const barrelGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.26, 14);
-    const barrel = mesh(barrelGeo, m.dark, false);
-    barrel.rotation.x = Math.PI / 2;
-    g.add(barrel);
-
-    // sun hood — over the front half only, so its lip overhangs the glass
-    const hoodGeo = new THREE.CylinderGeometry(0.056, 0.056, 0.15, 14, 1, true);
-    const hood = mesh(hoodGeo, m.dark, false);
-    hood.rotation.x = Math.PI / 2;
-    hood.position.z = -0.07;
-    g.add(hood);
-
-    // the glass, recessed inside the hood's mouth
-    const glassGeo = new THREE.CylinderGeometry(0.040, 0.040, 0.012, 14);
-    const glass = mesh(glassGeo, m.lens, false);
-    glass.rotation.x = Math.PI / 2;
-    glass.position.z = -0.118;
-    g.add(glass);
-
-    // L-bracket: a short drop off the body, then a plate above it
-    const stemGeo = new THREE.BoxGeometry(0.026, 0.13, 0.026);
-    const stem = mesh(stemGeo, m.dark, false);
-    stem.position.set(0, 0.10, 0.05);
-    g.add(stem);
-
-    const plateGeo = new THREE.BoxGeometry(0.13, 0.018, 0.13);
-    const plate = mesh(plateGeo, m.dark, false);
-    plate.position.set(0, 0.172, 0.05);
-    g.add(plate);
-
-    return g;
-  };
-  const housings = [buildHousing(), buildHousing(), buildHousing()];
-  housings.forEach((h, i) => { h.name = `housing${i + 1}`; });
 
   /* ======================= THE THREE ENVIRONMENTS =======================
      One group per act. envActs[0] is the floor slab plus act 1's dressing
@@ -595,7 +524,6 @@ export function buildWork(m: WorkMaterials): WorkModel {
     headAnchor: new THREE.Vector3(0, 1.90, 0),
     fixed,
     envActs: [envShared, env1, env2, env3],
-    housings,
     lens, aim, dir, coneLen,
     owned,
     dispose: () => { owned.forEach((g) => g.dispose()); },

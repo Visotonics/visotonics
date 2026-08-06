@@ -66,30 +66,6 @@ const FROZEN_P = FROZEN_T / LOOP;
    right, -1 = right to left — act 2 runs backwards on purpose, so the cut
    reads as a different camera before the viewer even parses the dressing).
 
-   `housing` is that act's corner camera-housing prop, expressed in
-   CAMERA-LOCAL space and reprojected to world space every frame from the
-   camera's own matrixWorld (see applyFrame — `camera` is never added to
-   `scene` by createStudio, so a literal `camera.add()` parent silently never
-   renders; that was tried first and confirmed empty on screen before this
-   comment was corrected). x > 0 is screen right, y > 0 is screen up, z < 0
-   is in front of the lens (three's camera looks down local -Z). `ry` angles
-   the housing's own lens back toward the centre of frame, away from its
-   corner.
-
-   THE OFFSETS ARE SIZED TO THE FRUSTUM, NOT PICKED BY EYE. fov is 30 deg
-   vertical, so at a camera-local depth z the frustum half-height is
-   |z|*tan(15deg) and half-width is that times the aspect. The first pass
-   put y = 0.52 / x = 0.85 at z = -1.55 — half-height there is only 0.415 and
-   half-width (aspect 1.63) only 0.677, so that housing was ENTIRELY OUTSIDE
-   the view frustum and never drew a pixel, at any aspect. A second pass at
-   ~55% of the half-extent was inside the frustum but, reviewed on screen,
-   read as centred-and-large rather than tucked in a corner — at that
-   fraction the prop's own 0.20-0.30 m box size is still a big share of the
-   frame. Values below sit at ~75-80% of the half-extent, which is visibly
-   in the corner, and the depth (z) was pulled back too so the prop's own
-   angular size drops with it — a corner prop should read small, not just
-   off-centre. Still comfortably inside frame on a squarer-than-16:9 canvas.
-
    THE ARITHMETIC EACH POSE SHARES, carried over unchanged from the original
    single-aisle solve: fov is 30 deg VERTICAL (studio's PerspectiveCamera), so
    frame world-height at distance d is H = 2*d*tan(15deg) = 0.535898*d, and
@@ -98,39 +74,23 @@ const FROZEN_P = FROZEN_T / LOOP;
    brief); acts 2 and 3 are pulled in a little tighter (act 3 explicitly
    "lower/closer" per spec) — closer cameras are a real difference between
    dock/pack-line CCTV and an aisle mast, not just restaging the same shot. */
-/* `tx` PULLED IN HARD ON ALL THREE. It was 0.45 / -0.55 / 0.35, chosen to
-   slide the subject away from whichever corner that act's housing sits in.
-   Reviewed on screen the cost was much larger than the benefit: at mid-act
-   the walker stands at x = 0 by construction, so a target at x = 0.45 puts
-   him roughly 30% of the frame's half-width off centre and, in act 1, well
-   into the left edge — the framing looked accidental rather than composed.
-
-   The housing does not need that much room anyway. It is now a small bullet
-   camera rather than the slab it was (see buildHousing), so it takes about a
-   sixth of the frame's width in its corner; 0.18 of offset is plenty to keep
-   the subject's head clear of it. */
+/* `tx` PULLED IN, 0.45 / -0.55 / 0.35 -> 0.18 / -0.20 / 0.14. The original
+   offsets existed to slide the subject clear of a corner housing prop that no
+   longer exists. At mid-act the walker stands at x = 0 by construction, so
+   0.45 put him ~30% of the frame's half-width off centre and, in act 1, into
+   the left edge — the framing read as accidental rather than composed. */
 const ACTS = [
   {
-    // ACT 1 — racking aisle. Housing top-right.
+    // ACT 1 — racking aisle.
     az: 0.10, dRef: 7.50, elevDeg: 6, tx: 0.18, ty: 1.50, tz: 0, dir: 1,
-    /* y 0.33 -> 0.15. MEASURED with `?debug=1`: at 0.33 the housing spanned
-       canvas y -114..159, so its mounting plate and most of its bracket were
-       ABOVE the top of frame and only the barrel survived — a dark cylinder
-       hanging in the corner with no visible mount, which is exactly what "the
-       mystery block" was. A camera reads as a camera because it is attached to
-       something; crop the attachment and it is just a shape. 0.15 brings the
-       whole prop, plate included, inside the frame. */
-    housing: { x: 0.55, y: 0.15, z: -1.6, ry: -0.35 },   // top-right
   },
   {
-    // ACT 2 — inbound dock, opposite direction. Housing top-left.
+    // ACT 2 — inbound dock, opposite direction.
     az: -0.14, dRef: 6.9, elevDeg: 7, tx: -0.20, ty: 1.55, tz: 0, dir: -1,
-    housing: { x: -0.55, y: 0.16, z: -1.6, ry: 0.35 },   // top-left
   },
   {
-    // ACT 3 — pack line, lower and closer. Housing top-right.
+    // ACT 3 — pack line, lower and closer.
     az: 0.18, dRef: 6.1, elevDeg: 4, tx: 0.14, ty: 1.32, tz: 0, dir: 1,
-    housing: { x: 0.34, y: 0.18, z: -1.05, ry: -0.42 },   // top-right, lower/closer
   },
 ] as const;
 
@@ -214,18 +174,16 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       scene.add(model.root);
       scene.add(model.fixed);
       for (const g of model.envActs) scene.add(g);
-      /* Corner housing props must render in CAMERA-LOCAL space (a fixed
-         offset from the lens, so they sit in a screen corner regardless of
-         where the camera itself is placed each act) — but `createStudio`'s
-         `camera` is never added to `scene` (see studio.ts), so anything
-         parented to `camera` is a descendant of an object outside the graph
-         `renderer.render(scene, camera)` traverses and is silently never
-         drawn. Parenting to `camera` was tried and produced an empty top
-         corner in every act — confirmed on screen, not just in theory.
-         Fix: parent to `scene` instead, and each frame copy the camera's
-         world matrix onto the housing's parent transform so the local
-         offset set below still resolves to the same screen-space corner. */
-      for (const hgroup of model.housings) scene.add(hgroup);
+      /* NO CAMERA-LOCKED CORNER PROPS. Three small housings used to be
+         parented to the render camera's transform so one sat in a screen
+         corner per act. Removed on review: a prop pinned to the lens does not
+         belong to the world it is supposedly mounted in — it slides over the
+         scene as a decal, casts no shadow into it, and at the size it drew it
+         read as an unidentifiable dark shape rather than as equipment.
+         Cargo Vision's read camera is the model to follow instead: a real
+         object, on a real pole, standing in the scene at the place the read
+         actually happens. Acts 2 and 3 currently have no camera in shot as a
+         result; that is the honest state until each gets a real one. */
 
       /* ---- fog: same colour, same idea, every act ----
          #0A0B0E is PALETTE.bgBottom, the backdrop's own bottom stop, so a
@@ -372,11 +330,6 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
 
       const target = new THREE.Vector3();
       const wpos = new THREE.Vector3();
-      // scratch for the housing's camera-local -> world transform, see below
-      const housingLocalPos = new THREE.Vector3();
-      const housingLocalQuat = new THREE.Quaternion();
-      const housingLocalEuler = new THREE.Euler();
-      const housingLocalMat = new THREE.Matrix4();
       const ONE = new THREE.Vector3(1, 1, 1);
       let raf = 0;
 
@@ -476,29 +429,6 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         camera.lookAt(target);
         camera.updateMatrixWorld(true);
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-
-        /* ---- 3. the corner housing: only the current act's prop is shown,
-           parked at that act's fixed camera-local offset ----
-           The housing lives under `scene`, not `camera` (see the note above
-           this block's old parenting call), so its LOCAL offset from the
-           lens has to be turned into a world transform by hand every frame:
-           compose the offset + yaw as a local matrix, then premultiply by
-           the camera's own matrixWorld (already updated above, after
-           placeCamera + lookAt). That reproduces exactly what `camera.add`
-           would have given for free if `camera` were in the scene graph. */
-        for (let i = 0; i < 3; i++) {
-          const on = i === act;
-          model.housings[i].visible = on;
-          if (on) {
-            const hs = ACTS[i].housing;
-            housingLocalPos.set(hs.x, hs.y, hs.z);
-            housingLocalQuat.setFromEuler(housingLocalEuler.set(0, hs.ry, 0));
-            housingLocalMat.compose(housingLocalPos, housingLocalQuat, ONE);
-            model.housings[i].matrixAutoUpdate = false;
-            model.housings[i].matrix.multiplyMatrices(camera.matrixWorld, housingLocalMat);
-            model.housings[i].matrixWorldNeedsUpdate = true;
-          }
-        }
 
         /* ---- 4. env dressing: exactly one act's set is visible ---- */
         model.envActs[1].visible = act === 0;

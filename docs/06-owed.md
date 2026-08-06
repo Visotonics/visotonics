@@ -36,7 +36,16 @@ The homepage "Statement" section is built to show real annotated inspection foot
 
 ## Client portal — UI with nothing behind it
 
-Login, register, and reset-password pages are built and look finished but have no real authentication — no accounts, no sessions. Anyone landing there sees a convincing mockup. Needs a real backend before it can be linked from anywhere real.
+Login, register, and reset-password pages are built and look finished but have
+no real authentication — no accounts, no sessions. Anyone landing there sees a
+convincing mockup, which is worse than no login at all. **Do not link it from
+anywhere public until real auth is behind it.**
+
+This is now scoped: see `10-partner-portal.md` for the decided shape (Zoho is
+the system of record, three partner types differing only in content, admin
+shares the login page and is redirected on role) and for the four questions
+still open. The page shells are a small build; the Zoho integration is the
+long pole.
 
 ## 11 stub pages + 1 blank page
 

@@ -494,7 +494,14 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          rather than by size: thickness stays at 0.075 (2.2px, which reads) and
          the arms drop to 0.17, comfortably under h/2 = 0.27 so the corner
          marks stay corner marks instead of closing into a rectangle. */
-      const idBox = bracket(1.95, 0.54, ID_MAT, 0.17, 0.075);
+      /* THICKNESS BACK UP TO 0.11, SIZE STAYS TIGHT. Reviewed rendered at
+         p = 0.55: at 0.075 the bracket had effectively vanished against the
+         container's own blue, which is the exact failure mode the note above
+         records — accent cyan on that paint is close in both hue and value,
+         so this mark survives on WEIGHT alone. Shrinking the box was right;
+         thinning it at the same time took away the only thing holding it up.
+         0.11 is 3.2px at this framing against the 2.2px that disappeared. */
+      const idBox = bracket(1.95, 0.58, ID_MAT, 0.20, 0.11);
       idBox.position.copy(ID_LOCAL);
       model.lift.add(idBox);
       const rustBox = bracket(0.66, 0.55, RUST_MAT, 0.16, 0.03);
@@ -538,12 +545,21 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
             vec2 d = (vUv - vec2(0.5)) * vec2(2.0, 2.9);
             float core = 1.0 - smoothstep(0.0, 1.0, clamp(length(d), 0.0, 1.0));
             vec3 col = mix(cCool, cHot, core * core);
-            gl_FragColor = vec4(col, 0.55 * core * uOp);
+            // 0.72, up from 0.55 — the field has to be visible enough that the
+            // bracket sitting on it is bracketing something
+            gl_FragColor = vec4(col, 0.72 * core * uOp);
             #include <colorspace_fragment>
           }`,
       });
+      /* CENTRED ON THE DENT, not near it. The field was at (-1.0, +0.05) while
+         the damage it grades is at (-0.781, +0.290) — a 0.34 offset, which is
+         small in world units and decisive on screen: the hot core bloomed
+         about 14px away from the bracket, so the box appeared to enclose
+         undamaged paint while the orange sat beside it. A graded field and a
+         mark that disagree about where the finding is are worse than either
+         alone. Same source as the anchor and the bracket now. */
       const heat = new THREE.Mesh(heatGeo, heatMat);
-      heat.position.set(-1.0, -DROP + 0.05, 1.239);
+      heat.position.copy(model.anchors.severity.pos).setZ(1.239);
       model.lift.add(heat);
 
       /* ---- closing the loop: the sharp frame lights up ON THE CONTAINER ----
@@ -588,7 +604,13 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const DENT_MAT = new THREE.MeshBasicMaterial({
         color: PALETTE.warn, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
       });
-      const dentBox = bracket(1.05, 0.78, DENT_MAT, 0.22, 0.05);
+      /* 1.35 x 0.95, up from 1.05 x 0.78, and thicker. At the shipped framing
+         the container is about 41 px/m, so the old box was 43 x 32 px with
+         2px arms — small enough that it read as a stray mark rather than as a
+         finding being enclosed. 1.35 x 0.95 is 55 x 39 px, which is close to
+         the rust box's ratio of mark-to-feature and large enough to contain
+         the heatmap's hot core rather than sitting inside it. */
+      const dentBox = bracket(1.35, 0.95, DENT_MAT, 0.28, 0.075);
       dentBox.position.copy(model.anchors.severity.pos);
       model.lift.add(dentBox);
 

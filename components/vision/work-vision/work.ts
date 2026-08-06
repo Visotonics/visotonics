@@ -644,6 +644,38 @@ export function buildWork(m: WorkMaterials): WorkModel {
   head.position.y = 1.673;          // crown lands at 1.815 — the figure's height
   figure.add(head);
 
+  /* ---- THE HARD HAT --------------------------------------------------------
+
+     The figure is a person in a warehouse aisle and, until this pass, was
+     bare-headed — which is the one thing nobody in that aisle is. It is not
+     decoration: at 170 px tall a walking silhouette has very few chances to
+     say what KIND of person it is, and a brimmed helmet is the strongest one
+     available. It also does real silhouette work in profile, which is the
+     only view this camera has: the brim projects front and back, breaking the
+     head's outline into something that is unmistakably not a ball on a stick.
+
+     THE CROWN INVARIANT HOLDS AT 1.815. That number is load-bearing in three
+     other places — the framing solve in scene.tsx (1.815 / 4.076 = 44.5% of
+     frame height), the callout's headAnchor at 1.90, and CONE_HALF_ANGLE's
+     clearance margin — so the hat is NOT stacked on top of the head. It is a
+     shell fitted OVER it: a 0.152 sphere on the head's own 1.673 centre, so
+     its top lands on 1.815 to the digit and the skin sphere sits 0.010 inside
+     it everywhere. Nothing above the neck moves.
+
+     Scaled 0.82 in Y so it is a cap rather than a globe, and the brim is a
+     thin cylinder at the head's equator. Both in `dark` — a helmet is the
+     only moulded, slightly glossy thing on the figure, and putting it in the
+     same material as the poles and the camera housings ties the person to the
+     equipment rather than to the racking behind them. */
+  const hat = mesh(new THREE.SphereGeometry(0.152, 18, 12), m.dark);
+  hat.scale.set(1.0, 0.82, 1.0);
+  hat.position.y = 1.690;           // 1.690 + 0.152*0.82 = 1.815, the crown
+  figure.add(hat);
+
+  const brim = mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.022, 16), m.dark);
+  brim.position.set(0, 1.676, 0.03);   // nudged forward: a brim is not centred
+  figure.add(brim);
+
   const hips = mesh(new THREE.BoxGeometry(0.30, 0.22, 0.22), m.suit);
   hips.position.y = 0.92;
   figure.add(hips);
@@ -690,8 +722,20 @@ export function buildWork(m: WorkMaterials): WorkModel {
   const legL = joint(0.105, 0.92);
   const legR = joint(-0.105, 0.92);
   for (const j of [legL, legR]) {
-    const leg = mesh(new THREE.CapsuleGeometry(0.078, 0.56, 5, 12), m.suit);
-    leg.position.y = -0.34;
+    /* THE LEG NOW REACHES THE ANKLE. It used to be a 0.716-long capsule hung
+       at -0.34, whose sole sat 0.222 ABOVE the floor with a separate boot
+       block filling the gap underneath. That arrangement is the source of the
+       "two blocks going through it on the feet" reading, and no amount of
+       resizing the boot could fix it, because the defect was never the boot's
+       proportions — it was that the leg and the foot were two masses meeting
+       at a seam 22 cm off the ground, which is nowhere on a body.
+
+       0.86 long (r 0.078, cylinder 0.704) hung at -0.43 puts the capsule's
+       bottom at 0.92 - 0.86 = 0.06 — an ankle. The foot below it then
+       OVERLAPS that cap rather than butting against it, so there is one
+       continuous leg-into-shoe silhouette and no seam to see. */
+    const leg = mesh(new THREE.CapsuleGeometry(0.078, 0.704, 5, 12), m.suit);
+    leg.position.y = -0.43;
     j.add(leg);
     /* THE BOOT EXISTS BECAUSE THE SPEC'S LEG DOES NOT REACH THE FLOOR, and that
        is worth stating rather than quietly fudging. The hip joint is at 0.92
@@ -734,8 +778,23 @@ export function buildWork(m: WorkMaterials): WorkModel {
        The forward toe offset also comes down, 0.05 -> 0.03, so the boot does
        not additionally reach further forward than its own now-shorter length
        already does. */
-    const boot = mesh(new THREE.BoxGeometry(0.16, 0.26, 0.20), m.suit);
-    boot.position.set(0, -0.79, 0.03);   // top at -0.66 (overlaps leg's -0.698 by 0.038), sole at -0.920 = ground
+    /* THE BOOT, THIRD PASS — and this time the leg comes down to meet it.
+
+       Both earlier passes tried to fix a 22 cm gap by tuning the object
+       filling it, and both produced a variant of the same defect: a separate
+       mass under a floating leg. The gap is gone now (see the capsule above),
+       so this is a SHOE and can be shaped like one.
+
+       0.14 tall x 0.24 long, sole on GROUND_Y, top at 0.14 — which is 0.08
+       ABOVE the leg capsule's 0.06 bottom, so the ankle is buried in the shoe
+       rather than resting on it. That overlap is the whole point and it is
+       why the height is 0.14 rather than the minimum that would close the
+       gap. In profile (local Z is the screen-horizontal walking axis) the
+       0.24 length and 0.14 height read as a work boot: longer than tall, as a
+       shoe is, but emerging from a leg rather than lying on the floor on its
+       own, which is what made the previous version a ski. */
+    const boot = mesh(new THREE.BoxGeometry(0.15, 0.14, 0.24), m.suit);
+    boot.position.set(0, -0.85, 0.045);  // sole at -0.920 = GROUND_Y; top at 0.14
     j.add(boot);
   }
 

@@ -374,8 +374,25 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          nothing else on this page hugs an edge at 26. 46/44 gives it the same
          kind of seat the drafting grid gives everything else, and puts the
          number's baseline clear of the deck's own perspective lines. */
+      /* ---- BOTH READOUTS DROP BY ONE BLOCK HEIGHT ------------------------
+
+         The pair sat too high in the frame with rendered deck still below
+         them. They move down together by DROP so they keep the shared
+         baseline established below, and 110 is one counter-block height
+         (12px caption + 12 padding + 72 numeral + 8 gap + 14 breakdown ≈ 118,
+         called 110 so the block's own descender does not reach the edge).
+
+         CLAMPED TO `bleed`, WHICH IS THE WHOLE TRICK. The overlay is the SLOT
+         and is NOT bled, while the canvas paints `bleed` px past the slot on
+         every edge — so there is real rendered deck below the overlay's foot,
+         but only as much as `bleed`. Dropping further than that would hang
+         the readouts off the render and onto the section's own caption.
+         Math.min means the platform mount (bleed 180) takes the full 110 and
+         a zero-bleed mount takes nothing and simply stays where it was, which
+         is correct rather than a degradation. */
+      const DROP = Math.min(bleed, 110);
       counterBox.style.cssText =
-        "position:absolute;left:46px;bottom:44px;opacity:0;transition:opacity .4s ease;pointer-events:none;";
+        `position:absolute;left:46px;bottom:${44 - DROP}px;opacity:0;transition:opacity .4s ease;pointer-events:none;`;
       const counterLabel = document.createElement("div");
       counterLabel.textContent = "CASES COUNTED";
       /* SIZED UP AND LIFTED OFF THE DECK. The register above is right, but it
@@ -921,7 +938,9 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              fraction, so resizing the panel cannot silently break the
              alignment. Right edge inset 46px to match the counter's 46px left
              inset — equal margins from the scene boundary on both sides. */
-          const px = w - 232 - 46, py = oh - 162 - 44;
+          /* +DROP matches the counter's own drop exactly (see its note), so
+             the two keep the shared baseline while both move down. */
+          const px = w - 232 - 46, py = oh - 162 - 44 + DROP;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 

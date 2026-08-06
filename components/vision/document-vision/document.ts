@@ -73,11 +73,27 @@ export const GROUND = -3;
    matching the standard it approximates. */
 export const SHEET_W = 2.94;
 export const SHEET_H = 3.87;
-/** Turned off square to the camera — see scene.tsx's camera derivation for
-    why this exact value pairs with CAM_AZ. A flat page shot dead-on reads as
-    a scan of a scan; a few degrees of turn is what makes it a PAGE, in space,
-    being read, rather than a rectangle of pixels. */
-export const SHEET_YAW = 0.18;
+/* SQUARE TO THE CAMERA AT REST — this must equal scene.tsx's CAM_AZ.
+
+   It was 0.18 against a CAM_AZ of 0.34, so the page sat 0.16 rad (about 9
+   degrees) off the lens and rendered as a leaning trapezoid rather than a
+   rectangle. The intent was "a flat page shot dead-on reads as a scan of a
+   scan; a few degrees of turn makes it a PAGE in space" — right instinct,
+   wrong mechanism. A permanent skew does not read as depth, it reads as a
+   document that was photographed carelessly, and it fights the one thing this
+   scene needs the viewer to do, which is READ the page.
+
+   The depth cue now comes from the pointer hover instead (see scene.tsx),
+   which is better on both counts: it only tilts when the viewer is actually
+   looking, and it establishes the page as a physical object far more
+   convincingly than a fixed angle ever did, because it responds.
+
+   The camera orbits its target by CAM_AZ, so its forward axis is
+   -(sin CAM_AZ, 0, cos CAM_AZ). A plane yawed by the same angle has its
+   normal pointing straight back down that axis, which is the condition for
+   rendering with no keystone at all — the page is then a true rectangle
+   regardless of where in frame it sits. */
+export const SHEET_YAW = 0.34;
 
 /* Texture resolution. 1024 x 1349 is 0.75908 : 1 — the sheet's own ratio to
    five figures, so a texel stays square on the page and the cell rules do not

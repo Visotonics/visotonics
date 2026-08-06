@@ -519,9 +519,14 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
         hoverTX = ((e.clientX - r.left) / r.width) * 2 - 1;
         hoverTY = ((e.clientY - r.top) / r.height) * 2 - 1;
       };
-      const onLeave = () => { hoverTX = 0; hoverTY = 0; };
+      /* NO SPRING BACK ON POINTERLEAVE. There was one, and it was wrong: the
+         page snapped to square the instant the cursor crossed the section's
+         edge, which reads as the object being yanked rather than let go.
+         Leaving it where the viewer left it is both calmer and more physical
+         — a sheet you have nudged stays nudged. The rest pose is already
+         square (SHEET_YAW == CAM_AZ), so the only way the page is ever
+         skewed is that someone put it there. */
       host.addEventListener("pointermove", onPointer, { passive: true });
-      host.addEventListener("pointerleave", onLeave, { passive: true });
 
       const ro = new ResizeObserver(studio.size);
       ro.observe(wrap);
@@ -709,7 +714,6 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
         cancelAnimationFrame(raf);
         window.clearTimeout(compileGuard);
         host.removeEventListener("pointermove", onPointer);
-        host.removeEventListener("pointerleave", onLeave);
         ro.disconnect();
         visObs.disconnect();
         finding.wrap.remove();

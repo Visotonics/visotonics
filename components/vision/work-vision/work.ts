@@ -31,6 +31,7 @@
 import * as THREE from "three";
 import { lerp } from "../_vision/camera";
 import { makeMetal } from "../_vision/metal";
+import { cardboardSide } from "../hero-cards/skins";
 
 /** Floor height. Zero, deliberately: every vertical number in this file is
     then also a height above ground. */
@@ -91,6 +92,8 @@ export interface WorkMaterials {
   rack: THREE.MeshStandardMaterial;
   goods: THREE.MeshStandardMaterial;
   dock: THREE.MeshStandardMaterial;
+  /** cardboard-skinned palletised cartons — the same board cargo-vision uses */
+  board: THREE.MeshStandardMaterial;
   paint: THREE.MeshBasicMaterial;
   all: THREE.Material[];
   dispose: () => void;
@@ -139,12 +142,50 @@ export function buildWorkMaterials(): WorkMaterials {
     depthWrite: false, toneMapped: false, fog: true,
   });
 
-  const all: THREE.Material[] = [dark, lens, suit, skin, floor, rack, goods, dock];
+  /* PALLETISED CARTONS, SKINNED WITH THE SAME BOARD AS CARGO VISION'S CASES.
+
+     `cardboardSide()` is a module-cached CanvasTexture in hero-cards/skins —
+     the identical call cargo.ts makes — so the two scenes' goods are visibly
+     the same material and the family reads as one world rather than two
+     art styles. It is CACHED AND SHARED, which means this scene must never
+     dispose it; only the material below is ours.
+
+     THE VALUE RULE, which has caught every scene on this site at least once:
+     under the full rig plus ACES a matte surface lands far brighter than its
+     authored albedo, and a MAPPED surface reads about a stop darker than an
+     unmapped one at the same tint because the baked grain is dark over most
+     of its area. #7C7costs nothing to state: the tint here is deliberately
+     well above the `goods` grey it replaces, because the map will pull it
+     back down. */
+  const board = new THREE.MeshStandardMaterial({
+    /* #3E3A33, DOWN FROM #6E6A62 — the value rule, caught on the first
+       render exactly as documented. At #6E6A62 the cartons came out the
+       BRIGHTEST thing in the frame, brighter than the walker they are meant
+       to sit behind, which inverts the scene's whole value ladder. The
+       standing rule (DECISIONS.md, and 07-design-language.md) is: goods sit
+       between the background and the overlay in value, machinery is the
+       darkest thing in frame, and the overlay is the only saturated thing in
+       frame. Roughly halving the authored tint puts them back under the
+       figure while the board grain still reads. */
+    map: cardboardSide(),
+    color: "#3E3A33",
+    roughness: 0.95,
+    metalness: 0.0,
+    envMapIntensity: 0.14,
+    transparent: true,
+    opacity: 0,
+  });
+
+  const all: THREE.Material[] = [dark, lens, suit, skin, floor, rack, goods, dock, board];
   return {
-    dark, lens, suit, skin, floor, rack, goods, dock, paint, all,
+    dark, lens, suit, skin, floor, rack, goods, dock, paint, board, all,
     dispose: () => {
       metal.dispose(); lens.dispose(); suit.dispose(); skin.dispose();
       floor.dispose(); rack.dispose(); goods.dispose(); dock.dispose(); paint.dispose();
+      /* MATERIAL ONLY — cardboardSide()'s texture is module-cached and shared
+         with cargo-vision. Disposing it here would leave that scene sampling a
+         destroyed texture on the same page. */
+      board.dispose();
     },
   };
 }
@@ -360,42 +401,136 @@ export function buildWork(m: WorkMaterials): WorkModel {
     env1.add(line);
   }
 
-  const uprightGeo = new THREE.BoxGeometry(0.10, RACK_H, RACK_D);
-  const xs = RACK_K.map((k) => RACK_BASE + RACK_PITCH * k);
-  xs.forEach((x, i) => {
-    const u = envMesh(uprightGeo, m.rack, i === 0);
-    u.position.set(x, GROUND_Y + RACK_H / 2, RACK_Z);
-    env1.add(u);
-  });
+  /* ---- THE UPRIGHTS ARE LATTICE FRAMES, NOT POSTS -------------------------
 
-  const beamGeo = new THREE.BoxGeometry(RACK_PITCH * (RACK_K.length - 1) + 0.10, 0.08, 0.50);
+     This is the change that makes racking read as racking. A pallet rack
+     upright is a pair of slender columns held apart by a zig-zag of diagonal
+     bracing, and that lattice is the single most identifiable thing in a
+     warehouse — more than the beams, more than the pallets. A solid 0.10-wide
+     box has none of it, which is why the previous version read as a row of
+     dark strips and the whole scene read as blobs.
+
+     Two columns 0.44 apart in Z (front and back of the frame), plus six
+     diagonals alternating direction up the height. The diagonals are thin
+     boxes rotated about X, so each one spans one bay of the ladder; the
+     alternation is what makes the zig-zag rather than a set of parallel
+     slashes.
+
+     ONE GEOMETRY PER PART, REUSED. Eight frames x (2 columns + 6 braces) is
+     128 meshes off two BufferGeometries, which is the same trade cargo makes
+     for its slats — geometry is the expensive thing, a Mesh is a matrix. */
+  const colGeo = new THREE.BoxGeometry(0.075, RACK_H, 0.075);
+  const BRACE_N = 6;
+  const braceH = RACK_H / BRACE_N;
+  const braceLen = Math.hypot(braceH, RACK_D * 0.80);
+  const braceGeo = new THREE.BoxGeometry(0.045, braceLen, 0.045);
+  const braceTilt = Math.atan2(RACK_D * 0.80, braceH);
+
+  const xs = RACK_K.map((k) => RACK_BASE + RACK_PITCH * k);
+
+  /** one lattice upright frame, centred on (x, z) */
+  const addFrame = (parent: THREE.Group, x: number, z: number, own: boolean) => {
+    for (const sz of [-1, 1]) {
+      const c = envMesh(colGeo, m.rack, own && sz === -1);
+      c.position.set(x, GROUND_Y + RACK_H / 2, z + sz * RACK_D * 0.40);
+      parent.add(c);
+    }
+    for (let i = 0; i < BRACE_N; i++) {
+      const b = envMesh(braceGeo, m.rack, own && i === 0);
+      b.position.set(x, GROUND_Y + braceH * (i + 0.5), z);
+      b.rotation.x = i % 2 === 0 ? braceTilt : -braceTilt;
+      parent.add(b);
+    }
+  };
+  xs.forEach((x, i) => addFrame(env1, x, RACK_Z, i === 0));
+
+  /* The beams get a FRONT LIP — a shallow box proud of the beam's face. Real
+     rack beams are a closed section with a step at the top edge that the
+     pallet's runners sit behind, and at this scale that step is the only
+     thing separating a beam from a painted stripe. */
+  const beamGeo = new THREE.BoxGeometry(RACK_PITCH * (RACK_K.length - 1) + 0.10, 0.09, 0.09);
+  const lipGeo = new THREE.BoxGeometry(RACK_PITCH * (RACK_K.length - 1) + 0.10, 0.035, 0.05);
   const beamCx = (xs[0] + xs[xs.length - 1]) / 2;
   BEAM_Y.forEach((by, i) => {
-    const b = envMesh(beamGeo, m.rack, i === 0);
-    b.position.set(beamCx, GROUND_Y + by, RACK_Z);
-    env1.add(b);
+    for (const sz of [-1, 1]) {
+      const b = envMesh(beamGeo, m.rack, i === 0 && sz === -1);
+      b.position.set(beamCx, GROUND_Y + by, RACK_Z + sz * RACK_D * 0.40);
+      env1.add(b);
+    }
+    const lip = envMesh(lipGeo, m.rack, i === 0);
+    lip.position.set(beamCx, GROUND_Y + by + 0.062, RACK_Z - RACK_D * 0.40 - 0.02);
+    env1.add(lip);
   });
 
-  /* Stored loads on the beams. Deterministic occupancy pattern, not random —
-     one fixed table, walked bay by bay. */
+  /* ---- THE LOADS ARE PALLETS OF CARTONS, WITH VARIATION -------------------
+
+     One 1.45 x 0.85 box per bay is the definition of blobby: every bay
+     identical, every load a featureless slab. What actually sits in a rack is
+     a wooden pallet carrying a stack of boxes, and no two stacks are the same
+     height or the same neatness.
+
+     So each occupied bay gets a pallet deck plus two or three cartons in the
+     `board` material — the same cached cardboard skin Cargo Vision skins its
+     cases with, so the two scenes' goods are visibly the same STUFF. Sizes,
+     the carton count and a small yaw all come from `hash(bay, level)`, which
+     is deterministic: `Math.random()` is banned here for the reason the file
+     header gives — a scene that reshuffles itself cannot be reviewed. */
   const OCCUPIED: readonly boolean[] = [true, true, false, true, true, false, true];
-  const loadGeo = new THREE.BoxGeometry(1.45, 0.85, 0.48);
-  let firstLoad = true;
+  const palletGeo = new THREE.BoxGeometry(1.40, 0.13, RACK_D * 0.92);
+  const cartonGeos = [
+    new THREE.BoxGeometry(0.62, 0.52, 0.46),
+    new THREE.BoxGeometry(0.50, 0.62, 0.44),
+    new THREE.BoxGeometry(0.72, 0.44, 0.48),
+  ];
+  let firstPallet = true;
   BEAM_Y.forEach((by, level) => {
     for (let bay = 0; bay < xs.length - 1; bay++) {
       if (!OCCUPIED[(bay + level * 3) % OCCUPIED.length]) continue;
-      const l = envMesh(loadGeo, m.goods, firstLoad);
-      firstLoad = false;
-      l.position.set((xs[bay] + xs[bay + 1]) / 2, GROUND_Y + by + 0.465, RACK_Z);
-      env1.add(l);
+      const cx = (xs[bay] + xs[bay + 1]) / 2;
+      const seed = bay * 7 + level * 31;
+
+      const pal = envMesh(palletGeo, m.rack, firstPallet);
+      firstPallet = false;
+      pal.position.set(cx, GROUND_Y + by + 0.10, RACK_Z);
+      env1.add(pal);
+
+      const n = 2 + (seed % 2);            // two or three cartons
+      for (let c = 0; c < n; c++) {
+        const gi = (seed + c * 3) % cartonGeos.length;
+        const g = cartonGeos[gi];
+        // own the geometry once, on its first use anywhere
+        const box = envMesh(g, m.board, level === 0 && bay === 0 && c < 3);
+        const w = (g.parameters as { width: number }).width;
+        const h = (g.parameters as { height: number }).height;
+        box.position.set(
+          cx - 0.42 + c * (w * 0.86),
+          GROUND_Y + by + 0.165 + h / 2,
+          RACK_Z + ((seed + c) % 3 - 1) * 0.045,
+        );
+        box.rotation.y = (((seed + c * 5) % 7) - 3) * 0.018;
+        env1.add(box);
+      }
     }
   });
 
-  const nearGeo = new THREE.BoxGeometry(1.80, NEAR_H, 0.95);
+  /* Floor-level stock along the near side of the aisle — same treatment, so
+     the foreground is pallets of goods rather than the grey slabs it was. */
   for (let k = -2; k <= 1; k++) {
-    const n = envMesh(nearGeo, m.goods, k === -2);
-    n.position.set(RACK_PITCH * k - 0.60, GROUND_Y + NEAR_H / 2, NEAR_Z);
-    env1.add(n);
+    const cx = RACK_PITCH * k - 0.60;
+    const seed = 13 + k * 11;
+    const pal = envMesh(palletGeo, m.rack, false);
+    pal.position.set(cx, GROUND_Y + 0.065, NEAR_Z);
+    env1.add(pal);
+    const n = 2 + (seed % 2);
+    for (let c = 0; c < n; c++) {
+      const g = cartonGeos[(seed + c * 2) % cartonGeos.length];
+      const box = envMesh(g, m.board, false);
+      const w = (g.parameters as { width: number }).width;
+      const h = (g.parameters as { height: number }).height;
+      box.position.set(cx - 0.40 + c * (w * 0.88), GROUND_Y + 0.13 + h / 2, NEAR_Z);
+      box.rotation.y = (((seed + c * 3) % 5) - 2) * 0.022;
+      env1.add(box);
+    }
   }
 
   /* ---- A SECOND RUN, BEHIND THE FIRST — this is what makes it an aisle ----
@@ -417,11 +552,9 @@ export function buildWork(m: WorkMaterials): WorkModel {
      as much mass behind him as in front. */
   const FAR_Z = RACK_Z - 4.0;
   const farXs = RACK_K.map((k) => RACK_BASE + RACK_PITCH * k + RACK_PITCH / 2);
-  farXs.forEach((x, i) => {
-    const u = envMesh(uprightGeo, m.rack, i === 0);
-    u.position.set(x, GROUND_Y + RACK_H / 2, FAR_Z);
-    env1.add(u);
-  });
+  // same lattice frames as the near run — reusing addFrame means the two runs
+  // can never drift into being different KINDS of racking
+  farXs.forEach((x) => addFrame(env1, x, FAR_Z, false));
   const farBeam = envMesh(beamGeo, m.rack, false);
   farBeam.position.set(beamCx + RACK_PITCH / 2, GROUND_Y + BEAM_Y[0], FAR_Z);
   env1.add(farBeam);
@@ -429,9 +562,16 @@ export function buildWork(m: WorkMaterials): WorkModel {
   const FAR_OCCUPIED: readonly boolean[] = [true, false, true, true, false, true, true];
   for (let bay = 0; bay < farXs.length - 1; bay++) {
     if (!FAR_OCCUPIED[bay % FAR_OCCUPIED.length]) continue;
-    const l = envMesh(loadGeo, m.goods, false);
-    l.position.set((farXs[bay] + farXs[bay + 1]) / 2, GROUND_Y + BEAM_Y[0] + 0.465, FAR_Z);
-    env1.add(l);
+    const cx = (farXs[bay] + farXs[bay + 1]) / 2;
+    const pal = envMesh(palletGeo, m.rack, false);
+    pal.position.set(cx, GROUND_Y + BEAM_Y[0] + 0.10, FAR_Z);
+    env1.add(pal);
+    // one carton per far bay, not two or three: the far run is scenery
+    const g = cartonGeos[(bay * 5) % cartonGeos.length];
+    const h = (g.parameters as { height: number }).height;
+    const box = envMesh(g, m.board, false);
+    box.position.set(cx, GROUND_Y + BEAM_Y[0] + 0.165 + h / 2, FAR_Z);
+    env1.add(box);
   }
 
   /* NO BACK WALL. One was added here and immediately removed, and the reason

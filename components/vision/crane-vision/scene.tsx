@@ -258,7 +258,25 @@ const W_CAPTURE: [number, number] = [0.08, 0.90];
    while its own anchor is comfortably inside the frame, not merely while the
    subject is. */
 const W_SELECT: [number, number] = [0.18, 0.74];   // 0.56 of 4.8s = 2.69s
-const W_SEVERE: [number, number] = [0.38, 0.80];   // 0.42 = 2.02s
+const W_SEVERE: [number, number] = [0.46, 0.88];   // 0.42 = 2.02s
+
+/* THE ID READ GETS ITS OWN WINDOW, AND IT HAS TO.
+
+   The ID box used to ride `coneVis` — the capture envelope, 0.08..0.90 — so
+   it was on screen for essentially the whole loop, including all of the
+   severity beat. Measured on the shipped slot at 65.4 px/m, the ID box spans
+   canvas x 81..205 and the dent box 187..246, both centred on y 327: they
+   OVERLAP, because on a real container the marking plate and this dent are
+   only 1.16m apart while the box that contains a 13-character stencil run is
+   1.9m wide. Neither can shrink below its own feature to fix that.
+
+   So they take turns. 0.10..0.40 puts the ID read wholly before the severity
+   beat opens at 0.38 (the 0.02 of overlap is inside both fades), which is
+   also the honest order of operations: a gantry reads the box's identity as
+   it takes the load, then inspects it. Two findings competing for the same
+   40 pixels was never a layout problem — it was two events being drawn as
+   though they were simultaneous. */
+const W_IDREAD: [number, number] = [0.08, 0.42];
 /** The frame-stack DOM panel: starts just after the container has cleared
  *  the camera heads (p_clear ~= 0.246 at the reference aspect — see the
  *  derivation at panelVis in applyFrame) and holds through most of the rest
@@ -373,8 +391,25 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          are the single source of truth for both the cones and the boxes, so
          the two can never drift apart. */
       const CONE_TARGET_LOCAL: THREE.Vector3[] = [];
+      /* renderOrder 5 ON EVERY MESH (a Group's renderOrder does NOT propagate
+         to children — three sorts per-object). Everything in this scene is in
+         the TRANSPARENT queue (the container ramps opacity during the intro,
+         so its materials are transparent:true), and that queue is ordered by
+         bounding-sphere distance, not per-pixel. The container's panels kept
+         WINNING the sort against the cones — drawn after them, painting over
+         them — which is what read as the cones phasing through the box.
+
+         5 puts the cones after the container (renderOrder 0), so they draw
+         against the depth the container's panels already wrote (their
+         depthWrite defaults to true, and the cone material's depthTest is
+         true): the part of the cone geometrically behind the container is
+         depth-culled per pixel, the part in front still glows additively.
+         That is exactly "occluded by the container without breaking the
+         additive look". */
+      const CONE_ORDER = 5;
       const sightCones = model.heads.map((head) => {
         const c = createSightCone({ color: PALETTE.accent });
+        c.group.traverse((o) => { o.renderOrder = CONE_ORDER; });
         scene.add(c.group);
         return c;
       });
@@ -412,12 +447,11 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       /* ---- two tracked detection boxes: the ID and the rust patch ----
          One per camera, each locked to a specific feature on the container's
          near face rather than a generic "somewhere on the box" point. Both
-         are parented to the LIFT — like the heatmap and foundMark below —
-         so they ride the rise and sway automatically instead of needing a
-         per-frame screen-space recompute. Same `bracket()` vocabulary as the
-         reticles/foundMark, at PALETTE.accent (#5CC8FF, the "observing"
-         colour — see detectMaterials' note in hero-cards/detect.ts) since
-         these are live tracking marks, not a concluded finding.
+         are parented to the LIFT — like the dent box below — so they ride
+         the rise and sway automatically instead of needing a per-frame
+         screen-space recompute. Same `bracket()` vocabulary, at
+         PALETTE.accent (#5CC8FF — see detectMaterials' note in
+         hero-cards/detect.ts).
 
          POSITIONS, in lift-local space (container-local (u,v) -> local
          (x, y) = ((u-0.5)*L, (0.5-v)*H), then lift-local y = local y - DROP,
@@ -441,7 +475,23 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          stood only 0.031 proud — inside the corrugation's own crest depth, so
          the marks could be swallowed by the panel they were supposed to be on
          top of. 0.10 clears it outright. */
-      const ID_LOCAL = new THREE.Vector3(-1.938, -DROP + 0.311, 1.32);
+      /* RE-DERIVED FROM THE PAINT, after the region was marked up on a review
+         screenshot. materials.ts sets the stencil with `fillText(..., w*0.045,
+         h*0.4)` at `bold h*0.078 monospace` and the DEFAULT alphabetic
+         baseline — so h*0.4 is the BASELINE, not the middle, and the glyphs
+         sit ABOVE it spanning roughly v 0.322..0.400 top-down. The previous
+         value took 0.4 as the block's centre and sat the bracket ~0.05m low.
+
+           centre v (top-down) = 0.400 - 0.078/2 = 0.361
+           local y = (0.5 - 0.361) * 2.591 = 0.360
+
+         Horizontally, 13 characters of bold monospace at 0.078h advance about
+         0.6 em each, so the run is 13 * 0.6 * 0.078 = 0.608h. At the front
+         face's 2.338:1 canvas that is 0.260 in u, from u 0.045 to u 0.305,
+         centre u 0.175:
+
+           local x = (0.175 - 0.5) * 6.058 = -1.969 */
+      const ID_LOCAL = new THREE.Vector3(-1.969, -DROP + 0.360, 1.32);
       const RUST_LOCAL = new THREE.Vector3(
         (DEFECT_UV.rust.u - 0.5) * 6.058, -DROP + (0.5 - DEFECT_UV.rust.v) * 2.591, 1.26,
       );
@@ -462,11 +512,34 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         1.26,
       );
 
+      /* depthTest FALSE on every detection mark, and this is the actual bug
+         behind three passes of "the ID box is missing".
+
+         Instrumented with `?debug=1`, ID_MAT reported opacity 1 with the
+         anchor projecting exactly onto the painted stencil — the bracket was
+         being built, driven and positioned correctly and simply never reached
+         the screen. It was losing the depth test to the container's own
+         panel. The ID bracket is 1.90m wide and its right-hand corners sit at
+         local x = -0.988, which is OUTSIDE container.ts's flattened PLAQUE
+         region (x0..x1 = -2.95..-1.05) and therefore over live corrugation,
+         whose crests stand proud of the flat face the 1.32 stand-off was
+         measured against. The rust box survived because it is 0.66m wide and
+         sits wholly inside its own patch.
+
+         Standing the marks further off the face would be the wrong fix — it
+         is a race between a magic number and the geometry, and this file has
+         already lost it once (the note at ID_LOCAL raising z from 1.25 to
+         1.32). These are OVERLAY graphics: the file's own comment calls them
+         "ink drawn over the world, not a surface in it", and ink over the
+         world does not queue behind the world. depthWrite was already off;
+         depthTest joins it, which is what that sentence actually implies. */
       const ID_MAT = new THREE.MeshBasicMaterial({
-        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false,
+        depthWrite: false, depthTest: false,
       });
       const RUST_MAT = new THREE.MeshBasicMaterial({
-        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false,
+        depthWrite: false, depthTest: false,
       });
       // sized to the feature: the ID run is a wide, short strip; the rust
       // patch (rRust = HT*0.15 in materials.ts -> ~0.39m radius) is roughly
@@ -518,10 +591,62 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          so this mark survives on WEIGHT alone. Shrinking the box was right;
          thinning it at the same time took away the only thing holding it up.
          0.11 is 3.2px at this framing against the 2.2px that disappeared. */
-      const idBox = bracket(1.95, 0.62, ID_MAT, 0.26, 0.16);
+      /* MEASURED, FINALLY, INSTEAD OF ARGUED. With `?debug=1` on the shipped
+         520x876 slot the container spans canvas x 76..472 — 396px for 6.058m,
+         so 65.4 px/m — and the three anchors report at ID (143,328),
+         dent (217,327), rust (319,382), all at opacity 1.
+
+         So nothing was ever missing or mispositioned, and the escalation to
+         0.16 thickness was fixing the wrong thing. At 65.4 px/m that gave a
+         128 x 41px box with 10.5px arms — arms a QUARTER of the box's own
+         height. A detector's bracket is a hairline that says "here"; this was
+         a slab. 0.055 is 3.6px, which is a line. */
+      /* NO SHADOW BACKING. A dark under-bracket was tried here (a near-black
+         copy 1.7x thicker under each accent line, for contrast on blue steel)
+         and reviewed OUT: it read as a heavy black stroke, not an edge. Each
+         mark is a single accent bracket again. */
+      /* THE MARKS DRAW LAST, AND THE SORT NO LONGER DECIDES. depthTest false
+         was necessary but NOT sufficient: it only wins against the DEPTH
+         BUFFER, not against draw ORDER. The container's materials are
+         transparent (they ramp during the intro), so its panels share the
+         marks' transparent queue, and that queue sorts per-OBJECT by
+         bounding-sphere distance. Whenever a panel's centre sorted nearer
+         than a bar's, the panel drew AFTER the bracket and painted straight
+         over it — which is why the ID box (over the near face, centre
+         slightly behind the panel's) vanished entirely, the dent box lost
+         only its left-hand bars, and the rust box happened to survive: the
+         flip depends on each 8-bar Group's individual mesh centres, not on
+         anything the marks control.
+
+         renderOrder must be set on EACH MESH — bracket() returns a Group of
+         8 planes, and a Group's renderOrder does not propagate — hence the
+         traverse. MARK_ORDER sits above CONE_ORDER (5): ink over the world
+         draws over the cones too. THIS IS THE FIX THAT MADE THE MARKS
+         VISIBLE AT ALL — do not remove it when restyling them.
+
+         frustumCulled false on the same traverse: each bar is a centimetres-
+         tall plane riding a lift group that is translated tens of metres in
+         Y, so per-mesh sphere culling is all risk and no saving. */
+      const MARK_ORDER = 11;
+      const markOnTop = (g: THREE.Group, order: number) => {
+        g.traverse((o) => { o.renderOrder = order; o.frustumCulled = false; });
+        return g;
+      };
+      /** a single accent bracket with the draw-order treatment applied */
+      const markBracket = (
+        w: number, h: number, mat: THREE.Material, arm: number, t: number,
+      ) => markOnTop(bracket(w, h, mat, arm, t), MARK_ORDER);
+
+      /* 1.70 x 0.30 — the measured stencil run (1.575 x 0.20) plus ~0.05m of
+         even margin. Reviewed at 1.68 x 0.42 / t 0.05 as "too big and too
+         heavy": the vertical margin was 0.11 a side against 0.05 horizontal,
+         so the box floated off the characters, and 0.05 thickness read as a
+         slab. Now the margin is even all round and the stroke is a hairline
+         (0.03, ~2px at 65 px/m), matching the rust box's weight. */
+      const idBox = markBracket(1.70, 0.30, ID_MAT, 0.10, 0.03);
       idBox.position.copy(ID_LOCAL);
       model.lift.add(idBox);
-      const rustBox = bracket(0.66, 0.55, RUST_MAT, 0.16, 0.03);
+      const rustBox = markBracket(0.66, 0.55, RUST_MAT, 0.16, 0.035);
       rustBox.position.copy(RUST_LOCAL);
       model.lift.add(rustBox);
 
@@ -533,77 +658,18 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         RUST_LOCAL.clone().setZ(RUST_LOCAL.z + 0.02),
       );
 
-      /* ---- the severity heatmap ----
-         A graded field on the container's near face, parented to the LIFT so it
-         rides the rise and the sway — a finding is on the object, not on the
-         screen. Quad sits 0.02 proud of the face so it never z-fights the
-         corrugation.
+      /* THE SEVERITY HEATMAP IS GONE, by product-owner review: the graded
+         amber field blooming inside the dent box was not wanted — "just leave
+         the box". The dent bracket alone marks the finding.
 
-         Raw ShaderMaterial, so #include <colorspace_fragment> is REQUIRED: three
-         converts the uniform colours sRGB -> linear on the way in and a custom
-         shader gets none of the output plumbing back, which renders the authored
-         colour at roughly an eighth of its brightness. Same trap, same fix, as
-         the cyclorama in _vision/studio.ts. */
-      const heatGeo = new THREE.PlaneGeometry(2.8, 1.9);
-      const heatMat = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-        uniforms: {
-          uOp: { value: 0 },
-          cCool: { value: new THREE.Color(PALETTE.accent) },
-          cHot: { value: new THREE.Color(PALETTE.warn) },
-        },
-        vertexShader: "varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
-        fragmentShader: `
-          varying vec2 vUv; uniform float uOp; uniform vec3 cCool; uniform vec3 cHot;
-          void main(){
-            // elliptical falloff — a dent spreads along the panel, not in a disc
-            vec2 d = (vUv - vec2(0.5)) * vec2(2.0, 2.9);
-            float core = 1.0 - smoothstep(0.0, 1.0, clamp(length(d), 0.0, 1.0));
-            vec3 col = mix(cCool, cHot, core * core);
-            // 0.72, up from 0.55 — the field has to be visible enough that the
-            // bracket sitting on it is bracketing something
-            gl_FragColor = vec4(col, 0.72 * core * uOp);
-            #include <colorspace_fragment>
-          }`,
-      });
-      /* CENTRED ON THE DENT, not near it. The field was at (-1.0, +0.05) while
-         the damage it grades is at (-0.781, +0.290) — a 0.34 offset, which is
-         small in world units and decisive on screen: the hot core bloomed
-         about 14px away from the bracket, so the box appeared to enclose
-         undamaged paint while the orange sat beside it. A graded field and a
-         mark that disagree about where the finding is are worse than either
-         alone. Same source as the anchor and the bracket now. */
-      const heat = new THREE.Mesh(heatGeo, heatMat);
-      heat.position.set(DENT_LOCAL.x, DENT_LOCAL.y, 1.239);
-      model.lift.add(heat);
+         THE FOUND-MARK IS GONE TOO, same review: the small accent bracket at
+         `model.anchors.sharp` (lift-local -1.70, -DROP + 0.95) sat on blank
+         corrugated panel in the upper-left with nothing under it — a fourth,
+         misplaced bracket. The "sharpest frame" story is carried entirely by
+         the DOM panel and its callout; do not reintroduce a 3D mark for it
+         without a feature under the anchor. */
 
-      /* ---- closing the loop: the sharp frame lights up ON THE CONTAINER ----
-         The frame-stack panel is deliberately DOM, not 3D (see the note below),
-         which is correct — those five tiles are what the SYSTEM saw, not props
-         in the yard — but as built it floated independently: nothing tied "here
-         is the sharpest frame" back to a place on the actual object. The
-         severity beat already makes this connection for the finding itself (the
-         heatmap is parented to the lift and sits on the container's face,
-         "a finding is on the object, not the screen" per its own comment); the
-         selection beat had no equivalent.
-
-         So a small bracket at `anchors.sharp` — the same point the "Sharpest
-         frame" callout leads from — lights up on the container's near face for
-         exactly the callout's own window (W_SELECT). It is parented to the
-         LIFT, like the heatmap, so it rides the rise and sway with the surface
-         it marks rather than floating in screen space like the panel does.
-         Reuses `bracket()` again rather than inventing a second overlay
-         primitive. */
-      const FOUND_MAT = new THREE.MeshBasicMaterial({
-        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
-      });
-      const foundMark = bracket(0.62, 0.46, FOUND_MAT, 0.16, 0.03);
-      foundMark.position.copy(model.anchors.sharp.pos);
-      model.lift.add(foundMark);
-
-      /* ---- and a MARK on the dent ----
+      /* ---- the MARK on the dent ----
          The severity callout now leads to the dent (see crane.ts's anchor
          note), but a leader ending on bare panel still asks the viewer to take
          the system's word for where the damage is. The corrosion has the rust
@@ -611,15 +677,15 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          saying "roughly here, and it gets worse toward the middle", useless at
          saying "this, exactly".
 
-         In PALETTE.warn, not accent, and that is the one place in this scene
-         where the distinction matters: the ID and rust boxes are the system
-         OBSERVING (#5CC8FF) while this is the system's CONCLUSION about a
-         severe finding, which is the orange half of the site's two-accent
-         rule. 1.05 x 0.78 covers the sculpted deformation, which spreads along
-         the panel rather than sitting in a disc — the same elliptical bias the
-         heatmap shader already assumes. */
+         PALETTE.accent, NOT warn — BY EXPLICIT PRODUCT-OWNER INSTRUCTION,
+         and it knowingly OVERRIDES the site's two-accent rule (orange =
+         conclusion, blue = observing; see DECISIONS.md). The owner wants all
+         three brackets in the same blue as the rust box. Recorded here so a
+         future pass does not "fix" it back to warn as an apparent accident. */
+      // depthTest false — same reason as ID_MAT/RUST_MAT above
       const DENT_MAT = new THREE.MeshBasicMaterial({
-        color: PALETTE.warn, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+        color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false,
+        depthWrite: false, depthTest: false,
       });
       /* 1.35 x 0.95, up from 1.05 x 0.78, and thicker. At the shipped framing
          the container is about 41 px/m, so the old box was 43 x 32 px with
@@ -627,7 +693,16 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          finding being enclosed. 1.35 x 0.95 is 55 x 39 px, which is close to
          the rust box's ratio of mark-to-feature and large enough to contain
          the heatmap's hot core rather than sitting inside it. */
-      const dentBox = bracket(1.35, 0.95, DENT_MAT, 0.28, 0.075);
+      /* 0.90 x 0.75, down from 1.35 x 0.95. Measured (see idBox above) the
+         old box spanned canvas x 173..261 while the ID box spanned 79..207 —
+         a 34px overlap at the same height, so the two brackets merged into one
+         unreadable tangle. A dent is a localised feature and does not need a
+         1.35m box; 0.90 is 59px, comfortably bigger than the deformation and
+         no longer reaching into its neighbour. */
+      /* 0.85 x 0.90 — reviewed at 1.00 wide as "slightly too wide"; narrowed
+         to sit closer to the deformation, height kept. Hairline thickness
+         (0.03) to match the other two brackets. */
+      const dentBox = markBracket(0.85, 0.90, DENT_MAT, 0.20, 0.03);
       dentBox.position.copy(DENT_LOCAL);
       model.lift.add(dentBox);
 
@@ -977,6 +1052,9 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const pinned = new URLSearchParams(location.search).get("phase");
       const pinP = pinned === null ? null : Math.min(1, Math.max(0, Number(pinned)));
       const holdP = pinP !== null && Number.isFinite(pinP) ? pinP : null;
+      /** see the debug block at the end of applyFrame */
+      const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
+      const FACE_N = new THREE.Vector3(0, 0, 1);
 
       const applyFrame = () => {
         const frozen = reduce;
@@ -1080,7 +1158,13 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         // the two tracked boxes ride the lift already (parented above); only
         // their opacity is driven, on the same envelope as the cones that
         // find them, so they fade in and out rather than pop.
-        ID_MAT.opacity = solid * coneVis;
+        /* The ID takes its own window (see W_IDREAD); the rust box stays on
+           the capture envelope, because it sits well clear of both the ID and
+           the dent and is the mark the corrosion callout leads to. */
+        const idVis = frozen
+          ? 0
+          : smoothstep(W_IDREAD[0], W_IDREAD[0] + 0.03, p) * (1 - smoothstep(W_IDREAD[1] - 0.04, W_IDREAD[1], p));
+        ID_MAT.opacity = solid * idVis;
         RUST_MAT.opacity = solid * coneVis;
 
         /* ---- selection: the five grabs ----
@@ -1092,14 +1176,10 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
            reject tiles 0.35, keeper untransformed) and this block no longer
            touches them per frame.
 
-           `foundMark`, below, is the one thing FROM this beat that still is
-           driven per frame: the bracket on the container's own surface that
-           closes the loop back from the DOM panel to the 3D object, lit for
-           exactly the window the "Sharpest frame" callout itself is up. */
-        const selectVis = frozen
-          ? 0
-          : smoothstep(W_SELECT[0], W_SELECT[0] + 0.04, p) * (1 - smoothstep(W_SELECT[1] - 0.05, W_SELECT[1], p));
-        FOUND_MAT.opacity = solid * selectVis;
+           The found-mark that used to be driven off this beat's own selectVis
+           envelope is gone (removed with its bracket — see the note where the
+           heatmap used to be built); the "Sharpest frame" callout's fade is
+           computed inside place() below, so nothing else needs it here. */
         /* The dent mark rides the SEVERITY envelope, not the capture one: it
            is the conclusion, so it appears with the card that states it and
            leaves with it. Computed below (severeVis) — assigned there. */
@@ -1125,7 +1205,6 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         const severeVis =
           smoothstep(W_SEVERE[0], W_SEVERE[0] + 0.04, p) *
           (1 - smoothstep(W_SEVERE[1] - 0.05, W_SEVERE[1], p));
-        heatMat.uniforms.uOp.value = solid * severeVis;
         DENT_MAT.opacity = solid * severeVis;
 
         /* ---- labels ---- */
@@ -1150,6 +1229,40 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         overlay.style.opacity = String(frozen ? 1 : smoothstep(0.2, 0.95, t));
 
         if (bloom) bloom.strength = 0.18 + 0.16 * coneVis;
+
+        /* ---- REVIEW INSTRUMENT: `?debug=1` -----------------------------------
+
+           This exists because three consecutive passes on this scene's
+           detection boxes were argued from screenshots of a 520px canvas
+           downscaled again by the review pane, and all three reached a wrong
+           conclusion. A bracket 120px wide in canvas pixels is 75px in the
+           screenshot and a corner arm is under 10 — below the resolution at
+           which "is this mark on that feature" can be answered by looking at
+           it. Guessing harder was not going to work.
+
+           So the scene reports instead. Under the flag it publishes, every
+           frame, the exact projected screen position of each anchor, the live
+           opacity of each mark, and the container's own two ends so a caller
+           can convert world metres to canvas pixels without assuming a scale.
+           That turns "where is the ID box" into a number.
+
+           Query-gated: one string check at build, one object write per frame
+           when on, nothing at all when off. */
+        if (DEBUG) {
+          const probe = (v: THREE.Vector3) => {
+            const r = project(wpos.copy(v).applyMatrix4(model.lift.matrixWorld), FACE_N, w, h);
+            return r ? [Math.round(r.sx), Math.round(r.sy)] : null;
+          };
+          (window as unknown as Record<string, unknown>).__craneDebug = {
+            canvas: [w, h, +(w / h).toFixed(3)],
+            p: +p.toFixed(3),
+            id: { at: probe(ID_LOCAL), op: +ID_MAT.opacity.toFixed(3) },
+            dent: { at: probe(DENT_LOCAL), op: +DENT_MAT.opacity.toFixed(3) },
+            rust: { at: probe(RUST_LOCAL), op: +RUST_MAT.opacity.toFixed(3) },
+            boxL: probe(new THREE.Vector3(-C_L / 2, -DROP, 1.26)),
+            boxR: probe(new THREE.Vector3(C_L / 2, -DROP, 1.26)),
+          };
+        }
       };
 
       /* Compile EVERY material's shader program now, not just the ones drawn in
@@ -1202,20 +1315,15 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
            metalBox geometry cache are all SHARED and outlive this scene —
            disposing them would leave the next build sampling dead textures. */
         sightCones.forEach((c) => c.dispose());
-        heatMat.dispose(); heatGeo.dispose();
         /* bracket() allocates its own PlaneGeometry per bar (unlike the
-           _barGeo-sharing createTracker), so the reticles and the found-mark
-           each own eight small geometries that nothing else references. */
+           _barGeo-sharing createTracker), so each mark owns eight small
+           geometries that nothing else references. */
         const disposeBracket = (g: THREE.Group) => {
           g.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
         };
-        /* All four brackets, not just foundMark — idBox and rustBox were built
-           by the same allocator and were being left behind on every unmount. */
-        disposeBracket(foundMark);
         disposeBracket(dentBox);
         disposeBracket(idBox);
         disposeBracket(rustBox);
-        FOUND_MAT.dispose();
         DENT_MAT.dispose();
         ID_MAT.dispose();
         RUST_MAT.dispose();

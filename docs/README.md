@@ -1,25 +1,23 @@
-# Visotonics website docs — index
+# Visotonics website docs
 
-What this is: a founder-readable map of the marketing/product website codebase. Not for engineers who already know the repo — for anyone who needs to find where something lives or how to check a change without reading code.
+For the founder, not the engineer. What's on the site, what state it's in, what changing it costs.
 
-Source: verified against the actual `app/` and `components/` tree, cross-checked against `touchmatrix.md` (repo root), `DECISIONS.md`, `PERFORMANCE.md`. Corrections made to stale claims are noted inline in each doc.
+Verified against the actual `app/` and `components/` tree at time of writing — not copied from old docs or from `touchmatrix.md` without re-checking.
 
-## The 7 docs
+## The 9 docs
 
-| # | File | What's in it | Read it when... |
-|---|---|---|---|
-| 1 | `01-sitemap.md` | Every real page, what it's for, indexed or not, stub or live | You need to know what's actually on the site |
-| 2 | `02-file-locations.md` | Directory map — what's in each folder | You're looking for where something lives |
-| 3 | `03-dependency-map.md` | What imports what, "change this → N pages move" | You're about to change a shared file and want to know the blast radius |
-| 4 | `04-animations.md` | Every 3D scene: what it shows, where it lives, loop length, how to review it | You want to see or discuss a specific animation |
-| 5 | `05-content-copy.md` | Where headlines/claims/legal text/blog posts live, how to edit them | Marketing/legal wants to change wording |
-| 6 | `06-operations.md` | Dev/build/run commands, env vars, deploy, review workflow, known traps | You (or an engineer) need to run or ship this |
-| 7 | `07-touch-matrix.md` | Technical reference — routes → components → state → shared-cache hazards | An engineer is about to touch shared infrastructure |
+| # | File | Answers |
+|---|---|---|
+| 1 | `01-whats-here.md` | What is this site, what are the products, what's live vs stub vs blank |
+| 2 | `02-products-and-scenes.md` | Every product section and every 3D scene — what it shows, what state it's in |
+| 3 | `03-content-and-editing.md` | Where words/prices/legal text live, and what editing them touches |
+| 4 | `04-change-risk.md` | If I change X, what else moves, and how risky is it |
+| 5 | `05-run-and-ship.md` | How to preview it, review a scene, deploy, what breaks if you build wrong |
+| 6 | `06-owed.md` | What's broken, unfinished, or parked right now |
+| 7 | `07-design-language.md` | The visual system: colour and what each colour means, type, the drafting-sheet motif, spacing, dark/light grounds |
+| 8 | `08-page-structure.md` | The section grammar product pages repeat, and the copy patterns that go with it |
+| 9 | `09-scene-craft-and-learnings.md` | How the 3D scenes are built, and the rules learned the hard way — including performance dead ends |
 
-## Quick facts
+## The one-paragraph version
 
-- Next.js 16.2.10 (App Router), React 19.2.4, TypeScript 5, Tailwind 4
-- Dev server: `npm run dev` on port 3000
-- 8 live 3D product scenes ("Vision" scenes), all real vanilla three.js (not react-three-fiber, not static graphics) — see `04-animations.md` for the note on "Secure Vision," which is not a 3D scene despite living in the same product family
-- No login/auth system live yet (`/client-portal` is UI only)
-- No CMS — all copy is hardcoded in `.tsx`/`.ts` files or small local data files
+Marketing site for a machine-vision company, four products (Viso Yard, Warehouse, Factory, Data). The headline feature is 8 real, working 3D animated scenes (vanilla three.js, not a template) that show the product "seeing" things — a truck's plate, a container's damage, a warehouse worker. Four more product sections (Audit, Dimension, Secure, Production) exist as static diagrams with no 3D scene behind them at all. About a third of the site's planned pages (careers, investor relations, whitepapers, etc.) are placeholder "coming soon" cards. There is no CMS — every word of copy is in code, and every change is a code change and a redeploy.

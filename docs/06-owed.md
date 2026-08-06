@@ -20,7 +20,9 @@ Right now:
 - a stray object draws in all three acts and should not be there.
 
 This is the largest open piece of scene work. Everything else in this file is
-smaller.
+smaller. **Act 1 is now done and meets the standard** — see
+`11-work-vision-plan.md` for the concept, the definition of done every act
+must meet, and exactly what acts 2 and 3 still need.
 
 ## Two copy/colour inconsistencies left by the crane pass
 

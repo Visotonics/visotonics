@@ -82,6 +82,14 @@ Settled across Crane Vision and Cargo Vision. Any new scene that wants to show a
 
 **`createSightCone` has no colour setter.** It exposes `material`, so write `material.uniforms.uColor.value.copy(c)`. The ground pool has its own material and its own uniforms; only `setOpacity` drives both.
 
+## Motivated light — the pendant
+
+- **A lit working surface with no visible cause reads as a lighting rig, not as a place.** Cargo Vision and Work Vision both hang the same pendant from `_vision/lamp.ts` over their working plane, and the reason is the same in both: the brightest thing in frame needs an object in frame explaining it. Use the shared builder; do not write a second one.
+- **Every part of that lamp answers a specific failure**, all found on cargo: the flex must run out of the top of frame (one starting at a visible plate announces there is no ceiling); the shade must be open-ended and DoubleSide (a closed one seen from below shows its cap and reads as a lump); the bulb must hang PROUD of the shade's rim (tucked inside, a camera looking slightly down sees none of it, and the lamp lights the scene while appearing unlit itself); the halo must be a view-facing billboard with radial falloff, never a sphere; the beam must fade along its length AND toward its silhouette via a fresnel term.
+- **Intensity is computed, not chosen.** At decay 2 the illuminance at the working plane is `intensity / d²`, and it has to beat the studio rig's key box at 5.6. Cargo's first two attempts delivered 1.3 and 5.3 and read as unlit and as a faint tint respectively.
+- **A PointLight is NOT hidden by its parent group's `visible = false`.** A lamp belonging to one act of a multi-act scene keeps lighting every other act unless its intensity is explicitly gated. Work Vision hits this exactly.
+- **Lamp materials must be ramped BY NAME.** They belong to the shared builder and are not in the scene's own material list, so a generic `mats.all` opacity sweep leaves the lamp at zero forever.
+
 ## Draw order — the trap that cost four passes
 
 - **`depthTest: false` defeats the depth BUFFER, not the draw ORDER.** Every object in a scene whose materials are `transparent: true` — which includes any subject that ramps its opacity during an intro — lands in three.js's transparent queue, and that queue is drawn in per-object bounding-sphere distance order. An overlay graphic sitting 0.1 units proud of a panel will still be painted over by that panel whenever the panel's *centre* happens to sort nearer. The symptom is maddening because it is per-object and therefore looks arbitrary: in Crane Vision one detection bracket vanished completely, a second lost only its left-hand bars, and a third a metre away rendered perfectly. **Set an explicit `renderOrder` on anything that must sit on top.**

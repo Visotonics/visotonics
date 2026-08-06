@@ -445,6 +445,23 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const RUST_LOCAL = new THREE.Vector3(
         (DEFECT_UV.rust.u - 0.5) * 6.058, -DROP + (0.5 - DEFECT_UV.rust.v) * 2.591, 1.26,
       );
+      /* THE DENT, in the same coordinates as the two above and by the same
+         conversion. Declared here rather than beside the bracket that uses it
+         because the severity heatmap — built further down — has to be centred
+         on it too, and a const cannot be read before its declaration.
+
+         WHY THIS IS NOT crane.ts's `anchors.severity`. That anchor computes
+         the identical expression from the identical constants and, reviewed on
+         a 1300px slot, put the bracket about 1.05m right of the sculpted dent
+         while the rust box landed on its patch exactly. Two paths that should
+         agree and do not is a bug to remove rather than an offset to apply, so
+         everything that has to sit ON the damage now reads this one value. */
+      const DENT_LOCAL = new THREE.Vector3(
+        (DEFECT_UV.dent.u - 0.5) * 6.058,
+        -DROP + (0.5 - DEFECT_UV.dent.v) * 2.591,
+        1.26,
+      );
+
       const ID_MAT = new THREE.MeshBasicMaterial({
         color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
       });
@@ -501,7 +518,7 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          so this mark survives on WEIGHT alone. Shrinking the box was right;
          thinning it at the same time took away the only thing holding it up.
          0.11 is 3.2px at this framing against the 2.2px that disappeared. */
-      const idBox = bracket(1.95, 0.58, ID_MAT, 0.20, 0.11);
+      const idBox = bracket(1.95, 0.62, ID_MAT, 0.26, 0.16);
       idBox.position.copy(ID_LOCAL);
       model.lift.add(idBox);
       const rustBox = bracket(0.66, 0.55, RUST_MAT, 0.16, 0.03);
@@ -559,7 +576,7 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          mark that disagree about where the finding is are worse than either
          alone. Same source as the anchor and the bracket now. */
       const heat = new THREE.Mesh(heatGeo, heatMat);
-      heat.position.copy(model.anchors.severity.pos).setZ(1.239);
+      heat.position.set(DENT_LOCAL.x, DENT_LOCAL.y, 1.239);
       model.lift.add(heat);
 
       /* ---- closing the loop: the sharp frame lights up ON THE CONTAINER ----
@@ -611,7 +628,7 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          the rust box's ratio of mark-to-feature and large enough to contain
          the heatmap's hot core rather than sitting inside it. */
       const dentBox = bracket(1.35, 0.95, DENT_MAT, 0.28, 0.075);
-      dentBox.position.copy(model.anchors.severity.pos);
+      dentBox.position.copy(DENT_LOCAL);
       model.lift.add(dentBox);
 
       /* ---- the selection panel: DOM, not 3D ----
@@ -879,7 +896,14 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         pos: RUST_LOCAL.clone().setZ(RUST_LOCAL.z + 0.04),
         normal: model.anchors.sharp.normal,
         onDark: true,
-        lane: { dir: "up", len: 96 },
+        /* 132, up from 96. At the shipped framing the container is only about
+           250px wide and the callout cards are house furniture sized for a
+           much larger subject, so a 96px lane left this card's lower edge
+           sitting on the container's top rail — covering the corrugation
+           right where the corrosion it names begins. 132 lifts it clear into
+           the empty sky the load has not yet reached, and keeps a readable
+           gap from the Dent card hanging below on its own 110. */
+        lane: { dir: "up", len: 132 },
         win: W_SELECT,
       });
       /* AND IT NAMES THE DEFECT. "High severity / flagged for surveyor" is a
@@ -897,8 +921,11 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         id: "severe",
         title: "Dent · 0.84",
         detail: "412 mm² · panel 2 · flagged for surveyor",
-        pos: model.anchors.severity.pos,
-        normal: model.anchors.severity.normal,
+        /* DENT_LOCAL, not the anchor — see its note. The card's leader has to
+           end on the same point the bracket encloses, or the scene shows a
+           mark in one place and a label pointing at another. */
+        pos: DENT_LOCAL.clone().setZ(DENT_LOCAL.z + 0.04),
+        normal: new THREE.Vector3(0, 0, 1),
         severe: true,
         onDark: true,
         /* DOWN, and short. The load is near the top of frame by the end of this

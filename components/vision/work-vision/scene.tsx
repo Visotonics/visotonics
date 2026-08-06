@@ -155,7 +155,15 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
     try {
       const studio = createStudio(wrap, {
         floorY: GROUND_Y, shadowExtent: 6, spread: 1.4, bare,
-        maxDpr: 1.75, shadowMapSize: 1024, exposure: 1.05,
+        /* 0.86, down from 1.05. Reviewed after the pendant landed: with a
+           practical throwing 6+ at the aisle floor ON TOP of the five-source
+           rig, the scene was over-lit — the racking, the cartons and the
+           floor all sat near the top of the tone curve, which is the value
+           ladder collapsing from the other direction to the one this file
+           usually fights. Dropping exposure rather than the lamp keeps the
+           lamp's POOL (which is the thing motivating the frame) and takes
+           the ambient down around it. */
+        maxDpr: 1.75, shadowMapSize: 1024, exposure: 0.86,
       });
       const { renderer, scene, camera, bloom, shadowMat } = studio;
 
@@ -477,14 +485,25 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         model.lamp.bulb.opacity = lampOn;
         model.lamp.halo.opacity = lampOn * 0.55;
         model.lamp.beam.opacity = lampOn * 0.085;
-        model.lamp.light.intensity = lampOn * 40;
+        /* 26, down from 40. 40 was computed to clear the studio key at a
+           2.55 drop and it did — but "clears the key" is the floor for a
+           practical reading as motivated, not the target, and at 40 the pool
+           under it blew out the aisle. 26 gives 26/2.55^2 = 4.0, just under
+           the key box's 5.6, which reads as a lamp contributing to a lit room
+           rather than as a lamp that IS the room. */
+        model.lamp.light.intensity = lampOn * 26;
 
         /* ---- 6. the read: cone (act 1 only) + bracket (every act) ---- */
         const walkOn = win(q, WALK_WIN);
         const coneOn = act === 0 ? solid * 0.30 * walkOn : 0;
-        /* re-aim at the walker's chest — see the note at createSightCone */
+        /* re-aim at the walker's chest — see the note at createSightCone.
+           THE HOUSING TURNS WITH IT: model.aimAt re-points act 1's camera
+           head at the same target, so the body and the sight line can never
+           disagree. A camera whose housing stares down the aisle while its
+           cone swings across to follow is worse than no camera at all. */
+        coneAim.set(model.figure.position.x, GROUND_Y + 1.05, model.figure.position.z);
+        if (act === 0) model.aimAt(coneAim);
         if (coneOn > 0.001) {
-          coneAim.set(model.figure.position.x, GROUND_Y + 1.05, model.figure.position.z);
           const range = Math.max(model.lens.distanceTo(coneAim), 0.01);
           sightCone.aim(model.lens, coneAim,
             Math.max(CONE_HALF_ANGLE, Math.atan(CONE_FOOT / range)));

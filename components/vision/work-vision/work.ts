@@ -109,21 +109,35 @@ export function buildWorkMaterials(): WorkMaterials {
     transparent: true, opacity: 0,
   });
 
+  /* #2E3A2F — the hi-vis-less workwear goes slightly GREEN, away from the
+     racking's blue. The figure was the same hue as everything around him,
+     which is the other half of the "grayed-out" report: separation between a
+     subject and its background is hue as much as value. */
   const suit = new THREE.MeshStandardMaterial({
-    color: "#262C35", roughness: 0.88, metalness: 0.02, envMapIntensity: 0.42,
+    color: "#2E3A2F", roughness: 0.88, metalness: 0.02, envMapIntensity: 0.42,
     transparent: true, opacity: 0,
   });
+  /* a cool mid, but no longer the same blue-grey as the racking */
   const skin = new THREE.MeshStandardMaterial({
-    color: "#3E454F", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
+    color: "#4A4740", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
     transparent: true, opacity: 0,
   });
 
+  /* #191D22 with a touch more warmth than the old #15181D — a concrete slab
+     under sodium-ish high bay is not neutral, and a dead-neutral floor is
+     what makes a scene read as a render rather than a room. */
   const floor = new THREE.MeshStandardMaterial({
-    color: "#15181D", roughness: 0.95, metalness: 0.0, envMapIntensity: 0.10,
+    color: "#191D22", roughness: 0.95, metalness: 0.0, envMapIntensity: 0.10,
     transparent: true, opacity: 0, depthWrite: false,
   });
+  /* #26303F, up and BLUER than the old #1A1F27. The whole scene was reported
+     as "grayed-out", and racking was most of the reason: at 1A1F27 it is a
+     near-neutral charcoal, so every structural edge in frame sat at the same
+     hue as the floor and the fog and the picture flattened into one grey
+     mass. Painted rack steel is genuinely blue, and giving it a hue of its
+     own is what separates structure from ground. */
   const rack = new THREE.MeshStandardMaterial({
-    color: "#1A1F27", roughness: 0.86, metalness: 0.18, envMapIntensity: 0.25,
+    color: "#26303F", roughness: 0.86, metalness: 0.18, envMapIntensity: 0.25,
     transparent: true, opacity: 0,
   });
   const goods = new THREE.MeshStandardMaterial({
@@ -219,6 +233,9 @@ export interface WorkModel {
   aim: THREE.Vector3;
   dir: THREE.Vector3;
   coneLen: number;
+  /** Re-point act 1's camera head at a world position. Called per frame with
+   *  the walker's chest so the housing and its sight cone always agree. */
+  aimAt: (target: THREE.Vector3) => void;
   owned: THREE.BufferGeometry[];
   dispose: () => void;
 }
@@ -276,8 +293,18 @@ export function buildWork(m: WorkMaterials): WorkModel {
   hat.position.y = 1.690;           // 1.690 + 0.152*0.82 = 1.815, the crown
   figure.add(hat);
 
-  const brim = mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.022, 16), m.dark);
-  brim.position.set(0, 1.676, 0.03);
+  /* THE BRIM SITS ON THE HAT'S LOWER RIM, NOT THE HEAD'S EQUATOR.
+
+     It was at y 1.676 — which is the HEAD's centre height, the widest point
+     of the face — so a 0.185 disc projected out all around the middle of the
+     head and read as a saucer driven through the neck. Reported exactly that
+     way. A hard hat's brim is at the BOTTOM of the shell.
+
+     The shell is a 0.152 sphere at 1.690 scaled 0.82 in Y, so its underside
+     is at 1.690 - 0.152*0.82 = 1.565. The brim goes there, at 0.172 — a hair
+     proud of the shell's own radius, which is what a brim is. */
+  const brim = mesh(new THREE.CylinderGeometry(0.172, 0.172, 0.020, 16), m.dark);
+  brim.position.set(0, 1.566, 0.022);
   figure.add(brim);
 
   const hips = mesh(new THREE.BoxGeometry(0.30, 0.22, 0.22), m.suit);
@@ -356,9 +383,24 @@ export function buildWork(m: WorkMaterials): WorkModel {
        0.476, so a 0.14-tall boot centred at knee-local -0.406 puts its sole at
        0.476 - 0.406 - 0.07 = 0. It overlaps the shin's 0.06 ankle by 0.08, so
        there is no seam — the defect an earlier pass shipped twice. */
-    const boot = mesh(new THREE.BoxGeometry(0.15, 0.14, 0.24), m.suit);
-    boot.position.set(0, -0.406, 0.045);
-    k.add(boot);
+    /* THE SHOE IS A SOLE PLUS AN UPPER, NOT ONE BRICK.
+
+       A single 0.15 x 0.14 x 0.24 box has no arch, no toe and no heel — at
+       any size it reads as a block stuck on the end of a leg. Two parts fix
+       it, and they are the two parts a shoe silhouette is actually made of:
+
+         sole   thin, wider than the upper, LONGER at the toe. The overhang
+                is the whole cue: a foot is longer at the floor than it is at
+                the ankle.
+         upper  shorter and set BACK, so the sole projects in front of it.
+
+       Both are still one material — this is silhouette work, not detail. */
+    const sole = mesh(new THREE.BoxGeometry(0.155, 0.045, 0.27), m.dark);
+    sole.position.set(0, -0.4535, 0.055);
+    k.add(sole);
+    const upper = mesh(new THREE.BoxGeometry(0.135, 0.115, 0.185), m.suit);
+    upper.position.set(0, -0.373, 0.018);
+    k.add(upper);
   });
 
   /* The gait. Driven by absolute scene time, not loop phase — see scene.tsx.
@@ -393,38 +435,102 @@ export function buildWork(m: WorkMaterials): WorkModel {
     figure.position.y = 0.035 * Math.abs(s);
   };
 
-  /* ======================= ACT 1's ONE CAMERA ======================= */
+  /* ======================= ACT 1's ONE CAMERA =======================
+
+     OFF THE FLOOR AND OUT OF THE WALKWAY. It used to be a mast standing at
+     (-0.6, -2.1) — in the aisle the walker uses, which is both wrong for a
+     warehouse (nobody puts a pole in a pick face) and wrong for the shot,
+     since a vertical post through the middle of frame cuts the composition in
+     two. Real warehouse cameras hang off the structure: a horizontal arm
+     clamped to the top of a rack run, reaching out over the aisle, with the
+     head on its end.
+
+     So the rig is now an ARM, and every number falls out of the racking it is
+     clamped to rather than being chosen:
+
+       clamp   at the top of the near rack run, z = RACK_Z, y = RACK_H - 0.15
+       arm     runs from there OUT over the aisle to ARM_Z
+       drop    a short stem down to the head, so the lens clears the arm
+       head    at (ARM_X, HEAD_Y, ARM_Z), looking down at the walk line
+
+     THE HEAD IS NOT FIXED — see `aimAt` below. */
   const fixed = new THREE.Group();
-  fixed.name = 'act1pole';
-  const POLE_TOP = HEAD_Y + 0.15;
+  fixed.name = 'act1cam';
 
+  const CAM_X = -2.35;                    // left of centre, clear of the walker
+  const CAM_Z = -1.55;                    // out over the aisle from the rack
+  const CLAMP_Z = RACK_Z + RACK_D * 0.4;  // the rack face it clamps to
+  const CAM_Y = RACK_H - 0.15;
+
+  // the clamp block on the rack's top rail
+  const clamp = mesh(new THREE.BoxGeometry(0.16, 0.20, 0.22), m.dark, false);
+  clamp.position.set(CAM_X, GROUND_Y + CAM_Y, CLAMP_Z);
+  fixed.add(clamp);
+
+  // the arm itself, reaching out over the aisle
+  const armLen = Math.abs(CAM_Z - CLAMP_Z);
+  const armBar = mesh(new THREE.BoxGeometry(0.075, 0.075, armLen), m.dark, false);
+  armBar.position.set(CAM_X, GROUND_Y + CAM_Y, (CLAMP_Z + CAM_Z) / 2);
+  fixed.add(armBar);
+
+  // a diagonal tie back to the rack, so the arm is braced rather than
+  // cantilevered off nothing
+  const tieLen = Math.hypot(armLen * 0.8, 0.42);
+  const tie = mesh(new THREE.BoxGeometry(0.045, tieLen, 0.045), m.dark, false);
+  tie.position.set(CAM_X, GROUND_Y + CAM_Y - 0.21, (CLAMP_Z + CAM_Z) / 2 + armLen * 0.1);
+  tie.rotation.x = Math.atan2(armLen * 0.8, 0.42);
+  fixed.add(tie);
+
+  // the drop stem, arm down to the head
+  const HEAD_DROP = 0.26;
+  const stem = mesh(new THREE.BoxGeometry(0.05, HEAD_DROP, 0.05), m.dark, false);
+  stem.position.set(CAM_X, GROUND_Y + CAM_Y - HEAD_DROP / 2, CAM_Z);
+  fixed.add(stem);
+
+  const mount = new THREE.Vector3(CAM_X, GROUND_Y + CAM_Y - HEAD_DROP, CAM_Z);
   const aim = new THREE.Vector3(AIM_X, AIM_Y, 0);
-  const mount = new THREE.Vector3(POLE_X, HEAD_Y, POLE_Z);
-  const dir = aim.clone().sub(mount).normalize();
 
-  const pole = mesh(new THREE.BoxGeometry(0.13, POLE_TOP - GROUND_Y, 0.13), m.dark, false);
-  pole.position.set(POLE_X, GROUND_Y + (POLE_TOP - GROUND_Y) / 2, POLE_Z);
-  fixed.add(pole);
-  const foot = mesh(new THREE.BoxGeometry(0.32, 0.09, 0.32), m.dark, false);
-  foot.position.set(POLE_X, GROUND_Y + 0.045, POLE_Z);
-  fixed.add(foot);
+  /* THE HEAD, AND IT TRACKS.
 
+     Cargo Vision's read camera is fixed because its subject stream is fixed —
+     the belt always crosses the same point. Here the subject WALKS the length
+     of the frame, so a head bolted to one bearing would be pointing at empty
+     aisle for most of the act while its own cone swung across to follow. A
+     camera whose body and whose sight line disagree is worse than no camera.
+
+     `aimAt` re-points the whole head group at a world position; scene.tsx
+     calls it every frame with the walker's chest, the same target the sight
+     cone uses, so the two can never disagree. The group is built looking down
+     its own local +Z, which is why the quaternion is set from (0,0,1). */
   const h = new THREE.Group();
   h.position.copy(mount);
-  h.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
   fixed.add(h);
 
-  const stalk = mesh(new THREE.BoxGeometry(0.06, 0.06, 0.30), m.dark, false);
-  stalk.position.z = 0.06;
-  h.add(stalk);
-  const body = mesh(new THREE.BoxGeometry(0.24, 0.20, 0.40), m.dark, false);
-  body.position.z = 0.26;
+  const _fwd = new THREE.Vector3(0, 0, 1);
+  const _to = new THREE.Vector3();
+  const aimAt = (target: THREE.Vector3) => {
+    _to.copy(target).sub(mount).normalize();
+    h.quaternion.setFromUnitVectors(_fwd, _to);
+  };
+  aimAt(aim);
+
+  const yoke = mesh(new THREE.BoxGeometry(0.07, 0.14, 0.07), m.dark, false);
+  yoke.position.z = 0.02;
+  h.add(yoke);
+  const body = mesh(new THREE.BoxGeometry(0.19, 0.17, 0.34), m.dark, false);
+  body.position.z = 0.22;
   h.add(body);
-  const lensMesh = mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.05, 16), m.lens, false);
+  // sun hood, overhanging the glass
+  const hood = mesh(new THREE.CylinderGeometry(0.098, 0.098, 0.14, 14, 1, true), m.dark, false);
+  hood.rotation.x = Math.PI / 2;
+  hood.position.z = 0.40;
+  h.add(hood);
+  const lensMesh = mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.04, 16), m.lens, false);
   lensMesh.rotation.x = Math.PI / 2;
   lensMesh.position.z = LENS_OUT;
   h.add(lensMesh);
 
+  const dir = aim.clone().sub(mount).normalize();
   const lens = mount.clone().addScaledVector(dir, LENS_OUT);
   /* Cone length runs to the FLOOR along the sight axis, not to the aim
      point — see detect.ts's own note on why (truncating at the aim point
@@ -779,7 +885,7 @@ export function buildWork(m: WorkMaterials): WorkModel {
     fixed,
     envActs: [envShared, env1, env2, env3],
     lamp,
-    lens, aim, dir, coneLen,
+    lens, aim, dir, coneLen, aimAt,
     owned,
     /* The lamp's GEOMETRY is already in `owned` (pushed where it is built),
        so only its MATERIALS need its own dispose — the shared builder hands

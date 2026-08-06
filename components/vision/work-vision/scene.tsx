@@ -110,12 +110,15 @@ const actPhase = (p: number, act: number) => p * 3 - act;
 const walkerXFor = (dir: 1 | -1, q: number) => (dir === 1 ? walkerX(q) : lerp(WALK_TO, WALK_FROM, q));
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 
-/* Walker's on-screen window in an act's own local phase, carried over from
-   the original derivation (frame edges at x = -3.30/+3.86 against a run of
-   +-5.2): comfortably on/off screen at both ends regardless of which act's
-   pose is live, since all three poses are close enough in scale to the
-   original that the same window still clears in every one of them. */
-const WALK_WIN: [number, number] = [0.135, 0.918];
+/* Walker's on-screen window in an act's own local phase.
+
+   TIGHTENED from [0.135, 0.918]. That range was derived against the original
+   single-aisle camera; the act poses are closer, so the walker leaves frame
+   sooner than it assumed. Checked at p = 0.29 (act phase 0.87) he was fully
+   off the right edge with his detection bracket still up and tracking him
+   into the void — which reads as the system marking something that is not
+   there. [0.17, 0.83] fades the read out while he is still in shot. */
+const WALK_WIN: [number, number] = [0.17, 0.83];
 
 /** Ramp a value up at a window's open and down at its close. */
 const win = (p: number, w: [number, number], inPad = 0.03, outPad = 0.04) =>
@@ -247,12 +250,27 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          bracket intermittently unless the bracket's own renderOrder wins
          explicitly and frustumCulled is off on every mesh (a Group's
          renderOrder does not propagate to children; must traverse()). */
+      /* depthTest FALSE, and renderOrder alone was not enough.
+
+         Reviewed at act 1: the bracket's bottom-right corner was missing
+         whenever a foreground pallet stood between the lens and the walker's
+         feet. renderOrder controls DRAW ORDER, not the depth test — the
+         carton is nearer, it writes depth, and the bracket bars behind it
+         fail the test however late they are drawn. Crane Vision reached the
+         identical conclusion for the identical symptom.
+
+         These are OVERLAY marks: ink drawn over the world, not surfaces in
+         it. A detection box that a passing pallet can eat is worse than no
+         box, because the viewer reads the gap as the system losing track. */
       const brkMat = new THREE.MeshBasicMaterial({
         color: PALETTE.accent, transparent: true, opacity: 0, toneMapped: false,
-        depthWrite: false, fog: false,
+        depthWrite: false, depthTest: false, fog: false,
       });
       const tracker = createTracker(brkMat, { pad: 1.20 });
-      tracker.group.renderOrder = 10;
+      /* PER MESH — a Group's renderOrder does NOT propagate to its children
+         in three.js, so setting it on the group alone did nothing. Same trap,
+         same fix, as crane-vision's brackets. */
+      tracker.group.traverse((o) => { o.renderOrder = 10; o.frustumCulled = false; });
       tracker.group.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
           o.renderOrder = 10;
@@ -501,7 +519,20 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            head at the same target, so the body and the sight line can never
            disagree. A camera whose housing stares down the aisle while its
            cone swings across to follow is worse than no camera at all. */
-        coneAim.set(model.figure.position.x, GROUND_Y + 1.05, model.figure.position.z);
+        /* `cx`, NOT model.figure.position.x — and this was a real bug that
+           only a second phase caught.
+
+           The walk is applied to model.ROOT (line above); `figure` is a child
+           of it and only ever has its .y touched, by the gait bob. So
+           `model.figure.position.x` is 0 for the whole loop, and both the cone
+           and the camera head were aiming at world x = 0 permanently. It
+           LOOKED like tracking, because the walker passes through x = 0 in the
+           middle of every act — checked at one phase it is indistinguishable
+           from working, and checked at p = 0.29 the walker was at the right
+           frame edge while the cone still pointed at empty aisle on the left.
+
+           A local position on a translated parent is not a world position. */
+        coneAim.set(cx, GROUND_Y + 1.05, 0);
         if (act === 0) model.aimAt(coneAim);
         if (coneOn > 0.001) {
           const range = Math.max(model.lens.distanceTo(coneAim), 0.01);

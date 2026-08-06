@@ -74,7 +74,7 @@ const RACK_K: readonly number[] = [-3, -2, -1, 0, 1, 2, 3, 4];
 const RACK_H = 3.40;
 const RACK_D = 0.55;
 const BEAM_Y = [1.15, 2.30] as const;
-const NEAR_Z = 2.08;
+const NEAR_Z = 2.86;
 const NEAR_H = 0.42;
 
 /** Floor slab. Shared by every act — one physical floor, three cameras. */
@@ -109,17 +109,27 @@ export function buildWorkMaterials(): WorkMaterials {
     transparent: true, opacity: 0,
   });
 
-  /* #2E3A2F — the hi-vis-less workwear goes slightly GREEN, away from the
-     racking's blue. The figure was the same hue as everything around him,
-     which is the other half of the "grayed-out" report: separation between a
-     subject and its background is hue as much as value. */
+  /* THE WORKWEAR GOES GREEN-WARD, AWAY FROM THE RACKING'S BLUE — separation
+     between a subject and its background is hue as much as value, and the
+     figure being the same hue as everything around him was half the
+     "grayed-out" report.
+
+     #20261F, DOWN FROM #2E3A2F. The first attempt at this rendered as pale
+     mint and made the walker the brightest, most saturated object in frame —
+     the value rule, and specifically its green corollary: a green of the same
+     nominal luminance as a blue-grey reads far lighter, because the eye is
+     most sensitive in exactly that band. Authoring green needs a bigger
+     reduction than authoring any other hue, not the same one. */
   const suit = new THREE.MeshStandardMaterial({
-    color: "#2E3A2F", roughness: 0.88, metalness: 0.02, envMapIntensity: 0.42,
+    color: "#20261F", roughness: 0.88, metalness: 0.02, envMapIntensity: 0.42,
     transparent: true, opacity: 0,
   });
-  /* a cool mid, but no longer the same blue-grey as the racking */
+  /* a warm mid, no longer the same blue-grey as the racking — but SUBDUED.
+     Skin is the only lift on the figure and it exists so the head separates
+     from the shoulders at ~170px; it is not a highlight. Nothing on a body is
+     twice the value of anything else on it. */
   const skin = new THREE.MeshStandardMaterial({
-    color: "#4A4740", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
+    color: "#3B382F", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
     transparent: true, opacity: 0,
   });
 
@@ -457,7 +467,12 @@ export function buildWork(m: WorkMaterials): WorkModel {
   const fixed = new THREE.Group();
   fixed.name = 'act1cam';
 
-  const CAM_X = -2.35;                    // left of centre, clear of the walker
+  const CAM_X = -1.62;                    // left of centre, clear of the walker
+  /* -1.62, in from -2.35. At -2.35 the clamp and half the arm sat outside the
+     left frame edge and the rig read as a fragment rather than as a camera on
+     a bracket — the mount is the thing that makes a camera legible (see the
+     corner-prop removal), so cropping the mount defeats the point of having
+     put it on a real one. */
   const CAM_Z = -1.55;                    // out over the aisle from the rack
   const CLAMP_Z = RACK_Z + RACK_D * 0.4;  // the rack face it clamps to
   const CAM_Y = RACK_H - 0.15;
@@ -698,23 +713,31 @@ export function buildWork(m: WorkMaterials): WorkModel {
   });
 
   /* Floor-level stock along the near side of the aisle — same treatment, so
-     the foreground is pallets of goods rather than the grey slabs it was. */
+     the foreground is pallets of goods rather than the grey slabs it was.
+
+     MOVED FORWARD (z 2.08 -> 2.86) AND CUT TO ONE LAYER. At 2.08 with a full
+     two-or-three carton stack it had grown tall enough to cross the walker's
+     shins and swallow the bottom-left corner of his detection bracket —
+     foreground that occludes the subject is not depth, it is a wall. Further
+     forward it drops lower in frame (it is nearer the lens, so it falls away
+     below the walk line) and a single layer keeps its top under his knees.
+     It still does the framing job; it just stops eating the subject. */
   for (let k = -2; k <= 1; k++) {
     const cx = RACK_PITCH * k - 0.60;
     const seed = 13 + k * 11;
     const pal = envMesh(palletGeo, m.rack, false);
     pal.position.set(cx, GROUND_Y + 0.065, NEAR_Z);
     env1.add(pal);
-    const n = 2 + (seed % 2);
-    for (let c = 0; c < n; c++) {
-      const g = cartonGeos[(seed + c * 2) % cartonGeos.length];
-      const box = envMesh(g, m.board, false);
-      const w = (g.parameters as { width: number }).width;
-      const h = (g.parameters as { height: number }).height;
-      box.position.set(cx - 0.40 + c * (w * 0.88), GROUND_Y + 0.13 + h / 2, NEAR_Z);
-      box.rotation.y = (((seed + c * 3) % 5) - 2) * 0.022;
-      env1.add(box);
-    }
+    /* POSITIVE MODULO. `seed` is 13 + k*11 and k runs from -2, so seed goes
+       negative — and JavaScript's % keeps the sign of the DIVIDEND, so a bare
+       `seed % n` returns a negative index and the lookup is undefined. This
+       threw at build time and blacked the whole scene out. */
+    const g = cartonGeos[((seed + 1) % cartonGeos.length + cartonGeos.length) % cartonGeos.length];
+    const h = (g.parameters as { height: number }).height;
+    const box = envMesh(g, m.board, false);
+    box.position.set(cx, GROUND_Y + 0.13 + h / 2, NEAR_Z);
+    box.rotation.y = (((seed % 5) + 5) % 5 - 2) * 0.022;
+    env1.add(box);
   }
 
   /* ---- A SECOND RUN, BEHIND THE FIRST — this is what makes it an aisle ----

@@ -182,7 +182,13 @@ export function buildPendantLamp(o: PendantOpts): Pendant {
   });
   const shadeMesh = new THREE.Mesh(shadeGeo, shade);
   shadeMesh.position.set(x, y, z);
-  shadeMesh.castShadow = true;
+  /* THE SHADE DOES NOT CAST. A pendant's own shadow lands on the floor as a
+     soft ellipse with nothing visibly above it — reviewed in work-vision it
+     read as a stain on the concrete rather than as the lamp's shadow, because
+     the shade is small, high, and lit from several directions at once. The
+     lamp's job is to explain why the floor is bright; a second dark blob on
+     that floor works against exactly that. */
+  shadeMesh.castShadow = false;
   group.add(shadeMesh);
 
   /* PROUD OF THE RIM. The cone is centred on y with its wide end DOWN, so its

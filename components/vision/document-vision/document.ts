@@ -704,9 +704,28 @@ export function buildDocument(mats: DocumentMaterials): DocumentModel {
   sheet.rotation.y = SHEET_YAW;
   root.add(sheet);
 
-  const paperGeo = new THREE.PlaneGeometry(SHEET_W, SHEET_H);
+  /* A SHEET WITH THICKNESS, NOT A PLANE.
+
+     It was a zero-depth PlaneGeometry, which is why it read as an image
+     pasted into the frame rather than as a piece of paper in space: a plane
+     has no edge, so it catches no light along its rim and casts no sense of
+     which side is nearer as it turns. 0.012 is 12mm — thicker than real
+     paper, and deliberately so, because at the shipped framing a truly
+     paper-thin edge is sub-pixel and buys nothing. It is thin enough that the
+     rim never reads as card.
+
+     BoxGeometry's UVs are per-face and each face maps the full 0..1, so the
+     +Z face carries the whole page exactly as the plane did — no re-mapping,
+     no texture change. The four rim faces sample the same texture across
+     12mm, which at this scale is a sliver a pixel or two wide and reads as an
+     edge rather than as smeared print.
+
+     The material keeps DoubleSide: it costs nothing here and means a future
+     pose that swings the sheet past edge-on does not punch a hole in it. */
+  const paperGeo = new THREE.BoxGeometry(SHEET_W, SHEET_H, 0.012);
   owned.push(paperGeo);
   const paper = new THREE.Mesh(paperGeo, mats.paper);
+  paper.castShadow = false;
   sheet.add(paper);
 
   return { root, sheet, owned };

@@ -481,6 +481,48 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
         win: W_HARD,
       });
 
+      /* ---- THE SHEET HOVERS, AND FOLLOWS THE CURSOR ----------------------
+
+         The page is the only object in this scene and the camera is bolted
+         down, so without this the frame is completely static between beats —
+         which is what made a sheet with no thickness read as an image rather
+         than an object. A few degrees of parallax under the pointer is enough
+         to establish that it is a physical thing at a distance, and it costs
+         two numbers and a lerp.
+
+         DELIBERATELY SMALL. 0.13 rad of yaw and 0.09 of pitch at the extremes
+         — about 7 and 5 degrees. Past roughly 10 degrees the page starts
+         swinging like a hanging sign, which is a different and much sillier
+         object; the intent is the slight give of something held.
+
+         IT IS NOT A BRIGHTNESS EFFECT AND IT DOES NOT REPEAT. The standing
+         rule in these scenes after the crane strobe was reverted is that
+         nothing oscillates on a cycle. This is positional, aperiodic, and
+         driven entirely by the viewer — it does nothing at all if the cursor
+         does not move.
+
+         The listener is on the HOST rather than the canvas: the canvas is
+         `pointer-events:none` under the overlay in some mounts, and the host
+         is the element whose box actually matches what the viewer sees.
+         `pointermove` covers mouse and pen; touch devices simply never fire
+         it and get the resting pose, which is correct — a page that lurches
+         on scroll would be worse than a still one.
+
+         Targets are stored and the applied value is eased toward them each
+         frame (see applyFrame). Writing the rotation straight from the event
+         would tie the motion to pointer sample rate and read as jitter. */
+      let hoverTX = 0, hoverTY = 0;   // target, -1..1
+      let hoverX = 0, hoverY = 0;     // applied, eased
+      const onPointer = (e: PointerEvent) => {
+        const r = host.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        hoverTX = ((e.clientX - r.left) / r.width) * 2 - 1;
+        hoverTY = ((e.clientY - r.top) / r.height) * 2 - 1;
+      };
+      const onLeave = () => { hoverTX = 0; hoverTY = 0; };
+      host.addEventListener("pointermove", onPointer, { passive: true });
+      host.addEventListener("pointerleave", onLeave, { passive: true });
+
       const ro = new ResizeObserver(studio.size);
       ro.observe(wrap);
 
@@ -517,6 +559,14 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
         const h = renderer.domElement.clientHeight || wrap.clientHeight;
         const oh = h - bleed * 2;              // the OVERLAY's height
 
+        /* ease the hover toward its target — see the listener above. 0.10 per
+           frame is a ~150ms settle at 60fps: fast enough to feel attached to
+           the cursor, slow enough that pointer sample noise never shows. */
+        hoverX += (hoverTX - hoverX) * 0.10;
+        hoverY += (hoverTY - hoverY) * 0.10;
+        model.sheet.rotation.y = SHEET_YAW + hoverX * 0.13;
+        model.sheet.rotation.x = -hoverY * 0.09;
+
         model.root.updateMatrixWorld(true);
 
         /* ---- camera: one pose, held — see the header for the derivation ---- */
@@ -524,8 +574,24 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
         const cosTurn = Math.cos(SHEET_YAW - CAM_AZ);
         const sMaxW = (SHEET_W / 2) * cosTurn;
         const sMaxH = SHEET_H / 2;             // unaffected by either angle
+        /* THE VERTICAL FIT IS AGAINST THE SLOT, NOT THE CANVAS — and getting
+           this wrong is why the sheet looked "cut off".
+
+           `h` is the CANVAS height, which includes `bleed` at both ends: the
+           canvas deliberately paints past its slot on every edge. Solving the
+           fit against `h` therefore sized the page to 88% of the BLED height,
+           so on the shipped slot (795 visible, 1095 with bleed) the sheet came
+           out 964px tall against 795px of visible space — 169px of document
+           living in the bleed, where the section's own overflow clips it. The
+           page was not mis-cropped; it was correctly drawn and then trimmed by
+           a box it had never been measured against.
+
+           Scaling the target fraction by oh/h expresses FRAC_H as a fraction
+           of the VISIBLE slot at any bleed. The horizontal fit needs no such
+           correction: bleed moves only `top`/`bottom` (see the wrapper's
+           style), so the canvas and the slot are the same width. */
         const radW = sMaxW / (FRAC_W * TAN_VFOV_HALF * aspect);
-        const radH = sMaxH / (FRAC_H * TAN_VFOV_HALF);
+        const radH = sMaxH / (FRAC_H * (oh / h) * TAN_VFOV_HALF);
         const rad = Math.min(RAD_MAX, Math.max(RAD_MIN, Math.max(radW, radH)));
 
         const Hh = rad * TAN_VFOV_HALF * aspect; // frame half-width at this rad
@@ -642,6 +708,8 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
       cleanup = () => {
         cancelAnimationFrame(raf);
         window.clearTimeout(compileGuard);
+        host.removeEventListener("pointermove", onPointer);
+        host.removeEventListener("pointerleave", onLeave);
         ro.disconnect();
         visObs.disconnect();
         finding.wrap.remove();

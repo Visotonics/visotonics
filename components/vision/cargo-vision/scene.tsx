@@ -512,7 +512,13 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          that stops that class of bug before it starts. */
       const proof = document.createElement("div");
       proof.style.cssText =
-        "position:absolute;left:0;top:0;width:150px;height:105px;opacity:0;pointer-events:none;will-change:transform,opacity;" +
+        /* 232x162, up from 150x105. At the shipped size the grab was a
+           thumbnail — big enough to prove a panel exists, too small to prove
+           anything is IN it, which defeats the point of a scene whose claim
+           is "with video proof attached". 232 wide still leaves clear deck to
+           its right in the corner it now sits in, and the 300x210 backing
+           canvas is above it in both axes so the image is not upscaled. */
+        "position:absolute;left:0;top:0;width:232px;height:162px;opacity:0;pointer-events:none;will-change:transform,opacity;" +
         "background:#0E1116;overflow:hidden;box-sizing:border-box;" +
         "border:1px solid rgba(237,81,12,0.6);";
       const proofPic = document.createElement("canvas");
@@ -902,7 +908,20 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              right and 110 below, and diagonally as far from the counter in
              the opposite corner as the frame allows. The two readouts now
              bracket the composition instead of sharing a half of it. */
-          const px = w * 0.70, py = oh * 0.76;
+          /* BOTH READOUTS SIT ON ONE HORIZONTAL LINE, IN OPPOSITE CORNERS.
+
+             The counter is anchored `bottom: 44px` from the overlay's foot.
+             The panel is 162 tall, so putting its BOTTOM edge on that same
+             44px line means its top sits at oh - 44 - 162 — and the two
+             readouts then share a baseline across the frame instead of
+             floating at unrelated heights, which is what the drafting grid
+             does with everything else on this site.
+
+             Derived from the panel's own height rather than dialled in as a
+             fraction, so resizing the panel cannot silently break the
+             alignment. Right edge inset 46px to match the counter's 46px left
+             inset — equal margins from the scene boundary on both sides. */
+          const px = w - 232 - 46, py = oh - 162 - 44;
           proof.style.transform = `translate(${px}px,${py}px)`;
           proof.style.opacity = String(proofVis);
 

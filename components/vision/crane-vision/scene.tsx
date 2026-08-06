@@ -676,6 +676,9 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
         ID_LOCAL.clone().setZ(ID_LOCAL.z + 0.02),
         RUST_LOCAL.clone().setZ(RUST_LOCAL.z + 0.02),
       );
+      /* Cone 0's SECOND target. The left head reads the plate, then swings
+         onto the dent when the dent beat opens — see the aim loop. */
+      const CONE_DENT_TARGET = DENT_LOCAL.clone().setZ(DENT_LOCAL.z + 0.02);
 
       /* THE SEVERITY HEATMAP IS GONE, by product-owner review: the graded
          amber field blooming inside the dent box was not wanted — "just leave
@@ -1109,7 +1112,25 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
       const applyFrame = () => {
         const frozen = reduce;
         const t = frozen ? FROZEN_T : clock.getElapsedTime();
-        const p = frozen ? FROZEN_P : (holdP ?? (t % LOOP) / LOOP);
+        /* THE LOOP DOES NOT START UNTIL THE RIG HAS FADED UP.
+
+           Reviewed: the first pass looked worse than every pass after it —
+           "there is less space for the container to travel on load". That was
+           literal. `solid` ramps over SETTLE (0.95s) from t = 0.15, but p was
+           derived from raw `t`, so the loop was already 1.1s in — a sixth of
+           a 6.6s loop — by the time anything was visible. The container spent
+           that time rising behind an opacity of nearly zero, so a viewer's
+           first pass began with the load already a sixth of the way up and
+           only five sixths of the travel left to watch. Every subsequent pass
+           got the full run, which is exactly the difference that was noticed.
+
+           Subtracting the fade-up window makes p = 0 land on the frame the
+           rig actually becomes visible, so the first pass is identical to the
+           second. The clock still starts on the first ON-SCREEN frame (see
+           the render loop), so this is not a fixed delay — it is the same
+           0.15 + SETTLE the opacity ramp itself uses, taken off the top. */
+        const tLoop = Math.max(0, t - (0.15 + SETTLE));
+        const p = frozen ? FROZEN_P : (holdP ?? (tLoop % LOOP) / LOOP);
         const w = renderer.domElement.clientWidth || wrap.clientWidth;
         const h = renderer.domElement.clientHeight || wrap.clientHeight;
         const aspect = w / h;
@@ -1197,7 +1218,32 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
              in the loop: by the time the geometry would go steeply vertical
              near p = 1, the cone has already faded to zero rather than
              swinging wildly to keep up. */
-          wpos.copy(CONE_TARGET_LOCAL[i]).applyMatrix4(model.lift.matrixWorld);
+          /* THE LEFT CONE FOLLOWS THE READ, IT DOES NOT SIT ON ONE SPOT.
+
+             Cone 0 was pinned to the ID for the whole loop, which said the
+             left camera looks at the plate and nothing else — so when the
+             dent appeared, the only thing pointing at it was a bracket that
+             arrived from nowhere. A head that stays aimed at a finished read
+             while a new finding lands elsewhere on the same face is not
+             observing; it is idling.
+
+             So cone 0's target LERPS from the ID to the dent across
+             0.40..0.50 — after W_IDREAD closes at 0.42 and before W_SEVERE
+             opens at 0.46, so the swing happens in the gap between the two
+             beats rather than under either of them. easeInOut on the mix
+             because a camera head slews, it does not snap: a linear mix
+             starts and stops instantly at both ends and reads as a cut.
+
+             Cone 1 is unchanged on the rust — the right camera has one job
+             and keeps it, which is what makes the left one's move legible as
+             a move rather than as both heads drifting. */
+          if (i === 0) {
+            const swing = easeInOut(clamp01((p - 0.40) / 0.10));
+            wpos.copy(CONE_TARGET_LOCAL[0]).lerp(CONE_DENT_TARGET, swing)
+              .applyMatrix4(model.lift.matrixWorld);
+          } else {
+            wpos.copy(CONE_TARGET_LOCAL[i]).applyMatrix4(model.lift.matrixWorld);
+          }
           const halfAngle = Math.atan(CONE_R / Math.max(head.distanceTo(wpos), 0.01));
           c.aim(head, wpos, halfAngle);
           c.setOpacity(solid * CAPTURE_OPACITY * coneVis);

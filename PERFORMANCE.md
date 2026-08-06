@@ -512,6 +512,20 @@ Under 60 ms on the busiest page. Not worth the risk.
 - **`transparent: true` must be turned off once a fade completes.** Transparent
   materials render in the transparent pass and do not depth-test reliably
   against themselves — visible as see-through edges on the container.
+- **…and the same fact breaks overlay graphics, which is worth stating
+  separately because it does not look like a transparency bug.** A subject that
+  keeps `transparent: true` (to ramp opacity on intro) puts its panels in the
+  transparent queue, where draw order is per-object bounding-sphere distance.
+  Any overlay mark on that subject is in the same queue, so a panel whose
+  centre sorts nearer will paint over a bracket sitting proud of its surface.
+  `depthTest: false` does not help — it defeats the depth buffer, not the draw
+  order. Set an explicit `renderOrder`, **and set it per-mesh**: `bracket()`
+  returns a Group of eight planes and a Group's `renderOrder` does not
+  propagate to its children. Crane Vision lost four passes to this; see
+  `docs/09-scene-craft-and-learnings.md` for the full symptom set.
+  No timing is attached because this is a correctness bug, not an
+  optimisation — it is filed here only because it lives next to the
+  transparency note above and was found while chasing it.
 - **`#include <colorspace_fragment>` is required in raw `ShaderMaterial`.**
   Without it, uniforms three converted sRGB→linear are written straight into an
   sRGB framebuffer: the authored colour renders at ~⅛ brightness.

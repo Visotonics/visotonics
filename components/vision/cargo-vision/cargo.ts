@@ -558,6 +558,9 @@ export interface CargoModel {
     beam: THREE.ShaderMaterial;
     light: THREE.PointLight;
   };
+  /** World position of the read camera's lens — the apex every sight cone is
+   *  thrown from. Fixed: the pole never moves. */
+  lensPos: THREE.Vector3;
   /** Advance the stream. `p` is 0..1 through the loop. Pure function of p. */
   advance: (p: number) => void;
   /** geometry this scene OWNS and must dispose. The carton's RoundedBoxGeometry
@@ -608,12 +611,30 @@ function packCarton(
     if (crushed) {
       /* One corner, collapsed inward. The weight is the product of three
          per-axis falloffs, so it peaks exactly at (+hw, +hh, +hd) and is zero
-         by half a box away — a dent, not a taper. */
+         by half a box away — a dent, not a taper.
+
+         DEEPENED, and the reason is scale rather than taste. At 0.17/0.14/0.14
+         the collapse was about 19% of the box's own width, which is a real
+         dent on a case you are holding and roughly two pixels on a case that
+         renders 60px wide behind a bracket. The scene's entire finding is
+         "crushed corner" and a viewer could not see one.
+
+         0.30/0.26/0.24 takes the corner in by about a third of the box. That
+         is a case that has had something heavy dropped on it — which is what
+         "89% confidence · crushed corner · logged, not stopped" is claiming.
+         The falloff radii widen with it (0.42 -> 0.52 in x and z) so the
+         collapse still reads as a crushed CORNER rather than a bevel: a
+         deeper dent over the same tiny radius would pinch to a spike.
+
+         The bracket around it is `pad: 1.12` on the group's bounding box, so
+         a deeper crush makes the box marginally smaller and the bracket
+         marginally looser — 4mm on a 0.9m case, which is below the width of
+         the bracket's own line. */
       const k =
-        (1 - Math.min(1, Math.abs(x - hw) / (w * 0.42))) *
-        (1 - Math.min(1, Math.abs(y - hh) / (h * 0.52))) *
-        (1 - Math.min(1, Math.abs(z - hd) / (d * 0.42)));
-      if (k > 0) { x -= 0.17 * k; y -= 0.14 * k; z -= 0.14 * k; }
+        (1 - Math.min(1, Math.abs(x - hw) / (w * 0.52))) *
+        (1 - Math.min(1, Math.abs(y - hh) / (h * 0.58))) *
+        (1 - Math.min(1, Math.abs(z - hd) / (d * 0.52)));
+      if (k > 0) { x -= 0.30 * k; y -= 0.26 * k; z -= 0.24 * k; }
     }
     pos.setXYZ(i, x, y, z);
   }
@@ -684,7 +705,20 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   const owned: THREE.BufferGeometry[] = [];
 
   /* ---- the container ---------------------------------------------------- */
-  const build = buildContainer(cmats.steel, cmats.dark, cmats.front.material);
+  /* NO FRONT MATERIAL, SO NO RUST. `cmats.front` carries a painted corrosion
+     patch and a dent — correct for container-vision and crane-vision, whose
+     whole subject is damage on the box, and wrong here. In this scene the
+     container is a PROP: the finding is a crushed case on the belt, and a
+     second, unrelated defect sitting on the container behind it competes for
+     the one thing the viewer is meant to look at.
+
+     Passing plain `steel` for the front face rather than editing the texture,
+     because that texture is module-cached and shared with the two scenes that
+     do want it — changing it here would strip the damage out of both. The
+     front face loses its stencil block along with the rust, which costs
+     nothing: this container is seen door-on and its markings were never in
+     shot. */
+  const build = buildContainer(cmats.steel, cmats.dark);
   build.group.position.copy(CONT_POS);
   build.group.rotation.y = CONT_YAW;
   root.add(build.group);
@@ -1122,6 +1156,86 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
   lampLight.position.set(LAMP_X, LAMP_Y - 0.20, LAMP_Z);
   belt.add(lampLight);
 
+  /* ---- THE READ CAMERA, ON A POLE BEHIND THE BELT --------------------------
+
+     Until now this scene asserted a machine was counting and never showed one.
+     The brackets and the tally appeared from nowhere — which is exactly the
+     gap crane-vision closed by putting its two heads on masts in shot. A
+     destuff bay counts with a camera bolted to a stanchion looking down the
+     line, so that is what stands here.
+
+     SITED BEHIND THE BELT, NOT OVER IT. z = -1.85 puts the pole on the far
+     side of the running surface from the lens (the belt's side channels are at
+     +-1.16), so it never crosses the cargo it is watching and never fights the
+     pendant lamp, which hangs at z = +0.10 on the near side. x sits at the
+     count line rather than at the belt's midpoint: the read happens at x = 0
+     — that is where `advance` puts a crossing and where the counter ticks —
+     and a camera aimed anywhere else would be watching the wrong metre of
+     belt.
+
+     HEAD HEIGHT 2.35. High enough to look DOWN on the stream (a camera level
+     with the cargo sees only the front face of the nearest item and nothing
+     behind it), low enough to stay under the fog band that starts at 18 and
+     well inside frame at the shipped 16:9.
+
+     The lens is a separate small cylinder proud of the housing, and `lensPos`
+     is published in WORLD space because the scene aims a sight cone from it
+     every frame and must not have to re-derive the pole's transform. */
+  const CAM_X = 0.0;
+  const CAM_Z = -1.85;
+  const CAM_Y = 2.35;
+
+  const camGroup = new THREE.Group();
+  root.add(camGroup);
+
+  const poleGeo = new THREE.CylinderGeometry(0.055, 0.075, CAM_Y - GROUND, 10);
+  owned.push(poleGeo);
+  const pole = new THREE.Mesh(poleGeo, m.frame);
+  pole.position.set(CAM_X, GROUND + (CAM_Y - GROUND) / 2, CAM_Z);
+  pole.castShadow = true;
+  camGroup.add(pole);
+
+  // a foot plate, so the pole stands on the deck rather than growing out of it
+  const footGeo = new THREE.CylinderGeometry(0.20, 0.20, 0.035, 12);
+  owned.push(footGeo);
+  const foot = new THREE.Mesh(footGeo, m.frame);
+  foot.position.set(CAM_X, GROUND + 0.018, CAM_Z);
+  camGroup.add(foot);
+
+  /* The housing, yawed to face the count line and pitched down onto it. Angle
+     is derived, not eyeballed: the target is the belt surface at x = 0, so the
+     drop is CAM_Y - BELT_TOP over a reach of |CAM_Z|. */
+  const head = new THREE.Group();
+  head.position.set(CAM_X, CAM_Y, CAM_Z);
+  head.rotation.x = -Math.atan2(CAM_Y - BELT_TOP, Math.abs(CAM_Z));
+  camGroup.add(head);
+
+  const bodyGeo = new THREE.BoxGeometry(0.22, 0.20, 0.36);
+  owned.push(bodyGeo);
+  const body = new THREE.Mesh(bodyGeo, m.frame);
+  body.castShadow = true;
+  head.add(body);
+
+  const lensGeo = new THREE.CylinderGeometry(0.075, 0.085, 0.10, 14);
+  owned.push(lensGeo);
+  const lens = new THREE.Mesh(lensGeo, m.roller);
+  lens.rotation.x = Math.PI / 2;
+  lens.position.z = 0.22;
+  head.add(lens);
+
+  // the bracket that ties the housing to the pole top
+  const armGeo = new THREE.BoxGeometry(0.07, 0.16, 0.07);
+  owned.push(armGeo);
+  const arm = new THREE.Mesh(armGeo, m.frame);
+  arm.position.set(CAM_X, CAM_Y + 0.14, CAM_Z);
+  camGroup.add(arm);
+
+  /* World-space lens position — the apex every sight cone is thrown from.
+     Computed once here because nothing about the pole ever moves. */
+  camGroup.updateMatrixWorld(true);
+  const lensPos = new THREE.Vector3();
+  lens.getWorldPosition(lensPos);
+
   /* THE SLATS — the running surface, and the only thing on this belt that
      moves. A featureless belt under featureless cargo has nothing for the eye
      to track, so a viewer cannot tell the belt is running at all; the whole
@@ -1430,6 +1544,8 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
        sit at opacity 0 forever, and its PointLight starts at intensity 0 for
        the same reason. Both have to be driven with `solid`. */
     lamp: { shade: shadeMat, bulb: bulbMat, halo: haloMat, beam: beamMat, light: lampLight },
+    /** world-space lens of the read camera — the apex of the sight cone */
+    lensPos,
     advance,
     owned,
   };

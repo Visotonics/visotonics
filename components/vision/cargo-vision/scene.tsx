@@ -36,10 +36,10 @@ import { mountWhenVisible } from "../_vision/mount";
 import { clamp01, easeInOut, placeCamera, smoothstep } from "../_vision/camera";
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildMaterials } from "../container-vision/materials";
-import { createTracker, detectMaterials } from "../hero-cards/detect";
+import { createSightCone, createTracker, detectMaterials } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 import {
-  FLAGGED, GROUND, ITEM_N, SEQUENCE, buildCargo, buildCargoMaterials,
+  BELT_TOP, FLAGGED, GROUND, ITEM_N, SEQUENCE, buildCargo, buildCargoMaterials,
   type ItemType,
 } from "./cargo";
 
@@ -194,8 +194,22 @@ const mixAt = (loops: number) => {
 };
 
 /* Windows. */
-const W_DAMAGE: [number, number] = [0.55, 0.75];
-const W_PROOF: [number, number] = [0.72, 0.92];
+/* 0.46, pulled back from 0.55. The flagged case is under the read cone from
+   p 0.448 to 0.570 — it crosses the count line at 0.5 — so a damage window
+   opening at 0.55 put the bracket and the label on a case the cone had almost
+   finished with, and left the two graphics describing something the machine
+   had visibly moved on from. Opening at 0.46 lands the finding while the
+   crushed corner is still being read. The window keeps its length, so the
+   proof grab that follows it is unaffected. */
+const W_DAMAGE: [number, number] = [0.46, 0.70];
+/* 0.70..0.99, widened from 0.72..0.92. The grab held for 0.20 of a 9s loop —
+   1.8s including both fades, so under 1.4s at full opacity — for a panel that
+   is now 232x162 and carries a burned-in timestamp, a camera ID and an actual
+   picture. That is less time than it takes to look at it. 0.29 of the loop is
+   2.6s, and it runs right up to the wrap so the evidence is the last thing on
+   screen before the line comes round again, which is the correct order: the
+   case is counted, the damage is found, the proof is filed. */
+const W_PROOF: [number, number] = [0.70, 0.99];
 
 const TAG_TEXT = { carton: "CARTON", gunny: "GUNNY BAG", drum: "DRUM" } as const;
 
@@ -313,6 +327,45 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         scene.add(t.group);
         return t;
       });
+
+      /* ---- THE SIGHT CONE, THROWN FROM THE POLE CAMERA -------------------
+
+         Crane Vision's grammar, applied to a moving stream instead of a
+         moving load: a volume of light from a real lens to the thing being
+         read, so the detection has a visible SOURCE. Until now this scene's
+         brackets and tally arrived from nowhere.
+
+         ONE CONE, RE-AIMED — not one per item. Nine cones would be nine
+         overlapping volumes across the middle of the frame, and the whole
+         point is that the machine attends to ONE case at a time and then
+         moves on. Re-aiming is also what makes the hand-off legible: the cone
+         swings to the next item as it reaches the line, which is the visual
+         statement of "every case, in turn".
+
+         The half-angle is re-derived per frame from the live apex->target
+         distance so the cone's FOOTPRINT on the cargo stays roughly constant
+         as items travel, rather than the cone fanning wider as its target
+         recedes — the same correction crane-vision applies for the same
+         reason.
+
+         `footprintY` is the belt's running surface, not the deck: the pool at
+         the cone's foot has to land where the cargo actually is. */
+      const readCone = createSightCone({
+        color: PALETTE.accent, footprintY: BELT_TOP + 0.006,
+      });
+      scene.add(readCone.group);
+      const CONE_R = 0.62;              // target footprint radius, world units
+      const coneAim = new THREE.Vector3();
+      /* THE SIGNAL ORANGE, NOT PALETTE.warn's AMBER. #FFB020 is the severity
+         LABEL's type colour and it is close to the pendant lamp's own
+         #FFD9A0 — at 34% additive over a lit belt the two are indistinguishable,
+         which is why the flip was reported as not happening at all. #ED510C is
+         the site's SIGNAL, a full 60 degrees of hue away from the accent and
+         from the lamp, and it is the correct member of the two-value warm pair
+         here anyway: this is a MARK, not a name. */
+      const coneWarn = new THREE.Color("#ED510C");
+      const coneCool = new THREE.Color(PALETTE.accent);
+      const coneCol = new THREE.Color();
 
       /* And the damage bracket stays separate, in orange — the CONCLUSION
          colour. It sits ON TOP of the flagged carton's routine read, which is
@@ -806,6 +859,9 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
            At a 1.35-unit pitch and a 1.65-unit window there is a brief overlap
            where two adjacent items are both marked, which is correct for a
            running line and is the reason each tracker needed its own material. */
+        /* the cone's target, resolved inside the loop below from the same
+           read window that drives the brackets */
+        let coneBest = 0, coneItem = -1;
         for (let i = 0; i < ITEM_N; i++) {
           const it = model.items[i];
           const g = it.grp;
@@ -820,6 +876,15 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              the drum's own silhouette. */
           readers[i].follow(vis > 0.01 ? it.grp : null, camera);
 
+          /* WHICH ITEM THE CONE IS LOOKING AT. The read window already
+             computed above IS the answer — the item with the highest `vis` is
+             by definition the one nearest the count line — so the cone's
+             target falls straight out of the same test that drives the
+             brackets and can never disagree with them. No separate
+             "which item is closest" search, and therefore no chance of the
+             cone attending to one case while the bracket marks another. */
+          if (vis > coneBest) { coneBest = vis; coneItem = i; }
+
           const el = tags[i];
           if (vis <= 0.01) { el.style.opacity = "0"; continue; }
           anchor.set(x, g.position.y + 0.62, g.position.z);
@@ -829,6 +894,26 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
           el.style.opacity = String(vis);
         }
 
+        /* ---- aim the cone at whatever is being read -----------------------
+
+           Re-aimed every frame at the live world position of the winning
+           item, with the half-angle re-derived from the CURRENT apex->target
+           range so the footprint on the cargo stays constant as the item
+           travels rather than the cone fanning out as its target recedes.
+
+           AND IT GOES ORANGE ON THE CRUSHED CASE. The cone is normally
+           accent — the system OBSERVING — and for one beat, while the flagged
+           carton is under it, it takes the warn colour: the moment the read
+           stops being a count and becomes a finding. That is the one place in
+           this scene where the two-accent rule earns its keep, and it is why
+           the flip is tied to `dmgVis` (the damage window) rather than simply
+           to "the flagged item is the target" — the cone tracks that case for
+           its whole 1.2s read, but it is only a CONCLUSION for the window in
+           which the bracket and the label agree it is one.
+
+           `coneCol` is lerped rather than switched so the colour arrives and
+           leaves with the finding instead of snapping. Nothing here pulses:
+           the ramp is a function of `p`, runs once per loop, and holds. */
         /* ---- damage: the bracket and its label ----
            THE COUNT DOES NOT PAUSE HERE. Nothing in this block touches the
            stream or the counter — that independence is the claim, and it is
@@ -840,6 +925,72 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
             : 0);
         tracker.follow(dmgVis > 0.01 ? model.flagged : null, camera);
         dm.warn.opacity = solid * dmgVis;
+
+        /* ---- aim the cone at whatever is being read -----------------------
+
+           Placed AFTER the damage block on purpose: the colour flip below
+           reads `dmgVis`, and computing the aim earlier would use last
+           frame's value.
+
+           Re-aimed every frame at the live world position of the winning
+           item, with the half-angle re-derived from the CURRENT apex->target
+           range so the footprint on the cargo stays constant as the item
+           travels rather than the cone fanning out as its target recedes —
+           the same correction crane-vision applies for the same reason.
+
+           AND IT GOES ORANGE ON THE CRUSHED CASE. The cone is normally
+           accent — the system OBSERVING — and for one beat, while the flagged
+           carton is under it, it takes the warn colour: the moment the read
+           stops being a count and becomes a finding. That is the one place in
+           this scene where the two-accent rule earns its keep, and it is why
+           the flip is tied to `dmgVis` rather than simply to "the flagged
+           item is the target" — the cone tracks that case for its whole 1.2s
+           read, but it is only a CONCLUSION for the window in which the
+           bracket and the label agree it is one.
+
+           The colour is LERPED, not switched, so it arrives and leaves with
+           the finding instead of snapping. Nothing here pulses: the ramp is a
+           function of p, runs once per loop, and holds. Written straight into
+           the shader's `uColor` uniform because createSightCone exposes its
+           material but has no colour setter. */
+        if (coneItem >= 0 && coneBest > 0.01) {
+          const cg = model.items[coneItem].grp;
+          coneAim.set(cg.position.x, cg.position.y + 0.30, cg.position.z);
+          const range = Math.max(model.lensPos.distanceTo(coneAim), 0.01);
+          readCone.aim(model.lensPos, coneAim, Math.atan(CONE_R / range));
+          /* WARMTH COMES FROM THE CONE'S OWN READ, NOT FROM `dmgVis`, and the
+             first version got this wrong in a way that could never fire.
+
+             The flagged case crosses the count line at p = 0.5 and its read
+             window spans p 0.448..0.570 (x -0.70..+0.95 at 1.35 u/s). The
+             damage window opened at 0.55 — so by the time `dmgVis` was
+             non-zero the cone had already swung to the NEXT case, and the two
+             overlapped for 0.02 of the loop. The cone was orange for about
+             130 milliseconds, on an item it was no longer looking at.
+
+             Tying it to `coneBest` instead means the cone is warm for exactly
+             as long as the crushed case is the thing being read, which is
+             both what was asked for and the only version that is true: the
+             colour states what the cone is looking at, so it has to be driven
+             by what the cone is looking at. W_DAMAGE moves earlier to match,
+             so the bracket and the label arrive while the cone is still on
+             the case rather than after it has left. */
+          const warmth = coneItem === FLAGGED ? coneBest : 0;
+          coneCol.copy(coneCool).lerp(coneWarn, warmth);
+          (readCone.material.uniforms.uColor.value as THREE.Color).copy(coneCol);
+          /* AND IT BRIGHTENS AS IT WARMS. 0.34 was tuned for a cool volume
+             reading against a dark deck; the same alpha in orange, over the
+             warm pool the pendant throws on exactly that stretch of belt,
+             lands almost on top of the lamp's own light. Taking it to 0.62 on
+             the finding separates the two by value as well as hue, and gives
+             the one beat in this loop that is a CONCLUSION the weight it
+             should have. This is a ramp tied to `warmth`, which is a function
+             of p — it rises once, holds, and falls. It does not pulse. */
+          readCone.setOpacity(solid * (0.34 + 0.28 * warmth) * coneBest);
+        } else {
+          readCone.setOpacity(0);
+        }
+        readCone.tick(frozen ? 1.4 : t);
 
         const fg = model.items[FLAGGED].grp;
         anchor.set(fg.position.x, fg.position.y + 0.36, fg.position.z);
@@ -860,7 +1011,12 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
            `transparent` in cargo.ts. */
         const proofVis = frozen
           ? 1
-          : smoothstep(0.72, 0.76, p) * (1 - smoothstep(0.88, 0.92, p));
+          /* DRIVEN FROM W_PROOF, not from four repeated literals. The window
+             was declared as a constant and then ignored here, so widening it
+             changed nothing — a class of bug this file has already paid for
+             once. Fades are 0.04 in and 0.05 out, as before. */
+          : smoothstep(W_PROOF[0], W_PROOF[0] + 0.04, p)
+            * (1 - smoothstep(W_PROOF[1] - 0.05, W_PROOF[1], p));
         if (proofVis <= 0.01) {
           proof.style.opacity = "0";
           tether.style.opacity = "0";
@@ -1057,6 +1213,7 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         model.owned.forEach((g) => g.dispose());
         model.container.edges.geometry.dispose();
         (model.container.edges.material as THREE.Material).dispose();
+        readCone.dispose();
         dm.all.forEach((m) => m.dispose());
         // the nine per-item bracket materials are clones this scene made
         readMats.forEach((m) => m.dispose());

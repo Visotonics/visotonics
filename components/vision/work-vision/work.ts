@@ -286,32 +286,105 @@ export function buildWork(m: WorkMaterials): WorkModel {
     return g;
   };
 
-  const armL = joint(0.235, 1.44);
-  const armR = joint(-0.235, 1.44);
-  for (const j of [armL, armR]) {
-    const arm = mesh(new THREE.CapsuleGeometry(0.062, 0.46, 5, 12), m.suit);
-    arm.position.y = -0.29;
-    j.add(arm);
-  }
+  /* ---- LIMBS ARE SEGMENTED NOW: ELBOWS AND KNEES --------------------------
+
+     The figure read as a blob, and single-capsule limbs are why. A straight
+     rod from shoulder to wrist has no elbow, so it cannot swing like an arm —
+     it pivots as one piece and merges into the torso's silhouette at every
+     phase of the gait. Same for the legs: a rigid rod from hip to ankle
+     scissors rather than walks, and the foot has to travel through the floor
+     or the hip has to rise absurdly to clear it.
+
+     A second joint per limb fixes both, and it is the ONLY thing that does.
+     The joint hierarchy is the same one the file already uses and for the same
+     reason: an empty Group AT the joint, with the segment hung BELOW it, so
+     rotating the group pivots about the joint instead of see-sawing about the
+     segment's own centre.
+
+     ARM CHAIN, from the shoulder at 1.44:
+       upper  Capsule(0.055, 0.20) -> 0.310 long, elbow at 1.130
+       fore   Capsule(0.048, 0.20) -> 0.296 long, wrist at 0.834
+       hand   Sphere(0.052) just past the wrist
+     LEG CHAIN, from the hip at 0.92:
+       thigh  Capsule(0.072, 0.30) -> 0.444 long, knee at 0.476
+       shin   Capsule(0.058, 0.30) -> 0.416 long, ankle at 0.060
+       boot   0.14 tall, sole on GROUND_Y, overlapping the ankle by 0.08
+
+     The chain totals 0.86 from hip to ankle, unchanged from the single capsule
+     it replaces, so the crown STAYS AT 1.815 — the number the framing solve,
+     the callout anchor and the cone clearance are all keyed to.
+
+     The arms also move out from +-0.235 to +-0.255. In profile that costs
+     nothing (it is the axis pointing at the lens) but it stops the upper arm
+     from co-inciding with the torso's own edge, which was half the blob. */
+  const ARM_X = 0.255, SH_Y = 1.44;
+  const armL = joint(ARM_X, SH_Y);
+  const armR = joint(-ARM_X, SH_Y);
+  const elbowL = new THREE.Group(), elbowR = new THREE.Group();
+  [[armL, elbowL], [armR, elbowR]].forEach(([j, e]) => {
+    const upper = mesh(new THREE.CapsuleGeometry(0.055, 0.20, 5, 10), m.suit);
+    upper.position.y = -0.155;
+    j.add(upper);
+    e.position.y = -0.310;
+    j.add(e);
+    const fore = mesh(new THREE.CapsuleGeometry(0.048, 0.20, 5, 10), m.suit);
+    fore.position.y = -0.148;
+    e.add(fore);
+    const hand = mesh(new THREE.SphereGeometry(0.052, 10, 8), m.skin);
+    hand.position.y = -0.326;
+    e.add(hand);
+  });
 
   const legL = joint(0.105, 0.92);
   const legR = joint(-0.105, 0.92);
-  for (const j of [legL, legR]) {
-    const leg = mesh(new THREE.CapsuleGeometry(0.078, 0.704, 5, 12), m.suit);
-    leg.position.y = -0.43;
-    j.add(leg);
+  const kneeL = new THREE.Group(), kneeR = new THREE.Group();
+  [[legL, kneeL], [legR, kneeR]].forEach(([j, k]) => {
+    const thigh = mesh(new THREE.CapsuleGeometry(0.072, 0.30, 5, 12), m.suit);
+    thigh.position.y = -0.222;
+    j.add(thigh);
+    k.position.y = -0.444;
+    j.add(k);
+    const shin = mesh(new THREE.CapsuleGeometry(0.058, 0.30, 5, 12), m.suit);
+    shin.position.y = -0.208;
+    k.add(shin);
+    /* boot sole on GROUND_Y when the leg is straight: the knee sits at world
+       0.476, so a 0.14-tall boot centred at knee-local -0.406 puts its sole at
+       0.476 - 0.406 - 0.07 = 0. It overlaps the shin's 0.06 ankle by 0.08, so
+       there is no seam — the defect an earlier pass shipped twice. */
     const boot = mesh(new THREE.BoxGeometry(0.15, 0.14, 0.24), m.suit);
-    boot.position.set(0, -0.85, 0.045);
-    j.add(boot);
-  }
+    boot.position.set(0, -0.406, 0.045);
+    k.add(boot);
+  });
 
-  /* The gait. Driven by absolute scene time, not loop phase — see scene.tsx. */
+  /* The gait. Driven by absolute scene time, not loop phase — see scene.tsx.
+
+     THE SECOND JOINTS ARE WHAT MAKE IT A WALK RATHER THAN A SCISSOR.
+
+     KNEES bend only on the RECOVERY leg — the one swinging forward, off the
+     ground — and never on the stance leg, which must stay straight because it
+     is carrying the body. `Math.max(0, s)` gates exactly that: it is zero for
+     the whole half-cycle the leg is planted and rises to full flex at the top
+     of the swing. A knee that bends on both halves is the single most common
+     way a walk cycle reads as a puppet.
+
+     Bending is NEGATIVE about local X: a knee folds the shin backwards, and
+     the figure is built facing local +Z, so the shin's lower end has to travel
+     toward -Z.
+
+     ELBOWS carry a constant -0.30 of bend plus a small counter-swing. A
+     straight arm swinging from the shoulder is a pendulum; a person walking
+     holds a slight permanent flex, and that flex alone is worth more to the
+     silhouette than the swing amplitude is. */
   const walk = (t: number) => {
     const s = Math.sin(2 * Math.PI * t * STEP_HZ);
     legL.rotation.x = 0.62 * s;
     legR.rotation.x = -0.62 * s;
+    kneeL.rotation.x = -0.95 * Math.max(0, s);
+    kneeR.rotation.x = -0.95 * Math.max(0, -s);
     armL.rotation.x = -0.42 * s;
     armR.rotation.x = 0.42 * s;
+    elbowL.rotation.x = -0.30 - 0.18 * Math.max(0, -s);
+    elbowR.rotation.x = -0.30 - 0.18 * Math.max(0, s);
     figure.position.y = 0.035 * Math.abs(s);
   };
 

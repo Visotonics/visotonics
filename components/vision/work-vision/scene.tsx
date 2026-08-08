@@ -241,6 +241,7 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       const sightCone = createSightCone({ color: PALETTE.accent, footprintY: GROUND_Y });
       scene.add(sightCone.group);
       const coneAim = new THREE.Vector3();
+      const coneApex = new THREE.Vector3();
       const CONE_FOOT = 0.85;   // target footprint radius on the subject, m
 
       /* ---- the detection bracket, one tracker for all three acts ----
@@ -302,20 +303,40 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          never an incremented counter — a `?phase=` pin must freeze the loop
          on a self-consistent register, and an accumulator would run away or
          simply never fire outside the normal RAF loop. */
+      /* THE REGISTER GETS A PLATE, AND IT HAS TO.
+
+         It was 10px at 42% alpha and 13px accent, unbacked, sitting bottom
+         left — which was fine over the old near-black aisle and is not fine
+         now. Act 1 has a lit floor, a warm pool from the pendant and pallets
+         of pale cardboard behind it, and the register was reported as
+         unreadable: the text crossed four different backgrounds along its own
+         length, so no single ink value could work against all of them.
+
+         Contrast has to come from the READOUT, not from luck about what is
+         behind it. A dark plate at 62% with a hairline edge gives every row
+         the same ground to sit on regardless of what the scene does. This is
+         the one place a plate is right — the counter in cargo deliberately
+         refuses one because it is display type at 72px, which needs no help;
+         13px mono over a lit warehouse does.
+
+         Sizes up with it (10 -> 11.5, 13 -> 14) and the ink goes to near
+         solid, because the plate lets it. */
       const reg = document.createElement("div");
       reg.style.cssText =
-        `position:absolute;left:30px;bottom:28px;pointer-events:none;`;
+        `position:absolute;left:30px;bottom:28px;pointer-events:none;`
+        + `background:rgba(6,9,14,0.62);border:1px solid rgba(226,234,244,0.14);`
+        + `border-radius:3px;padding:12px 16px 13px;backdrop-filter:blur(3px);`;
       const regHead = document.createElement("div");
       regHead.textContent = "SHIFT REGISTER";
       regHead.style.cssText =
-        `font-family:${MONO};font-size:10px;letter-spacing:0.24em;color:rgba(226,234,244,0.42);padding-bottom:9px;opacity:0;transition:opacity .35s ease;`;
+        `font-family:${MONO};font-size:11.5px;letter-spacing:0.24em;color:rgba(255,255,255,0.72);padding-bottom:10px;opacity:0;transition:opacity .35s ease;`;
       reg.appendChild(regHead);
       const regRows = REG_ROWS.map((text) => {
         const row = document.createElement("div");
         row.textContent = text;
         row.style.cssText =
-          `font-family:${MONO};font-size:13px;letter-spacing:0.06em;color:${PALETTE.accentText};`
-          + `border-left:1px solid ${PALETTE.accent};padding-left:12px;line-height:1.5;margin-top:6px;opacity:0;transition:opacity .35s ease;`;
+          `font-family:${MONO};font-size:14px;letter-spacing:0.06em;color:#FFFFFF;`
+          + `border-left:2px solid ${PALETTE.accent};padding-left:12px;line-height:1.55;margin-top:6px;opacity:0;transition:opacity .35s ease;`;
         reg.appendChild(row);
         return row;
       });
@@ -534,9 +555,16 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            A local position on a translated parent is not a world position. */
         coneAim.set(cx, GROUND_Y + 1.05, 0);
         if (act === 0) model.aimAt(coneAim);
+        /* APEX FROM THE LIVE GLASS. Measured with ?debug=1: the lens projects
+           to canvas y 117 and the cone's apex sat at y 253 — 136px below it,
+           because `coneApex` was never written and stayed at (0,0,0), so the
+           beam fired from the world origin. The head rotates now, so the lens
+           swings through an arc and the apex has to be read from the mesh
+           every frame, after aimAt has turned it. */
+        if (act === 0) model.lensWorld(coneApex);
         if (coneOn > 0.001) {
-          const range = Math.max(model.lens.distanceTo(coneAim), 0.01);
-          sightCone.aim(model.lens, coneAim,
+          const range = Math.max(coneApex.distanceTo(coneAim), 0.01);
+          sightCone.aim(coneApex, coneAim,
             Math.max(CONE_HALF_ANGLE, Math.atan(CONE_FOOT / range)));
         }
         sightCone.setOpacity(coneOn);

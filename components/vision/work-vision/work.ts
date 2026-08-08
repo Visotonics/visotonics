@@ -95,6 +95,8 @@ export interface WorkMaterials {
   dock: THREE.MeshStandardMaterial;
   /** cardboard-skinned palletised cartons — the same board cargo-vision uses */
   board: THREE.MeshStandardMaterial;
+  /** matte moulded plastic — the hard hat. NEVER `dark`, which is metal. */
+  helmet: THREE.MeshStandardMaterial;
   paint: THREE.MeshBasicMaterial;
   all: THREE.Material[];
   dispose: () => void;
@@ -128,8 +130,13 @@ export function buildWorkMaterials(): WorkMaterials {
      Skin is the only lift on the figure and it exists so the head separates
      from the shoulders at ~170px; it is not a highlight. Nothing on a body is
      twice the value of anything else on it. */
+  /* #6A6355, UP from #3B382F. With the helmet covering the cranium the only
+     skin left is the face, and at #3B382F it sat darker than the helmet AND
+     darker than the workwear — so the gap between hat and shoulders read as a
+     hole rather than a face. Skin is the one lift on this figure; it has to
+     be lighter than what surrounds it or there is no head. */
   const skin = new THREE.MeshStandardMaterial({
-    color: "#3B382F", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
+    color: "#6A6355", roughness: 0.86, metalness: 0.02, envMapIntensity: 0.38,
     transparent: true, opacity: 0,
   });
 
@@ -162,6 +169,23 @@ export function buildWorkMaterials(): WorkMaterials {
     color: "#2E3540", roughness: 0.62, metalness: 0.30, envMapIntensity: 0.30,
     transparent: true, opacity: 0,
   });
+  /* THE HARD HAT IS MOULDED PLASTIC, NOT POLISHED STEEL.
+
+     It was drawn in `dark` — DARK_METAL, metalness 0.78 — so at any real zoom
+     the head was a chrome ball with a specular hotspot on it and the brim was
+     a flat metal disc underneath. Together they read as a metallic saucer
+     where a face should be, which is what "the ellipse in the neck" actually
+     was; two passes moving the brim's POSITION could never have fixed it,
+     because the position was not the problem.
+
+     Matte (roughness 0.72), metalness 0, and a warm light grey — safety
+     helmets are pale, and a pale head is also the fastest way to read where a
+     figure is looking at this scale. */
+  const helmet = new THREE.MeshStandardMaterial({
+    color: "#8A8578", roughness: 0.72, metalness: 0.0, envMapIntensity: 0.20,
+    transparent: true, opacity: 0,
+  });
+
   const paint = new THREE.MeshBasicMaterial({
     color: "#5A626C", transparent: true, opacity: 0,
     depthWrite: false, toneMapped: false, fog: true,
@@ -201,16 +225,16 @@ export function buildWorkMaterials(): WorkMaterials {
     opacity: 0,
   });
 
-  const all: THREE.Material[] = [dark, lens, suit, skin, floor, rack, goods, dock, board];
+  const all: THREE.Material[] = [dark, lens, suit, skin, floor, rack, goods, dock, board, helmet];
   return {
-    dark, lens, suit, skin, floor, rack, goods, dock, paint, board, all,
+    dark, lens, suit, skin, floor, rack, goods, dock, paint, board, helmet, all,
     dispose: () => {
       metal.dispose(); lens.dispose(); suit.dispose(); skin.dispose();
       floor.dispose(); rack.dispose(); goods.dispose(); dock.dispose(); paint.dispose();
       /* MATERIAL ONLY — cardboardSide()'s texture is module-cached and shared
          with cargo-vision. Disposing it here would leave that scene sampling a
          destroyed texture on the same page. */
-      board.dispose();
+      board.dispose(); helmet.dispose();
     },
   };
 }
@@ -246,6 +270,10 @@ export interface WorkModel {
   /** Re-point act 1's camera head at a world position. Called per frame with
    *  the walker's chest so the housing and its sight cone always agree. */
   aimAt: (target: THREE.Vector3) => void;
+  /** Act 1's lens position in world space, read LIVE from the head after it
+   *  has been aimed. The cone's apex must use this, not the build-time
+   *  `lens`, or the beam fires from where the glass used to be. */
+  lensWorld: (out: THREE.Vector3) => THREE.Vector3;
   owned: THREE.BufferGeometry[];
   dispose: () => void;
 }
@@ -294,28 +322,40 @@ export function buildWork(m: WorkMaterials): WorkModel {
   neck.position.y = 1.50;
   figure.add(neck);
 
-  const head = mesh(new THREE.SphereGeometry(0.142, 20, 14), m.skin);
-  head.position.y = 1.673;          // crown lands at 1.815
+  /* THE HEAD SHOWS A FACE. The hat used to be a 0.152 shell over a 0.142
+     head, which enclosed it almost completely — only 34mm of skin appeared
+     below the rim, so there was no face at all and the whole assembly read as
+     one object. A helmet covers the CRANIUM and leaves the face; these
+     numbers make that literally true.
+
+       head   r 0.135 @ 1.650  ->  1.515 .. 1.785
+       hat    r 0.150 @ 1.710, scaleY 0.70  ->  1.605 .. 1.815  (the crown)
+       face   visible from 1.515 to 1.605 — 90mm of it
+
+     THE CROWN IS STILL EXACTLY 1.815, which the framing solve, the callout
+     anchor and the sight-cone clearance are all keyed to: 1.710 + 0.150*0.70
+     = 1.815 to the digit. The head no longer reaches it — the hat does, which
+     is correct, since a person's height is measured over whatever is on their
+     head. */
+  const head = mesh(new THREE.SphereGeometry(0.135, 20, 14), m.skin);
+  head.position.y = 1.650;
   figure.add(head);
 
-  const hat = mesh(new THREE.SphereGeometry(0.152, 18, 12), m.dark);
-  hat.scale.set(1.0, 0.82, 1.0);
-  hat.position.y = 1.690;           // 1.690 + 0.152*0.82 = 1.815, the crown
+  const hat = mesh(new THREE.SphereGeometry(0.150, 18, 12), m.helmet);
+  hat.scale.set(1.0, 0.70, 1.0);
+  hat.position.y = 1.710;
   figure.add(hat);
 
-  /* THE BRIM SITS ON THE HAT'S LOWER RIM, NOT THE HEAD'S EQUATOR.
+/* NO BRIM. Three passes tried to place one — at the head's equator, then at
+     the shell's underside, then biased forward — and every one of them read as
+     the same flat ellipse the reviewer kept circling. The reason is
+     geometric, not positional: a brim is a thin horizontal DISC, and a thin
+     horizontal disc seen from a camera 6 degrees above it projects to an
+     ellipse, always. At 170px tall there is no radius at which it becomes a
+     peak instead.
 
-     It was at y 1.676 — which is the HEAD's centre height, the widest point
-     of the face — so a 0.185 disc projected out all around the middle of the
-     head and read as a saucer driven through the neck. Reported exactly that
-     way. A hard hat's brim is at the BOTTOM of the shell.
-
-     The shell is a 0.152 sphere at 1.690 scaled 0.82 in Y, so its underside
-     is at 1.690 - 0.152*0.82 = 1.565. The brim goes there, at 0.172 — a hair
-     proud of the shell's own radius, which is what a brim is. */
-  const brim = mesh(new THREE.CylinderGeometry(0.172, 0.172, 0.020, 16), m.dark);
-  brim.position.set(0, 1.566, 0.022);
-  figure.add(brim);
+     The dome alone reads as a helmet — the silhouette does that work on its
+     own. Removed. */
 
   const hips = mesh(new THREE.BoxGeometry(0.30, 0.22, 0.22), m.suit);
   hips.position.y = 0.92;
@@ -544,6 +584,22 @@ export function buildWork(m: WorkMaterials): WorkModel {
   lensMesh.rotation.x = Math.PI / 2;
   lensMesh.position.z = LENS_OUT;
   h.add(lensMesh);
+
+  /* THE LENS POSITION MUST BE READ LIVE, NOT COMPUTED ONCE.
+
+     `lens` used to be `mount + dir * LENS_OUT` evaluated at BUILD time, from
+     the head's INITIAL aim. That was correct while the head was bolted down.
+     It is wrong now that `aimAt` rotates it: the real lens swings through an
+     arc as the head tracks, while the cone kept firing from wherever the lens
+     happened to be at construction — which on screen is a cone emerging from
+     BELOW the camera body rather than out of its glass.
+
+     `lensWorld` reads the lens mesh's actual world position, so the apex is
+     always the glass. The scene calls it after `aimAt`, every frame. */
+  const lensWorld = (out: THREE.Vector3) => {
+    h.updateMatrixWorld(true);
+    return lensMesh.getWorldPosition(out);
+  };
 
   const dir = aim.clone().sub(mount).normalize();
   const lens = mount.clone().addScaledVector(dir, LENS_OUT);
@@ -908,7 +964,7 @@ export function buildWork(m: WorkMaterials): WorkModel {
     fixed,
     envActs: [envShared, env1, env2, env3],
     lamp,
-    lens, aim, dir, coneLen, aimAt,
+    lens, aim, dir, coneLen, aimAt, lensWorld,
     owned,
     /* The lamp's GEOMETRY is already in `owned` (pushed where it is built),
        so only its MATERIALS need its own dispose — the shared builder hands

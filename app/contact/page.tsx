@@ -120,7 +120,7 @@ export default function ContactPage() {
       {/* DESKTOP */}
       <div className="hidden md:flex" style={{ maxWidth: 1440, margin: "0 auto", minHeight: 900, boxSizing: "border-box", padding: 96, flexDirection: "column", justifyContent: "center" }}>
         <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D2 }}>Let&apos;s talk</span>
-        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 56, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>Tell us about your yard.</h1>
+        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 56, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>Tell us about your site.</h1>
 
         <form onSubmit={handleSubmit} style={{ marginTop: 64, maxWidth: 720, display: "flex", flexDirection: "column", gap: 40 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -155,7 +155,7 @@ export default function ContactPage() {
       {/* MOBILE */}
       <div className="md:hidden" style={{ padding: "56px 24px 64px" }}>
         <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D2 }}>Let&apos;s talk</span>
-        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 36, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>Tell us about your yard.</h1>
+        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 36, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>Tell us about your site.</h1>
 
         <form onSubmit={handleSubmit} style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 32 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 10 }}>

@@ -330,7 +330,6 @@ export default function CardScene({ build, rig }: Props) {
         // exactly as a screen-space box would
         subject.billboards?.forEach((b) => billboard(b, camera));
 
-        if (bloom) bloom.strength = 0.18;
       };
 
       /* Cards render at ~30fps, not 60. The move is a 14-second sweep — nothing

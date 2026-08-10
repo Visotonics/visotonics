@@ -29,7 +29,6 @@ import { clamp01, easeInOut, lerp, placeCamera, smoothstep } from "../_vision/ca
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildMaterials } from "../container-vision/materials";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
-import { createSightCone } from "../hero-cards/detect";
 import { buildGateMaterials, gateStencilTexture } from "./materials";
 import { GANTRY_X, GROUND_Y, buildGate } from "./gate";
 
@@ -267,7 +266,14 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          Built once and aimed once. A cone that re-aims at the truck is a
          searchlight — a fixed head with a fixed field of view is what is
          actually installed, and the truck driving THROUGH a static volume is
-         the more honest picture of how the read happens. */
+         the more honest picture of how the read happens.
+
+         THE CONE BELONGS TO THE RIG NOW. It is built in gate.ts by
+         `buildReadCamera`, which owns the apex, the half-angle and the
+         ground pool; this scene only says WHERE to look. Its group is added
+         to the scene rather than to `model.fixed` because the pool at its
+         foot must stay flat in world XZ — see readCamera.ts's note on why
+         the cone is a sibling, never a child, of the head. */
       const headPos = model.headAnchor.pos;
       /* Aimed at the GROUND on the camera side of the lane, not at the markings
          block. The first target (-0.1, 0.3, 1.0) was geometrically correct and
@@ -282,11 +288,18 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          (-0.4, 2.61, -0.08), target at (-0.1, -1.8, 2.6), so the axis is
          (0.3, -4.41, 2.68) and the length is 5.1692. The old geometry was a
          base radius of 0.8 at that length, which is a half-angle of
-         atan(0.8 / 5.1692) = 0.15355 rad. */
-      const CONE_HALF_ANGLE = Math.atan(0.8 / coneTarget.distanceTo(headPos));
-      const sightCone = createSightCone({ footprintY: GROUND_Y });
-      sightCone.aim(headPos, coneTarget, CONE_HALF_ANGLE);
-      scene.add(sightCone.group);
+         atan(0.8 / 5.1692) = 0.15355 rad — reproduced exactly by the rig's
+         identical atan(coneRadius / range) formula, `coneRadius: 0.8` passed
+         in gate.ts.
+
+         This ALSO retargets the housing's own build-time aim (a synthetic
+         point chosen in gate.ts to reproduce the hand-built 0.34 rad
+         cosmetic tilt, unrelated to where the cone points) onto the real
+         target. Because `headTracks: false`, `aimAt` only re-throws the
+         cone — the housing keeps the orientation it was built with. */
+      model.readCam.aimAt(coneTarget);
+      const sightCone = model.readCam.cone;
+      scene.add(model.readCam.coneGroup);
 
       /* An underline struck under the markings block at the instant the read
          RESOLVES. Accent = observation, the page's colour grammar: the same
@@ -303,7 +316,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       /* ---- callouts: the three reads, the seal, the plate, the head ---- */
       const reads: Callout[] = READS.map((r) =>
         createCallout(overlay, {
-          id: r.title, title: r.title, detail: r.detail,
+          title: r.title, detail: r.detail,
           pos: model.anchors.id.pos, normal: model.anchors.id.normal,
           onDark: true,
           lane: { dir: "up", len: 96 }, win: r.win,
@@ -312,7 +325,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       // win widened ×1.522 to hold the same 0.98s it did at the old LOOP —
       // see the LOOP comment for the arithmetic.
       const plate = createCallout(overlay, {
-        id: "plate", title: "Trailer plate", detail: "MH 43 AT 7712",
+        title: "Trailer plate", detail: "MH 43 AT 7712",
         pos: model.anchors.plate.pos, normal: model.anchors.plate.normal,
         onDark: true,
         lane: { dir: "down", len: 56 }, win: [0.30, 0.5130],
@@ -322,7 +335,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       // win widened ×1.522 to hold the same 0.98s it did at the old LOOP.
       // Still well inside the tail's frame-exit at p=0.982.
       const seal = createCallout(overlay, {
-        id: "seal", title: "Seal checked", detail: "88421 · rear face · cam 1/1",
+        title: "Seal checked", detail: "88421 · rear face · cam 1/1",
         pos: model.anchors.seal.pos, normal: model.anchors.seal.normal,
         onDark: true,
         lane: { dir: "up", len: 168 }, win: [0.64, 0.8530],
@@ -338,7 +351,7 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          then drives under its own caption. Upward puts it in the clear air
          above the beam, where nothing else ever goes. */
       const head = createCallout(overlay, {
-        id: "head", title: "Gate 04 · in", detail: "Night · rain · fog · dust",
+        title: "Gate 04 · in", detail: "Night · rain · fog · dust",
         pos: model.headAnchor.pos, normal: model.headAnchor.normal,
         onDark: true,
         // 74 was tuned at the old framing. At the tighter one the head anchor
@@ -635,7 +648,8 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         laneMat.dispose(); laneGeo.dispose();
         stopMat.dispose(); stopGeo.dispose();
         stencilMat.dispose(); stencilGeo.dispose();
-        sightCone.dispose();
+        model.readCam.dispose();
+        model.owned.forEach((g) => g.dispose());
         underMat.dispose(); underGeo.dispose();
         mats.dispose();
         cmats.dispose();

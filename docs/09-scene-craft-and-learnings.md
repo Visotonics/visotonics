@@ -124,3 +124,107 @@ Full detail and the measurement method are in `PERFORMANCE.md` at the repo root;
 - **`createStudio` as an expensive build step** — measured directly at 43-46ms total. The wildly inconsistent numbers that looked like an "unstable and unexplained" studio cost (812ms one run, 43ms the next) were actually two different things being measured as one: first-draw shader compilation (a real, separate cost, fixed by priming one frame at build time) and a one-time per-browser-session shader-cache cost, not a per-page one.
 
 **A standing trap worth repeating:** four separate "documented but never wired" defects were found in this codebase — a geometry cache, a texture cache, a `trackers()` call, and a `rig.motion`/`rig.trackX` pair — each described in a code comment as done, two of them even credited in `PERFORMANCE.md` with measured effects they could not actually have produced, since the code path was never called. **A comment or changelog entry asserting an optimisation is not evidence it happened — grep for the call site, not the declaration.**
+
+---
+
+## The detection camera is now a shared rig — use it, do not rebuild it
+
+`_vision/readCamera.ts`. Added 2026-08-08 after this object had been hand-built
+**five times** (tank, gate, crane, cargo, work) and each rebuild reintroduced a
+defect an earlier scene had already fixed. `createSightCone` and `createTracker`
+were always shared; everything around them was not, and that gap is where every
+cone bug in this repo has come from.
+
+```ts
+const cam = buildReadCamera({
+  mount, aim, bodyMat, lensMat,
+  coneRadius,        // the r in atan(r / range)
+  minHalfAngle,      // optional floor on the half-angle
+  floorY,            // enables the ground pool AND the length decoupling
+  poleFrom,          // optional plain pole + footplate
+});
+scene.add(cam.group);
+scene.add(cam.coneGroup);   // a SIBLING — never a child of the head
+// per frame:
+cam.aimAt(target);
+cam.setSignal(flagged ? 1 : 0);
+cam.tick(t);
+```
+
+**The four things the rig owns, and why none of them is the scene's business:**
+
+1. **The apex.** `aimAt()` moves the head and re-throws the cone in one call,
+   reading the lens position *live* from the mesh's world matrix. Work Vision
+   shipped a cone firing from the world origin for a whole review cycle because
+   one line was silently missing, and tsc cannot catch an absent line. Cargo
+   sampled its lens position once at build time — correct only because its pole
+   never moves. A scene that cannot touch the apex cannot get it wrong.
+2. **The half-angle.** All four aiming scenes used the *same* formula with a
+   different constant: `atan(radius / range)`. It is now derived inside.
+3. **Aim direction is not cone length.** The one a new scene is most likely to
+   get wrong. `createSightCone.aim()` takes its length from `|to - from|`, so
+   aiming at the subject truncates the beam *at* the subject — where the range
+   falloff has already taken the volume to ~0.02 and the beam visibly stops at
+   the walker's neck. With `floorY` set, the rig aims the axis at the target and
+   takes the length from the ray-plane hit with the floor.
+4. **The colour flip.** `setSignal(t)`, one implementation. Crane deliberately
+   stays cool by product-owner instruction — that is `setSignal(0)`, an opt-out
+   through the same API, not an exception to it.
+
+**Convention: the head looks down its own local +Z.** Cargo and work already
+did; tank used `lookAt`, which points local −Z. A scene converting from `lookAt`
+must not also flip its own geometry.
+
+**What the rig does NOT own: the mount.** A pole, a gantry beam, a crane leg and
+a rack-clamped arm are genuinely different objects. Pass no `poleFrom` and
+parent `group` wherever it belongs.
+
+## The extraction rule
+
+> **The second time a scene needs a thing, it moves to `_vision/` before it is
+> written the second time — and the first scene migrates onto it in the same
+> commit.**
+
+The second clause is not decoration. `_vision/lamp.ts` was extracted *from*
+Cargo Vision and Cargo was never migrated, so for months there were two copies
+of `HALO_FRAG`/`BEAM_FRAG` where there had been one, and the original was the
+copy that would drift. Extraction without migration doubles the problem.
+
+That migration also surfaced the general hazard: the extracted `lamp.ts` had
+hardcoded `shadeMesh.castShadow = false` with a comment giving a
+**work-vision-specific** reason. Cargo casts that shadow deliberately — its
+shade hangs close over a narrow belt among other casters, where the ellipse
+lands on a surface the viewer can see it belongs to; work's lands on broad
+concrete and reads as a stain. The difference is the *ground*, not the lamp.
+When extracting, a value that one scene reasoned its way to is an **option**,
+not a constant — and returning only materials (not meshes) had made the flag
+unreachable from the call site entirely.
+
+---
+
+## Three lessons from Work Vision's final quality pass (2026-08-08)
+
+**A hard cut lands on a LIVE camera.** Every act's dressing was fading up over
+0.9s of its own local phase, so both act cuts opened on a near-black frame —
+found only by screenshotting the boundary phases, which no per-act review ever
+looks at. The fix removed one ramp (`solid` now runs on absolute time, fading
+once on mount). The walker entering late is right — real cameras show empty
+rooms; the ROOM arriving late was the lie. Check boundaries explicitly; they
+are nobody's favourite phase to screenshot.
+
+**A figure reads as a worker because of the vest.** The walker was rebuilt from
+mannequin to worker almost entirely by identifying-feature logic: hi-vis vest
+with reflective bands (the one feature), yellow hard hat with a front-only BOX
+peak (never a disc — a thin horizontal disc projects to an ellipse at a 6°
+camera; that defect shipped once), a neck (which required LOWERING THE
+SHOULDERS 25mm — the neck mesh existed before and was geometrically buried,
+a 1.1mm visible window), gloves instead of white sphere hands. Crown held at
+exactly 1.815 through the whole rebuild.
+
+**Symmetric grain on a dark base is a net lift, and canvas ops are sRGB.**
+`addGrain`'s ±byte noise reads brighter, not neutral, the darker the base —
+and a linear-space value derivation does not carry over to a noise term
+applied in sRGB. A dark textured surface needs its base authored BELOW the
+target flat value and its grain amplitude reduced together. Predicted
+"byte-identical" wall value was falsified on screen; empirical fix:
+base #1A2028 → #101318, grain 10 → 5.

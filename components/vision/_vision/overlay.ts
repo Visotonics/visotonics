@@ -19,7 +19,6 @@ import { PALETTE, sans } from "./palette";
 export interface Lane { dir: "up" | "down"; len: number }
 
 export interface CalloutSpec {
-  id: string;
   title: string;
   detail: string;
   /** local-space position on the subject */

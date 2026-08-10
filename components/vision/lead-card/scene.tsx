@@ -42,7 +42,9 @@ import { createStudio } from "../_vision/studio";
 import { mountWhenVisible } from "../_vision/mount";
 import { clamp01, easeInOut, lerp, placeCamera } from "../_vision/camera";
 import { makeMetal, metalBox } from "../_vision/metal";
+import { addGrain } from "../_vision/noise";
 import { createTracker, detectMaterials } from "../hero-cards/detect";
+import { cardboardSide, containerSide } from "../hero-cards/skins";
 import { ROAD_Z, buildRoadway } from "./site";
 
 /** DARK from app/page.tsx — the page canvas this scene is mounted on, not a
@@ -192,6 +194,499 @@ const TRUCK_RUN = 20.4;
    ramp so the cone always leads the box: look, then conclude. */
 const HANDOFF_HW = 5.0;
 const ACQUIRE_EDGE = 1.0;
+
+/* ================= THE DRESSING PASS =================
+
+   Everything below is materials and set dressing. NOTHING in this block
+   touches motion: the pan speed, the treadmill wrap, the cone aiming, the
+   handoff windows, the tracker pools and every timing are unchanged.
+
+   THE COST RULE THIS CARD RUNS UNDER. It is on the homepage, it builds in
+   ~70ms, it runs `noEnv` with no bloom. So every texture here is either
+   ALREADY ON THE PAGE or module-cached and generated once:
+
+     containerSide("#9AA0A8")  ZERO new canvases. hero-cards/subjects.ts's
+                               `yardSubject` (the homepage YardCard) generates
+                               exactly this key and skins.ts caches by key, so
+                               whichever of the two cards builds first pays and
+                               the other gets the hit. Page total unchanged.
+     cardboardSide()           ZERO new canvases, same argument via
+                               `warehouseSubject` (the homepage WarehouseCard),
+                               which calls `cardboardSide()` untinted.
+     trailerPanelMap()         ONE new 512x256 canvas: a fill, one addGrain
+                               readback and eight 1px seam pairs. No Sobel.
+     LEAD_BLUE_METAL           ONE new albedo canvas, and ONLY that — see the
+                               roughness note on the spec below.
+     concreteMap() (site.ts)   ONE new 512-square canvas. No Sobel.
+
+   NEVER DISPOSE ANY OF THEM. The skins are shared with the hero cards ON THE
+   SAME PAGE and the other two are module-cached across mounts.
+
+   NOTHING NEW JOINS THE TREADMILL, BY CONSTRUCTION. `wrapItems` is built from
+   `g.children`, so only TOP-LEVEL children of `g` are wrapped, and the wrap
+   writes `o.position.x` on each. Every object this pass adds is a child of
+   something that already wraps or already moves — truck parts under `truck`
+   (which is `dynamic` and driven from camX), worker parts under their own
+   `pr.grp` (also `dynamic`) — and the ground dressing lives in the roadway
+   group, which is added to `scene` rather than `g` and rides the camera. So
+   `wrapItems` and `tileOwner` are untouched and cannot be got wrong here. */
+
+/* Seeded hash. Math.random is banned in scene content — a body panel that
+   re-weathers on every load is a bug you cannot screenshot-diff. */
+const h01 = (n: number) => {
+  const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+  return s - Math.floor(s);
+};
+
+/* ---- the trailer body skin ----------------------------------------------
+   A real box trailer is not a white brick, it is riveted panels, and at card
+   size the seams are the entire difference. Same idiom as work-vision's dock
+   wall: flat base, addGrain, a run of faint vertical seams.
+
+   THE CANVAS IS UNIFORM IN v, DELIBERATELY. A RoundedBoxGeometry has ONE
+   material group (documented in hero-cards/subjects.ts), so this single map
+   goes on all six faces including the roof and the ends. Anything with a
+   vertical gradient in it — a road-spray band along the bottom, a top rail —
+   would land as a stripe across the middle of the roof. Seams and grain only,
+   constant in v, so every face is correct whichever way it is turned.
+
+   THE BASE IS #B8BDC4 AND THE TINT PULLS IT BACK TO THIS SCENE'S CEILING.
+   The value note above puts nothing in this card over #A6AEBA, so white is
+   reserved for genuine speculars. `color` multiplies `map` in linear space,
+   so the tint is solved backwards from the finished value rather than picked:
+
+     base   #B8BDC4 = (184,189,196) -> linear (0.479396,0.508958,0.552122)
+     target #A6AEBA = (166,174,186) -> linear (0.381372,0.423287,0.490937)
+     tint   = target / base         =  linear (0.795525,0.831674,0.889182)
+                                    ->  sRGB  (231,235,242) = #E7EBF2
+
+     check, forwards through the exact tint hexes actually used:
+       231 -> lin 0.795527 x 0.479396 = 0.381373 -> sRGB 0.650981 x255 = 166 ok
+       235 -> lin 0.831766 x 0.508958 = 0.423334 -> sRGB 0.682428 x255 = 174 ok
+       242 -> lin 0.889106 x 0.552122 = 0.490895 -> sRGB 0.729384 x255 = 186 ok
+
+     (The three tint channels round to whole bytes, so the finished panel is
+     #A6AEBA to the digit on R and within a quarter of a byte on G and B.)
+
+   So a flat panel renders at exactly #A6AEBA, the value `paleTone` already
+   held, and the seams and grain are modulation either side of it. The trailer
+   gets a surface without the card gaining a new brightest thing. */
+const TRAILER_MAP_BASE = "#B8BDC4";
+const TRAILER_TINT = "#E7EBF2";
+/* 8 seams across the canvas. On the 4.6-long truck trailer that is a 0.575
+   panel pitch and on the 3.6 docked trailer 0.45 — both in the range a real
+   box trailer's side panels run. The 1.15-deep ends get the same eight over
+   1.15, which is dense, and it is accepted: this camera never sees a trailer
+   end at more than a few dozen pixels. */
+const TRAILER_SEAMS = 8;
+let trailerMapCache: THREE.Texture | null = null;
+function trailerPanelMap(): THREE.Texture {
+  if (trailerMapCache) return trailerMapCache;
+  const W = 512, H = 256;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  /* willReadFrequently — addGrain is a getImageData round trip and without
+     the hint it stalls on the GPU behind the live scenes' frames. */
+  const x = c.getContext("2d", { willReadFrequently: true })!;
+  x.fillStyle = TRAILER_MAP_BASE;
+  x.fillRect(0, 0, W, H);
+  /* 10 on a light base. The dark-base rule from work-vision's wall (drop the
+     amplitude with the base, because symmetric byte noise is a net LIFT in
+     linear light once the base is near black) runs the other way here: this
+     base is bright, the bias is negligible, and the grain is what stops a
+     4.6-unit flat panel reading as vinyl. */
+  addGrain(x, W, H, 10);
+  /* The seam itself: a 1px line of shadow with a 1px lit lip beside it, which
+     is what a lapped panel joint looks like from any angle that is not
+     straight on. Alpha 0.20/0.09 — subtle by intent, the brief for this body
+     is "reads as a trailer", not "reads as corrugation". */
+  /* THE SEAM WAS DOUBLED, AND WIDENED — AND THE WIDTH IS THE PART THAT
+     ACTUALLY MATTERED. Reviewed on screen the sides still read as blank
+     bright planes, and the reason a 1px line at 512 disappears on a 4.6-unit
+     trailer seen from ~9 units is not that it is too pale: it is that it is
+     SUBPIXEL, so the mip chain averages it into the base before it ever
+     reaches the eye. Darkening a line the renderer has already blurred away
+     buys almost nothing. So the joint is now five texels wide instead of two:
+
+       core      2px at alpha 0.40  (was 1px at 0.20)
+       shoulder  1px at alpha 0.18 either side of the core
+       lit lip   2px at alpha 0.10  (was 1px at 0.09)
+
+     Rendered on the trailer, the core lands at 108 against the flat panel's
+     166 — a 58-step delta where the old one was 29. Both numbers checked
+     numerically through the real sRGB<->linear transfer.
+
+     KNOWN CONSEQUENCE, FLAGGED RATHER THAN HIDDEN: this map is shared with
+     the dock building (`dockClad`), so its seams strengthen too — the core
+     renders at 10 against that wall's 21. Work-vision's wall note warns that
+     is about as far as a seam can go "before the wall reads as tiled
+     cladding". Here that is arguably correct rather than wrong: the dock is a
+     shed, and a shed IS profiled sheet. If it reads as slots cut in the wall,
+     the fix is a second low-contrast canvas for the dock alone, not backing
+     this off — the trailer is what needed it. */
+  const pitch = W / TRAILER_SEAMS;                      // 64
+  for (let i = 0; i < TRAILER_SEAMS; i++) {
+    const u = Math.round(i * pitch);
+    x.fillStyle = "rgba(24,28,34,0.18)";
+    x.fillRect(u - 1, 0, 1, H);
+    x.fillStyle = "rgba(24,28,34,0.40)";
+    x.fillRect(u, 0, 2, H);
+    x.fillStyle = "rgba(24,28,34,0.18)";
+    x.fillRect(u + 2, 0, 1, H);
+    x.fillStyle = "rgba(255,255,255,0.10)";
+    x.fillRect(u + 3, 0, 2, H);
+  }
+  /* Eight faint vertical wash streaks, seeded. Constant in v like everything
+     else here, so they are safe on the roof and the ends. */
+  for (let i = 0; i < 8; i++) {
+    const sx = Math.round(h01(i * 5 + 3) * W);
+    const sw = 1 + Math.round(3 * h01(i * 5 + 4));
+    x.fillStyle = `rgba(24,28,34,${(0.03 + 0.05 * h01(i * 5 + 5)).toFixed(3)})`;
+    x.fillRect(sx, 0, sw, H);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  trailerMapCache = t;
+  return t;
+}
+
+/* ---- the cab's paint ------------------------------------------------------
+   The house's site blue as real painted metal, the same spec work-vision's
+   racking runs (`RACK_BLUE_METAL`). Copied BY VALUE rather than imported —
+   work.ts is out of this file's scope and metal.ts's cache is keyed on the
+   spec, so a matching spec is a cache hit wherever the two ever share a page.
+
+   ROUGH IS 0.60 HERE, NOT WORK'S 0.55, AND THAT IS A DELIBERATE DEVIATION
+   WITH A MEASURED REASON. Work-vision is NOT on the homepage (the page loads
+   the lead card plus the four hero cards), so nothing has warmed a
+   `painted|0.55` roughness canvas and asking for it would cost a fresh 512
+   canvas PLUS a full Sobel normal derivation — metal.ts records the Sobel
+   alone at ~15ms, which is a fifth of this card's entire 70ms build for a
+   1.5-unit cab. metal.ts keys the roughness canvas and the normal map on
+   `kind|rough` only (rough quantised to 0.05) and the ALBEDO on `base|kind`.
+   This scene's own `dark` is already `painted` at rough 0.6, so at 0.60 the
+   cab reuses that roughness canvas AND that normal map and pays for one
+   albedo canvas and nothing else. 0.55 vs 0.60 painted is invisible at any
+   size; 15ms on the homepage is not.
+
+   If work-vision is ever put on this page, change this to 0.55 and both
+   become one cache entry. */
+const LEAD_BLUE_METAL = { base: "#2C4A73", kind: "painted", metalness: 0.35, rough: 0.60 } as const;
+
+/* ---- the container livery -------------------------------------------------
+   The site had no colour anchor at all. It does have containers — the four
+   two-high stacks in the yard bay — so the anchor is skinned onto what is
+   already there rather than added as new geometry.
+
+   TINTS ARE SOLVED BACKWARDS FROM THE WANTED ALBEDO, because `color`
+   multiplies `map` in linear space and `containerSide` is baked at the
+   neutral #9AA0A8 the hero cards share. Authoring the tint AS the wanted blue
+   is the exact mistake yard-vision documents having made in the other
+   direction, and the multiply is severe: #3A5C8A over this map lands at
+   (32,54,86), which on the lite rig is a hole, not a container.
+
+     map    #9AA0A8 = (154,160,168) -> linear (0.323137,0.351524,0.391605)
+
+     LIVERY A, RE-SOLVED. The first pass aimed A at (56,88,128) against B's
+     (40,66,100), which is only 1.33x apart per channel — reviewed on screen,
+     the two liveries were indistinguishable and the checker pattern did
+     nothing. The separation is now an EXACT 1.6x per channel, which is the
+     term that was actually wrong; B is untouched, because B is the value that
+     had to stay clear of the backdrop and moving both ends would just
+     re-collapse the pair somewhere else.
+
+       wanted A = 1.6 x B = (64,106,160)   64/40 = 1.600
+                                          106/66 = 1.606
+                                          160/100 = 1.600
+       R  64 -> lin 0.051278 / 0.323137 = 0.158688 -> sRGB 0.434962 x255 = 111
+       G 106 -> lin 0.144160 / 0.351524 = 0.410100 -> sRGB 0.672693 x255 = 172
+       B 160 -> lin 0.351524 / 0.391605 = 0.897649 -> sRGB 0.953604 x255 = 243
+       tint = (111,172,243) = #6FACF3
+
+     STILL UNDER THE OVERLAY ON EVERY CHANNEL, which is the one hard ceiling
+     yard-vision sets for cargo: (64,106,160) vs #5CC8FF = (92,200,255). A
+     container that out-brightens the accent breaks the only scene where the
+     blue proposal and the conclusion share a shot.
+
+     LIVERY B, wanted albedo (40,66,100) — the darker box in each pair, so a
+     stack reads as two containers and not one tall one:
+       R  40 -> lin 0.021219 / 0.323137 = 0.065666 -> sRGB 0.284225 x255 =  72
+       G  66 -> lin 0.054417 / 0.351524 = 0.154802 -> sRGB 0.429921 x255 = 110
+       B 100 -> lin 0.127440 / 0.391605 = 0.325430 -> sRGB 0.605833 x255 = 154
+       tint = (72,110,154) = #486E9A
+
+   THE TINTS LOOK TOO PALE WRITTEN DOWN AND THAT IS THE POINT — they are
+   divisors, not colours. What renders is (56,88,128) and (40,66,100). */
+const LIVERY_A = "#6FACF3";
+const LIVERY_B = "#486E9A";
+/** The neutral base the hero cards already generated. Must match
+    `subjects.ts`'s NEUTRAL exactly or the cache misses and the page pays for
+    a second 1024x420 canvas. */
+const SKIN_NEUTRAL = "#9AA0A8";
+
+/* ---- the workers ----------------------------------------------------------
+   At 20-40px tall a walker is a silhouette and two colour patches. Limbs are
+   not attempted and must not be: work-vision's rigged figure exists for a
+   camera 7 units away, and this one is thirty.
+
+   Both hexes are the house's AUTHORED-HALF values (work-vision's `m.vest` and
+   `m.helmet`): a real hi-vis #F0641A and a real hard-hat yellow blow out
+   under tone mapping and read as emissive tabs rather than as clothing.
+
+   ONE CAVEAT FOR WHOEVER LOOKS AT THIS FIRST. Those values were authored
+   against work-vision's FULL five-source rig at exposure 1.18. This card runs
+   `lite` (key, rim, hemisphere) at 0.98, so they will land DARKER here. They
+   are used unchanged rather than pre-compensated because the correction is a
+   look call and belongs to whoever screenshots this — if the vests read
+   muddy, these two constants are the whole fix and nothing else moves. */
+const VEST_ORANGE = "#B85413";
+const HELMET_YELLOW = "#C9A227";
+
+/* ---- camera housings ------------------------------------------------------
+   Plain, unmapped, per the same critique work-vision's heads got: a moulded
+   camera housing is smooth painted plastic over die-cast, and putting the
+   scene's mapped `painted` metal on it made a 0.5-unit box look like a chip
+   of asphalt. No maps at all — this is also three fewer texture fetches on
+   four heads' worth of small geometry. */
+/* #262C34, UP FROM #1A1E24. Reviewed, the heads read as black voids: they sit
+   on top of 4.6-unit masts facing whichever way their target is, so for most
+   of the pan they face AWAY from the `lite` rig's single key at (2.5,6.5,4.5)
+   and there is no fill on this card to catch the shadow side. #1A1E24 was
+   picked as a housing colour on the assumption it would be lit; unlit it is
+   below the backdrop's glow pool and the head disappears. (38,44,52) is ~3x
+   the backdrop mid and still the darkest solid on the mast, so the value
+   ORDER is unchanged — it just stops being a hole. */
+const HOUSING = "#262C34";
+/** The lens. Small, and the one bright thing on the head — a camera reads as
+ *  a device because of its glass, not its box. */
+const LENS_R = 0.055;
+
+/* ---- the dock building's cladding ---------------------------------------
+   NO NEW CANVAS, AND NOT A CLONE EITHER — the SAME `trailerPanelMap()`
+   texture with a second material at a darker tint. This was the choice the
+   round asked me to state, so here is the reasoning in full.
+
+   A clone was the obvious answer and it is the wrong one: `Texture.clone()`
+   shares the image and only lets `repeat`/`offset` differ, so it cannot
+   change the base value at all — the darkening has to come from
+   `material.color` either way, and once it does, the clone buys nothing. A
+   third canvas at a genuinely dark base was the other option and it is what
+   work-vision does; it is not worth 512x256 of canvas plus a grain readback
+   here, because this wall is 6.0 x 2.6 seen at ~13.5 units through 31% fog.
+
+   THE TINT IS SOLVED BACKWARDS, same method as everything else in this file:
+
+     base   #B8BDC4 = (184,189,196) -> linear (0.479396,0.508958,0.552122)
+     target #151A21 = ( 21, 26, 33) -> linear (0.007488,0.010325,0.015208)
+     tint   = target / base         =  linear (0.015619,0.020287,0.027545)
+                                    ->  sRGB  ( 34, 39, 46) = #22272E
+
+   DOES THE SEAM SURVIVE A DIVISOR THAT SEVERE? Checked, because work-vision's
+   wall note is explicit that a seam which stops reading must be LIFTED rather
+   than the base raised — and a tint gives me no way to lift it, so if this
+   failed the answer would have been a third canvas after all.
+
+     seam pixel = 0.20 alpha of (24,28,34) over (184,189,196) = (152,157,164)
+     a multiply preserves the ratio to the base, so it renders at
+       seam (16,20,26)   against the wall's own (21,26,33)
+     and the 0.09 white lip pixel (190,195,201) renders at
+       lip  (22,27,34)   against the same (21,26,33)
+
+   Five to seven steps of shadow and one to two of highlight, on a near-black
+   wall — the same order work-vision's own wall runs (alpha 0.35 on #101318).
+   It reads, so the third canvas is not needed.
+
+   (Every figure in this note and in the two tint derivations above was
+   checked numerically through the real sRGB<->linear transfer, not estimated
+   — including the 2.4-exponent segment and the linear toe.) */
+const DOCK_TINT = "#22272E";
+
+/* ---- the horizon --------------------------------------------------------
+   Near-black, unmapped, and it is meant to be nearly invisible: at z = -13
+   the fog has it ~69% of the way to the backdrop, so #0B0E13 = (11,14,19)
+   renders at about (10,12,16).
+
+   THAT IS NOT A MISTAKE, AND IT IS WHY IT WORKS AT ALL. This card's backdrop
+   carries a `glow` pool (#151C26) that peaks around (22,26,35) exactly where
+   these masses sit — the shader aims it at normalize(-0.1, 0.16, -1.0), i.e.
+   behind the subject and slightly up. A silhouette at (10,12,16) in front of
+   a (22,26,35) pool is a clean dark cut-out, which IS what a distant roofline
+   looks like at night. The scene's own fog note already identified this case
+   ("a fully fogged object crossing the pool ... is faintly visible as a dark
+   patch") as a hazard for a prop parked at the far plane; here it is the
+   mechanism, deliberately used. If the band ever reads as too strong, move it
+   FURTHER (more fog), not darker — it is already near the floor. */
+/* #1B2028, UP FROM #0B0E13. Reviewed, the band read as flat paper cutouts:
+   uniform dead black with a crisp rectangular edge against the glow pool,
+   which is what a silhouette looks like when it is FURTHER from the fog than
+   the thing behind it. A real distant roofline is not black, it is the fog
+   with a building faintly in it.
+
+   SOLVED AS A SCALE ON THE ALBEDO, which is the only term that moved — the
+   fog band, the depth and the lighting are all untouched, so the rendered
+   value scales with the albedo's LINEAR value above the fog floor:
+
+     rendered = (1 - f) x shaded + f x fogColour,  f ~ 0.69 at z = -13
+
+   The old albedo rendered at about (10,12,16) against a fog floor of
+   (10,11,14) — i.e. almost all of what you saw WAS the fog, which is exactly
+   why it read as a hole rather than as a building. Lifting the albedo's
+   linear value by 3.3x lifts the part that is not fog by the same factor:
+
+     #0B0E13 = (11,14,19) -> linear x 3.3 -> sRGB (27,32,40) = #1B2028
+
+   VERIFIED, not estimated. Solving the lit gain backwards from the old
+   albedo's observed (10,12,16) and re-running the same fog lerp forwards
+   gives the new band at (16,20,26) — the requested (16,19,26) to within one
+   step on green.
+
+   IT STILL SITS UNDER THE GLOW POOL's (22,26,35) on every channel, so the
+   roofline still reads as a dark mass against a lifted sky. It is just no
+   longer a cut-out. */
+const HORIZON_TONE = "#1B2028";
+const HORIZON_Z = -13;
+const HORIZON_D = 1.6;
+/* [x, width, height, towerW, towerH, towerDX]. Depth is common; height is
+   measured up from GROUND; a towerW of 0 means no tower.
+
+   THE SPANS ARE CHAINED WITH DELIBERATE OVERLAP so that the union is
+   continuous across the treadmill's 27-unit period — each mass wraps to its
+   OWN nearest copy (no tileOwner), so the band is the union of seven
+   period-27 lattices and it can only be gap-free if this chain is:
+
+     -14.8..-8.4  -8.7..-4.5  -4.7..-0.1  -0.4..4.8  4.6..9.0  8.7..13.3
+     12.9..15.9   then mass 1 + 27 = 12.2..18.6 picks it up
+
+   Every join overlaps by 0.2-0.4 and the chain is 30.7 long against a period
+   of 27, so it laps itself. THE x AND w COLUMNS ARE UNCHANGED by the roofline
+   pass for exactly this reason — only the heights and the towers moved, and
+   neither touches the chain. Change an x or a w and re-do it.
+
+   HEIGHTS ARE ALL x0.85, so ~15% less crisp edge meets the glow pool:
+     3.2 -> 2.72   4.4 -> 3.74   2.7 -> 2.30   3.8 -> 3.23
+     2.9 -> 2.47   4.6 -> 3.91   3.1 -> 2.64
+
+   THREE OF THE SEVEN GET A STEPPED TOWER — the three tallest, so the varied
+   ones are the ones whose skyline you actually see. A roofline is a stair
+   core, a plant room and a parapet, not a row of rectangles; one stepped box
+   is the cheapest thing that says so. Each tower's x offset keeps it wholly
+   inside its parent's footprint:
+
+     mass 1  half-width 2.10, tower half 0.75 at dx -0.9 -> -1.65..-0.15  ok
+     mass 3  half-width 2.60, tower half 0.90 at dx +1.1 ->  0.20.. 2.00  ok
+     mass 5  half-width 2.30, tower half 0.65 at dx -0.7 -> -1.35..-0.05  ok */
+const HORIZON: readonly (readonly [number, number, number, number, number, number])[] = [
+  [-11.6, 6.4, 2.72, 0, 0, 0],
+  [-6.6, 4.2, 3.74, 1.5, 0.70, -0.9],
+  [-2.4, 4.6, 2.30, 0, 0, 0],
+  [2.2, 5.2, 3.23, 1.8, 0.55, 1.1],
+  [6.8, 4.4, 2.47, 0, 0, 0],
+  [11.0, 4.6, 3.91, 1.3, 0.80, -0.7],
+  [14.4, 3.0, 2.64, 0, 0, 0],
+] as const;
+
+/* ---- the high masts -----------------------------------------------------
+   The upper half of frame was empty black. This is an outdoor yard at night
+   so there is no roof to enclose it with; what a real yard has up there is
+   high-mast floodlighting, and three of them at 7.0 units put something in
+   the top third at every pan position.
+
+   HEIGHT 7.0, SOLVED AGAINST THE FRAMING RATHER THAN PICKED. The camera sits
+   at rad * 0.30 = 2.80 high on the desktop card (rad 9.34) with a 30deg
+   vertical fov, so the half-height of the frustum at the masts' depth
+   (~14.8 units out) is 14.8 x tan(15deg) = 3.97, and the visible band there
+   runs roughly world y 0 .. 6, i.e. GROUND + 1.25 .. GROUND + 7.25. A mast
+   top at GROUND + 7.0 lands just inside the top edge; at 8.2 it was cropped,
+   and a cropped mast reads as a mistake rather than as height. Mobile (rad
+   17.88) frames everything smaller, so 7.0 is safely inside there too.
+
+   X POSITIONS are spread across the 27-unit period and kept away from the
+   four camera masts (-9.6, -1.6, 6.2, 13.2) so the two kinds of pole never
+   line up and read as one confused structure:
+
+     -11.8 -> -3.4   8.4
+      -3.4 ->  9.4  12.8
+       9.4 -> 15.2   5.8   (= -11.8 + 27)
+                    ----
+                    27.0
+
+   Nearest approach to a camera mast is 9.4 vs 6.2 = 3.2 units.
+
+   Z = -6.2 puts them BEHIND the container row (z -3.2, back face -3.75) and
+   behind the dock wall (-4.85), in front of the horizon (-13) — a third depth
+   plane, and ~37% fogged, so they recede without disappearing. */
+const MAST_X = [-11.8, -3.4, 9.4] as const;
+const MAST_Z = -6.2;
+const MAST_H = 7.0;
+
+/* THE HALO IS NOT A LIGHT. No THREE.Light is added by this pass — this card
+   runs `noEnv` with no bloom and a 70ms build, and three more lights would be
+   a per-frame cost for a blob 40px across. It is the lamp module's IDIOM
+   only: a small additive billboard with a radial alpha falloff.
+
+   `buildPendantLamp` was checked for reuse and rejected on the round's own
+   terms — it is lamp.ts's ONLY export and it builds a shade, a cord, a bulb,
+   a volumetric beam AND a real THREE.PointLight as one unit, so importing it
+   would drag the full pendant in to get one quad.
+
+   IT DOES NOT PULSE. Its opacity is `HALO_PEAK * solid` and `solid` is the
+   intro ramp, which reaches 1 and stays there. */
+const HALO_WARM = "#FFC98A";
+/* ---- THE HALO WAS INVISIBLE, AND BOTH TERMS WERE WRONG ----
+   Reviewed at two framings: no halo at all, and the masts read as bare
+   flagpoles with boxes on them. A light that emits nothing is clutter, so
+   this is now sized and weighted to actually read.
+
+   SIZE 1.9 -> 3.2. The halo hangs at ~14.8 units from the lens on the
+   desktop card, where the frustum is 2 x 14.8 x tan(15deg) = 7.93 units tall.
+   On a ~200px-tall card slot that is ~25px per world unit, so the old 1.9
+   quad drew ~48px across — but the alphaMap is a smoothstep ramp, so its
+   READABLE core (alpha > 0.5) is only about a third of that, ~16px, and at
+   0.22 peak through 37% fog that core was a barely-there smudge. 3.2 draws
+   ~80px with a ~27px core, which is a glow rather than a pixel.
+
+   PEAK 0.22 -> 0.38, solved rather than nudged. Additive and toneMapped
+   false, so the arithmetic is exact: at 37% fog the surviving fraction is
+   0.63, and the centre adds
+
+     0.63 x 0.38 x (255,201,138) = (61,48,33)
+
+   over the backdrop's (10,11,14), landing at (71,59,47). That is ~5x the
+   backdrop and clearly a warm source, while staying well under the #5CC8FF
+   overlay's (92,200,255) so a lamp can never out-shout a detection.
+
+   STILL DOES NOT PULSE: `HALO_PEAK * solid`, and `solid` reaches 1 at SETTLE
+   and stays. */
+const HALO_SIZE = 3.2;
+const HALO_PEAK = 0.38;
+
+/* ---- AND THE LIGHT HAS TO LAND SOMEWHERE ----
+   The second half of the same defect: a mast with a glow at the top and
+   nothing beneath it is a lamp in a vacuum. One soft elliptical pool per
+   mast, on `csTex` — the SAME ramp the truck's decal and the workers' pucks
+   already use, so this costs no texture.
+
+   ELLIPTICAL BY THE PLANE'S ASPECT, exactly as the truck's contact shadow
+   does it: one square ramp serves, and 4.0 x 2.4 is the footprint a pair of
+   floods 6.8 units up throws across a slab — long across the mast's arm,
+   shorter fore-and-aft.
+
+   PEAK 0.12. Additive over the #191D22 slab (25,29,34) at ~40% fog:
+   0.60 x 0.12 x (255,201,138) = (18,14,10), landing at (43,43,44). A warm
+   lift of about 18 values on the concrete — present, and nowhere near strong
+   enough to compete with the road paint or the lane lines. */
+const POOL_W = 4.0;
+const POOL_D = 2.4;
+const POOL_PEAK = 0.12;
+
+/* Shared by both kinds of pole. A mast that meets the slab with nothing on it
+   reads as pushed into the ground; a grouted plinth is what a real one has,
+   and it is also the cheapest possible contact cue on a card with no shadow
+   light. Slightly conical (wider at the bottom) because a plinth is poured. */
+const FOOT_R_TOP = 0.30;
+const FOOT_R_BOT = 0.34;
+const FOOT_H = 0.10;
 
 export default function LeadCardScene() {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -398,13 +893,130 @@ export default function LeadCardScene() {
         const dark = met("#4E5661", "painted", 0.3, 0.6);
         const steel = met("#78828F", "brushed", 0.7, 0.45);
         const midTone = plain("#8A939F");
-        const paleTone = plain("#A6AEBA");
-        const boxTone = plain("#949DA9");
+        /* `paleTone` (#A6AEBA) IS GONE TOO, and for the same reason `boxTone`
+           went: every one of its consumers now has a real surface. The
+           trailers and the docked box took `trailerSkin`, the yard boxes took
+           the container livery, and the dock wall took `dockClad`.
+
+           #A6AEBA IS STILL THIS CARD'S CEILING — it did not move, it moved
+           INTO a texture. TRAILER_TINT is solved so that a flat trailer panel
+           renders at exactly #A6AEBA, so the top of the value ladder is
+           unchanged and white is still reserved for speculars. The ladder
+           comment above describes five tones because that is the grade; the
+           code now has three unmapped ones because the other two became
+           mapped materials rather than flat fills. */
+        /* `boxTone` (#949DA9) IS GONE, not merely unused. Its only consumer
+           was the apron cartons, and cartons are corrugated board now — see
+           `cartonBoard`. The value ladder above documents five tones; there
+           are four in the code because the fifth was replaced by a real
+           surface rather than by another shade of grey. If a future prop wants
+           a mid-pale unmapped box, re-add it there rather than reaching for
+           `paleTone`, which is a step lighter. */
+
+        /* ================= THE DRESSING MATERIALS =================
+           See THE DRESSING PASS at module scope for the cost accounting and
+           the colour derivations. Everything here goes through `mats` (or
+           `met`) so it fades in on the same intro ramp as the rest, and every
+           one of them is a MATERIAL — the textures underneath are cached and
+           are never disposed by this scene. */
+
+        /* A mapped material that still joins the intro ramp. `plain()` cannot
+           be used because it has no `map` parameter and `met()` would drag in
+           makeMetal's three-map chain, which is exactly what these skins
+           exist to avoid paying for. */
+        const skinned = (map: THREE.Texture, color: string, rough: number, metal = 0.0, env = 0.18) => {
+          const m = new THREE.MeshStandardMaterial({
+            map, color, roughness: rough, metalness: metal,
+            envMapIntensity: env, transparent: true, opacity: 0,
+          });
+          mats.push(m);
+          return m;
+        };
+
+        /* The truck's and the dock's trailer bodies. ONE material for both:
+           they are the same kind of object, and sharing it also means one
+           less draw-call state change. */
+        const trailerSkin = skinned(trailerPanelMap(), TRAILER_TINT, 0.72, 0.10, 0.22);
+        /* The cab. `met` registers it for disposal alongside `dark`/`steel`. */
+        const cabBlue = met(
+          LEAD_BLUE_METAL.base, LEAD_BLUE_METAL.kind,
+          LEAD_BLUE_METAL.metalness, LEAD_BLUE_METAL.rough,
+        );
+        /* Rubber. Was `dark` (#4E5661), which is CHASSIS grey — with the
+           chassis and the wheels on one value the running gear read as one
+           undifferentiated grey mass under a white box. #2A2F36 = (42,47,54)
+           is still 3x the backdrop mid (14,16,21), so it is a dark tyre and
+           not the silhouette the value note forbids. */
+        const tyre = plain("#2A2F36", 0.92);
+        /* The side skirt. Between the tyre and the chassis in value so the
+           three running-gear parts read as three parts. */
+        const skirtTone = plain("#3A4048", 0.85);
+        /* Camera housings — no maps at all, see HOUSING. Built by hand rather
+           than through `plain()` because a housing wants real metalness (0.6)
+           and a tight roughness (0.45), and `plain()` hardcodes 0.05/0.15. */
+        const housing = new THREE.MeshStandardMaterial({
+          color: HOUSING, metalness: 0.6, roughness: 0.45,
+          transparent: true, opacity: 0, envMapIntensity: 0.25,
+        });
+        mats.push(housing);
+        /* The two things that turn a capsule into a worker. Matte, unmapped,
+           metalness 0 — hi-vis polyester and a plastic hard hat, and a
+           specular sheen on either would read as wet plastic. */
+        const vest = new THREE.MeshStandardMaterial({
+          color: VEST_ORANGE, roughness: 0.85, metalness: 0.0,
+          transparent: true, opacity: 0, envMapIntensity: 0.30,
+        });
+        const helmet = new THREE.MeshStandardMaterial({
+          color: HELMET_YELLOW, roughness: 0.60, metalness: 0.0,
+          transparent: true, opacity: 0, envMapIntensity: 0.20,
+        });
+        mats.push(vest, helmet);
+        /* Container livery, on the cached neutral skin the homepage's Yard
+           card already generated. One map on all six faces: `metalBox` returns
+           a RoundedBoxGeometry, which has a SINGLE material group, so a
+           six-face array would not bind — and yard-vision reaches the same
+           conclusion on merit at this distance, since the long side and the
+           roof are seen at similar angles and both are ribbed. */
+        const containerTex = containerSide(SKIN_NEUTRAL);
+        const liveryA = skinned(containerTex, LIVERY_A, 0.82, 0.16, 0.20);
+        const liveryB = skinned(containerTex, LIVERY_B, 0.82, 0.16, 0.20);
+        /* Kraft board on the goods, on the untinted cached canvas the
+           homepage's Warehouse card already generated. `color` stays white:
+           cardboard is never recoloured by a tint (blue x kraft = olive is the
+           documented trap in skins.ts) and it does not need to be — board
+           looks like board. Only the side map is used; the top face takes it
+           too, for the single-material-group reason above. */
+        const cartonBoard = skinned(cardboardSide(), "#FFFFFF", 0.94, 0.0, 0.18);
+        /* The dock building's cladding — the SAME map as the trailers, a
+           second material at DOCK_TINT. See that constant for the full
+           "why not a clone, why not a third canvas" and the seam-survival
+           arithmetic. Rougher and flatter than the trailer: this is painted
+           profile sheet on a shed, not a road vehicle. */
+        const dockClad = skinned(trailerPanelMap(), DOCK_TINT, 0.90, 0.05, 0.12);
+        /* Wheel hubs. Its own tone rather than `steel`: `steel` is makeMetal's
+           mapped brushed finish and a 0.30-wide disc is exactly the size at
+           which that map reads as grit. #6B737E = (107,115,126) sits between
+           `steel` (#78828F) and `midTone`, which is where an alloy hub
+           belongs — clearly lighter than the #2A2F36 tyre around it, and not
+           bright enough to become a row of dots across the frame. */
+        const hubTone = plain("#6B737E", 0.55);
+        /* The horizon band. Unmapped and unlit-looking by intent — see
+           HORIZON_TONE. envMapIntensity 0 because there is no env on this
+           card anyway (`noEnv`) and a silhouette must not pick one up if one
+           is ever added. */
+        const horizonTone = new THREE.MeshStandardMaterial({
+          color: HORIZON_TONE, metalness: 0.0, roughness: 0.98,
+          transparent: true, opacity: 0, envMapIntensity: 0.0,
+        });
+        mats.push(horizonTone);
 
         const g = new THREE.Group();
         scene.add(g);
         const bx = (w: number, h: number, d: number, m: THREE.Material) => metalBox(w, h, d, m, Math.min(w, h, d) * 0.07);
-        const put = (mesh: THREE.Mesh, x: number, y: number, z: number, shadow = true) => {
+        /* Generic over Object3D rather than Mesh: the pallet is a Group now,
+           and every line in here is valid on any Object3D. The generic keeps
+           each caller's own type on the way out. */
+        const put = <T extends THREE.Object3D>(mesh: T, x: number, y: number, z: number, shadow = true) => {
           mesh.position.set(x, y, z);
           mesh.castShadow = shadow;
           g.add(mesh);
@@ -413,11 +1025,25 @@ export default function LeadCardScene() {
 
         /* ================= the site ================= */
 
-        /* -- yard: two stacks of containers, far left -- */
+        /* -- yard: two stacks of containers, far left --
+           THE SITE ALREADY HAD CONTAINERS, so none were added. These eight
+           boxes (4 columns x 2 tiers, bx 2.5 x 1.0 x 1.1) are the yard bay the
+           header lists as "stacked containers, one located", and they are now
+           skinned and in blue livery — which makes them the card's colour
+           anchor without a single new object.
+
+           The 2.5:1.0 aspect also happens to be what the skin was painted for:
+           `containerSideRaw` is a 1024x420 canvas, 2.44:1, so the corrugation
+           lands at very close to square pitch on the long faces.
+
+           LIVERY ALTERNATES BY (i + j), NOT BY A HASH. Two liveries on a
+           checker means every stack is a light box on a dark one or the
+           reverse, which is the only thing that has to be true here: a stack
+           of two identically-painted boxes reads as one 2-unit-tall box. */
         const yardBoxes: THREE.Mesh[] = [];
         for (let i = 0; i < 4; i++) {
           for (let j = 0; j < 2; j++) {
-            const b = bx(2.5, 1.0, 1.1, j === 1 && i === 1 ? midTone : paleTone);
+            const b = bx(2.5, 1.0, 1.1, (i + j) % 2 === 0 ? liveryA : liveryB);
             put(b, -13 + i * 2.65, GROUND + 0.5 + j * 1.04, -3.2);
             yardBoxes.push(b);
           }
@@ -440,15 +1066,127 @@ export default function LeadCardScene() {
            for whoever moves one of them next. */
         truck.position.z = ROAD_Z;
         g.add(truck);
-        const trailer = bx(4.6, 1.15, 1.15, paleTone);
+        /* ---- WHAT MAKES THIS READ AS A TRUCK ----
+           Three changes, no geometry moved except the one addition below.
+
+             TRAILER   panelled, not flat white. A real box trailer IS pale —
+                       so the value is unchanged at #A6AEBA (see TRAILER_TINT's
+                       derivation) and only the surface arrives.
+             CAB       the site's blue as painted metal. A cab is the ONE part
+                       of a truck that is always a colour, it is the front of
+                       the vehicle so it is where the eye goes, and at 1.5
+                       units it is small enough that a saturated hue there
+                       anchors the frame without dominating it.
+             CHASSIS   unchanged material (`dark`), but it now has a SKIRT
+                       under it and darker tyres beside it, so the running
+                       gear is three values instead of one. */
+        const trailer = bx(4.6, 1.15, 1.15, trailerSkin);
         trailer.position.set(-1.2, GROUND + 1.15, 0);
         truck.add(trailer);
-        const cabT = bx(1.5, 1.3, 1.2, midTone);
+        /* ================= RUB RAILS =================
+           GEOMETRY READS WHERE TEXTURE DOES NOT, which is the finding this
+           round produced: the seam map is a 512-wide canvas stretched over a
+           4.6-unit side seen from ~9 units, and however dark the seams are
+           made they are still competing with the mip chain. A physical bar is
+           four triangles that never blur away.
+
+           TRUCK TRAILER, measured off the body: 4.6 long centred x = -1.2,
+           1.15 tall centred GROUND + 1.15 -> spans GROUND + 0.575..1.725,
+           1.15 deep -> +- 0.575. The thirds of that height are
+
+             1/3  0.575 + 1.15/3     = GROUND + 0.958
+             2/3  0.575 + 2 x 1.15/3 = GROUND + 1.342
+
+           Section 0.06 x 0.04 at z = +- 0.595, so each rail spans
+           +- 0.575..0.615 — flush with the body face and standing 0.04 proud.
+           Length 4.52 against a 4.6 body leaves 0.04 at each end, which keeps
+           the rails inside the rounded corners (metalBox radius here is
+           1.15 x 0.07 = 0.0805) instead of poking through them.
+
+           `dark` (#4E5661), the chassis value: a rub rail is structural, and
+           it is the same member family as the chassis it protects. */
+        const RUB_Y = [0.958, 1.342] as const;
+        for (const ry of RUB_Y) {
+          for (const sz of [-1, 1]) {
+            const rail = bx(4.52, 0.06, 0.04, dark);
+            rail.position.set(-1.2, GROUND + ry, sz * 0.595);
+            truck.add(rail);
+          }
+        }
+        const cabT = bx(1.5, 1.3, 1.2, cabBlue);
         cabT.position.set(1.9, GROUND + 1.0, 0);
         truck.add(cabT);
         const chassis = bx(6.6, 0.16, 1.0, dark);
         chassis.position.set(-0.2, GROUND + 0.52, 0);
         truck.add(chassis);
+        /* THE SIDE SKIRT, and it is sized off the wheels rather than guessed.
+           The chassis underside is GROUND + 0.44 (0.16 tall at GROUND + 0.52)
+           and the tyres' contact is GROUND, so a skirt hangs into
+           GROUND + 0.10 .. 0.44: height 0.34, centre GROUND + 0.27.
+
+           LENGTH IS THE CLEAR SPAN BETWEEN THE AXLES. Wheels sit at
+           x = -3.0, -2.1, 1.6, 2.4 with WHEEL_R 0.32, so the inner faces of
+           the two inner wheels are at -2.1 + 0.32 = -1.78 and
+           1.6 - 0.32 = 1.28. A 3.0-long skirt centred at x = -0.25 spans
+           -1.75 .. 1.25, clearing each by 0.03 — enough that it never
+           intersects a tyre, tight enough that it reads as a full skirt.
+
+           DEPTH 0.98 (+-0.49) is inboard of the wheels at +-0.66 and inboard
+           of the trailer body at +-0.575, so it tucks under rather than
+           bulging, which is what an aero skirt does. */
+        const skirt = bx(3.0, 0.34, 0.98, skirtTone);
+        skirt.position.set(-0.25, GROUND + 0.27, 0);
+        truck.add(skirt);
+
+        /* ================= THE TRAILER END FACES =================
+
+           The panel map only reads on the long sides, so the ends were flat
+           #A6AEBA planes — and because they face the camera squarely for half
+           the pan, they were the brightest planes in frame.
+
+           WHY NOT PER-FACE UV, WHICH WAS THE OTHER OPTION OFFERED. It is not
+           available on these meshes and could not be made available without a
+           mechanics change. `bx()` is `metalBox`, which returns a
+           RoundedBoxGeometry, and a rounded box has a SINGLE material group —
+           hero-cards/subjects.ts documents exactly this, which is why its
+           cartons use a plain BoxGeometry to take a six-material array. To do
+           work-vision's `dockWallFace` idiom here I would have to drop the
+           rounded geometry, and this codebase's own note calls the 2-3cm
+           edge radius "the single biggest fix for blocky" — losing it to gain
+           a UV would be a bad trade, and it would change the silhouette,
+           which is not a materials change at all.
+
+           SO: A REAR DOOR ASSEMBLY, WHICH GETS BOTH THINGS AT ONCE. A thin
+           plate standing 0.02 proud of the rear face, at `midTone` (#8A939F)
+           — exactly the one-step drop from `paleTone` that the round asked
+           for as the minimum — plus three bars on `dark` for the leaf split
+           and the two locking rods. The end stops being the brightest plane
+           AND it stops being blank, for one extra geometry (the bar, cached
+           and shared by all six).
+
+           TRUCK TRAILER, measured: body 4.6 long centred x = -1.2, so the
+           rear face is at -1.2 - 2.3 = -3.50 (which is also the tail the
+           TRUCK_RUN derivation is measured on — unchanged, the plate stands
+           0.02 proud at -3.52 and its own 0.06 thickness reaches -3.55, i.e.
+           0.05 past the tail. TRUCK_RUN's exit clearance is 0.31 units, so
+           this eats 0.05 of it and the wrap is still off-frame. Noted rather
+           than adjusted: adjusting TRUCK_RUN would be a motion change.)
+           Plate 1.02 x 1.02 against a 1.15 body: 0.065 of body showing on
+           every side, so the doors sit INSIDE the frame of the trailer's own
+           edge, which is what a real rear end looks like. */
+        const REAR_BAR_Z = [0, -0.32, 0.32] as const;
+        const rearPlateT = bx(0.06, 1.02, 1.02, midTone);
+        rearPlateT.position.set(-3.52, GROUND + 1.15, 0);
+        truck.add(rearPlateT);
+        for (const bz of REAR_BAR_Z) {
+          /* 0.03 thick standing at x -3.565: the plate's outer face is at
+             -3.55, so each bar is 0.015 proud of it. Full body height 0.94
+             (0.08 in from the plate's 1.02) so the bars stop short of the
+             door's own top and bottom edge, like real cam-lock rods. */
+          const bar = bx(0.03, 0.94, 0.05, dark);
+          bar.position.set(-3.565, GROUND + 1.15, bz);
+          truck.add(bar);
+        }
         /* ONE WHEEL GEOMETRY FOR THE WHOLE SITE. It used to be allocated inside
            the loop below — four identical CylinderGeometries per mount, none of
            them disposed — and the docked trailer's bogie now wants the same
@@ -457,14 +1195,43 @@ export default function LeadCardScene() {
         const WHEEL_R = 0.32;
         const WHEEL_W = 0.22;
         const wheelGeo = new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, WHEEL_W, 14);
+        /* ---- THE HUB DISC ----
+           A tyre with no hub is a black cylinder, and eight of them made the
+           running gear read as a row of holes. One shared geometry for every
+           wheel on the site — both the truck's eight and the docked bogie's
+           four — for the same reason `wheelGeo` is shared: the two vehicles
+           must have the same wheel.
+
+           HUB_R 0.15 is 0.47 of WHEEL_R (0.32), which is about where a truck
+           rim sits inside its tyre. HUB_T 0.05 thick, and it is mounted so it
+           CAPS the outer face rather than being buried: a wheel at z = +-0.55
+           with WHEEL_W 0.22 has its outer face at +-0.66, so a hub centred at
+           +-0.685 spans 0.66..0.71 and stands 0.05 proud. Same rotation as
+           the wheel (x = PI/2) so its axis is z. */
+        const HUB_R = 0.15;
+        const HUB_T = 0.05;
+        const hubGeo = new THREE.CylinderGeometry(HUB_R, HUB_R, HUB_T, 12);
+        /** Outboard offset from a wheel's CENTRE plane to the hub's centre:
+         *  half the tyre width plus half the hub thickness. 0.11 + 0.025. */
+        const HUB_OFF = WHEEL_W / 2 + HUB_T / 2;      // 0.135
         for (const wx of [-3.0, -2.1, 1.6, 2.4]) {
-          const w = new THREE.Mesh(wheelGeo, dark);
+          const w = new THREE.Mesh(wheelGeo, tyre);
           w.rotation.x = Math.PI / 2;
           w.position.set(wx, GROUND + 0.32, 0.55);
           truck.add(w);
           const w2 = w.clone();
           w2.position.z = -0.55;
           truck.add(w2);
+          /* Siblings of the wheels, NOT children. `w.clone()` above is
+             recursive, so a hub parented to `w` would be duplicated onto `w2`
+             with a local offset that the wheel's own PI/2 rotation would send
+             the wrong way. Explicit world-side placement is unambiguous. */
+          for (const sz of [-1, 1]) {
+            const hub = new THREE.Mesh(hubGeo, hubTone);
+            hub.rotation.x = Math.PI / 2;
+            hub.position.set(wx, GROUND + WHEEL_R, sz * (0.55 + HUB_OFF));
+            truck.add(hub);
+          }
         }
 
         /* ================= THE TRUCK'S CONTACT SHADOW =================
@@ -578,13 +1345,73 @@ export default function LeadCardScene() {
         g.add(contactShadow);
 
         /* -- dock: a bay with a trailer parked and cargo on the apron -- */
-        const dockWall = bx(6.0, 2.6, 0.5, paleTone);
+        /* ================= THE DOCK BUILDING =================
+
+           It was the flattest object on the site: one #A6AEBA slab, the same
+           value as the trailer standing in front of it, so it read as a
+           backdrop card rather than as a building the trailer is parked at.
+           Work-vision's dock treatment, scaled to this card's budget.
+
+           THE VALUE DROP IS THE WHOLE FIX, and it is large on purpose:
+           #A6AEBA (166,174,186) -> #151A21 (21,26,33), i.e. from the top of
+           this card's range to below the asphalt. The trailer in front of it
+           stays at #A6AEBA, so the two now separate by a factor of eight
+           instead of not at all.
+
+           A NEAR-BLACK BUILDING NEEDS EDGES OR IT IS A HOLE, which is the
+           trap this could have fallen into. Three lighter members do that
+           work and nothing else has to:
+
+             ROOF CAP   `dark`  #4E5661 — one lit line along the top edge, so
+                        the building meets the sky as an object
+             DOOR FRAME `steel` #78828F — so each opening reads as an opening
+             DOORS      `skirtTone` #3A4048 — one step above the cladding, so
+                        two shutters read inside their frames
+
+           GEOMETRY REFERENCE, everything below measured off these:
+             wall  6.0 x 2.6 x 0.5 at (3.4, GROUND+1.3, -4.6)
+                   -> x 0.40..6.40, y GROUND+0.00..2.60, z -4.85..-4.35
+             door  1.7 x 1.9 x 0.12 at (dx, GROUND+0.95, -4.3)
+                   -> y GROUND+0.00..1.90, front face z -4.24 */
+        const dockWall = bx(6.0, 2.6, 0.5, dockClad);
         put(dockWall, 3.4, GROUND + 1.3, -4.6);
+
+        /* THE ROOF CAP LIP. 0.12 tall centred at GROUND + 2.62 spans
+           GROUND + 2.56..2.68, so it OVERLAPS the wall top (2.60) by 0.04 —
+           no hairline gap to open up at any angle. 6.24 x 0.74 against the
+           wall's 6.00 x 0.50 stands it 0.12 proud on all four sides, which is
+           what a coping does and what makes it read as a separate member
+           rather than as a stripe painted on the parapet. */
+        const roofCap = bx(6.24, 0.12, 0.74, dark);
+        put(roofCap, 3.4, GROUND + 2.62, -4.60, false);
+
         for (const dx of [1.6, 5.2]) {
-          const door = bx(1.7, 1.9, 0.12, midTone);
+          const door = bx(1.7, 1.9, 0.12, skirtTone);
           put(door, dx, GROUND + 0.95, -4.3, false);
+          /* THE DOOR FRAME. Section 0.10 square, at z = -4.24 with 0.10 of
+             depth (spans -4.29..-4.19), so it stands 0.05 proud of the door
+             face at -4.24 and reads in front of it.
+
+             Jambs at dx +- 0.90: the door half-width is 0.85 and the jamb
+             half-section is 0.05, so the jamb's INNER face lands at 0.85 —
+             flush with the opening — and its outer at 0.95.
+             Jamb height 2.06 centred GROUND + 1.03 -> GROUND + 0.00..2.06.
+             Lintel 1.90 wide = 2 x 0.95, so it spans exactly the two jambs'
+             outer faces; 0.10 tall centred GROUND + 2.01 -> 1.96..2.06, i.e.
+             its top is flush with the jamb tops and it overlaps the last
+             0.10 of them. Frame top 2.06 is well inside the wall's 2.60. */
+          for (const sx of [-0.90, 0.90]) {
+            const jamb = bx(0.10, 2.06, 0.10, steel);
+            put(jamb, dx + sx, GROUND + 1.03, -4.24, false);
+          }
+          const lintel = bx(1.90, 0.10, 0.10, steel);
+          put(lintel, dx, GROUND + 2.01, -4.24, false);
         }
-        const docked = bx(3.6, 1.15, 1.1, paleTone);
+        /* The docked trailer takes the SAME body skin as the truck's trailer.
+           It is the same kind of object, so a different surface on it would
+           say the two are different things — and it costs nothing, the
+           material is shared. */
+        const docked = bx(3.6, 1.15, 1.1, trailerSkin);
         put(docked, 2.0, GROUND + 1.1, -3.0);
 
         /* ================= WHY THE TRAILER GOT LEGS =================
@@ -649,11 +1476,22 @@ export default function LeadCardScene() {
         const axleGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.30, 10);
         for (const ax of [2.40, 3.30]) {
           for (const sz of [-1, 1]) {
-            const w = new THREE.Mesh(wheelGeo, dark);
+            /* `tyre`, not `dark` — same change as the truck's wheels, and it
+               has to be the same or the two vehicles stop matching, which is
+               the whole reason they share `wheelGeo`. Axles, bogie frame and
+               feet stay on `dark`: those are running GEAR, not rubber. */
+            const w = new THREE.Mesh(wheelGeo, tyre);
             w.rotation.x = Math.PI / 2;
             w.position.set(ax, GROUND + WHEEL_R, DOCK_Z + sz * 0.62);
             w.castShadow = true;
             dockedRig.add(w);
+            /* The same hub as the truck's, at the bogie's own track: wheels
+               sit at DOCK_Z +- 0.62, so the outer faces are at +- 0.73 and
+               the hub centres at +- (0.62 + HUB_OFF) = +- 0.755. */
+            const hub = new THREE.Mesh(hubGeo, hubTone);
+            hub.rotation.x = Math.PI / 2;
+            hub.position.set(ax, GROUND + WHEEL_R, DOCK_Z + sz * (0.62 + HUB_OFF));
+            dockedRig.add(hub);
           }
           const axle = new THREE.Mesh(axleGeo, dark);
           axle.rotation.x = Math.PI / 2;
@@ -683,6 +1521,45 @@ export default function LeadCardScene() {
           dockedRig.add(foot);
         }
 
+        /* The docked trailer's rear doors, the same assembly the truck's got.
+           Body 3.6 long centred x = 2.0, so the rear face is at 3.80; the
+           plate stands 0.02 proud at 3.82 and the bars 0.015 proud of that at
+           3.855. Body is 1.10 deep here (not 1.15), so the plate is 0.98
+           square rather than 1.02 — same 0.06 of body showing all round.
+
+           PARENTED TO `dockedRig`, WHICH IS THE POINT. `dockedRig` is already
+           a top-level child of `g` carrying `tileOwner` 1 — head 1's tile, the
+           same one `docked` takes — so these ride the trailer across every
+           wrap boundary with no new registration at all. Parenting them to
+           `docked` itself would have been wrong for the reason the rig's own
+           note gives: the tracker boxes its target with Box3.setFromObject,
+           which walks children, so head 1's bracket would silently grow. */
+        /* The docked trailer's rub rails, same treatment on its own numbers:
+           body 3.6 long centred x = 2.0, 1.15 tall centred GROUND + 1.1 ->
+           GROUND + 0.525..1.675, 1.1 deep -> +- 0.55. Thirds of that height
+           are GROUND + 0.908 and GROUND + 1.292; rails at z = DOCK_Z +- 0.57.
+           Length 3.52 against a 3.6 body, same 0.04 inset per end.
+
+           IN `dockedRig`, not in `docked` — head 1's tile either way, and
+           keeping them out of `docked` keeps them out of its Box3. */
+        const RUB_Y_D = [0.908, 1.292] as const;
+        for (const ry of RUB_Y_D) {
+          for (const sz of [-1, 1]) {
+            const rail = bx(3.52, 0.06, 0.04, dark);
+            rail.position.set(2.0, GROUND + ry, DOCK_Z + sz * 0.57);
+            dockedRig.add(rail);
+          }
+        }
+
+        const rearPlateD = bx(0.06, 0.98, 0.98, midTone);
+        rearPlateD.position.set(3.82, GROUND + 1.1, DOCK_Z);
+        dockedRig.add(rearPlateD);
+        for (const bz of REAR_BAR_Z) {
+          const bar = bx(0.03, 0.90, 0.05, dark);
+          bar.position.set(3.855, GROUND + 1.1, DOCK_Z + bz);
+          dockedRig.add(bar);
+        }
+
         /* -- warehouse: pallets being counted on the apron -- */
         /* MOVED OFF THE ROAD: z -0.90 -> -2.15. The pallet is 0.9 deep, so at
            -0.90 it spanned -1.35 .. -0.45 and was standing in the middle of the
@@ -694,13 +1571,61 @@ export default function LeadCardScene() {
         const cartons: THREE.Mesh[] = [];
         for (let r = 0; r < 2; r++) {
           for (let i = 0; i < 3; i++) {
-            const c = bx(0.62, 0.5, 0.62, boxTone);
+            /* KRAFT, not white. These are the goods, and goods on a warehouse
+               apron are corrugated board. Costs nothing — `cardboardSide()` is
+               the module-cached canvas the homepage's Warehouse card already
+               generated. */
+            const c = bx(0.62, 0.5, 0.62, cartonBoard);
             put(c, 5.6 + i * 0.68, GROUND + 0.3 + r * 0.54, APRON_Z);
             cartons.push(c);
           }
         }
-        const pallet = bx(2.3, 0.12, 0.9, dark);
+        /* ================= THE PALLET =================
+           It was one flat 2.3 x 0.12 x 0.9 slab, which at this size is a grey
+           mat. It is also a DETECTION TARGET (pools[2]), so it is one of the
+           few objects on this card that a bracket lands on and the viewer is
+           invited to look at — a blank slab is the worst place to spend that.
+
+           BUILT, NOT DARKENED, and the budget says it is cheap: five meshes
+           on two cached `metalBox` sizes, no new material and no texture.
+
+           IT IS NOW A GROUP AT THE SAME baseX, which is what keeps every
+           registration it already had working. `pallet` is the identifier in
+           `pools[2]`, `tileOwner` writes against that identifier, `wrapItems`
+           reads its `position.x`, and the tracker calls Box3.setFromObject on
+           it — all four are satisfied by an Object3D of any kind, and a Group
+           gives the right Box3 (the union of its boards) for free.
+
+           DECK: three boards running along x, 0.04 thick, top face flush with
+           the old slab's top at local +0.06. At z offsets -0.34 / 0 / +0.34
+           with a 0.22 width they span -0.45..-0.23, -0.11..0.11, 0.23..0.45,
+           leaving two 0.12 gaps — the gap IS the pallet, it is the only thing
+           that separates one from a board.
+           STRINGERS: two bearers along z under the deck, 0.16 x 0.08, at
+           x +- 0.95, spanning local y -0.06..0.02 so they carry the deck and
+           the whole assembly still occupies exactly the old 0.12 of height.
+
+           `dark` on the deck (it catches the key) and `skirtTone` on the
+           stringers (they are underneath and in shadow) — the two-value split
+           is what stops it reading as a solid block with lines scored in it.
+
+           NOTE, PRE-EXISTING AND NOT TOUCHED: the cartons above sit at
+           GROUND + 0.05 at their lowest, and this deck's top is GROUND + 0.12,
+           so their bottom 0.07 is inside the pallet. That was true of the
+           slab too. Moving them is a geometry change to four tracked targets
+           and is not this pass's to make. */
+        const pallet = new THREE.Group();
         put(pallet, 6.28, GROUND + 0.06, APRON_Z, false);
+        for (const bz of [-0.34, 0, 0.34]) {
+          const board = bx(2.3, 0.04, 0.22, dark);
+          board.position.set(0, 0.04, bz);
+          pallet.add(board);
+        }
+        for (const sx of [-0.95, 0.95]) {
+          const stringer = bx(0.16, 0.08, 0.9, skirtTone);
+          stringer.position.set(sx, -0.02, 0);
+          pallet.add(stringer);
+        }
 
         /* -- factory: a line running parts past a head, right -- */
         const belt = bx(6.2, 0.18, 0.9, dark);
@@ -716,13 +1641,107 @@ export default function LeadCardScene() {
            its underside is GROUND + 0.53. A leg of exactly that height centred
            at GROUND + 0.265 runs GROUND + 0.00 .. GROUND + 0.53 — floor to
            belt, nothing spare at either end. */
-        for (const lx of [8.8, 11.4, 14.0]) {
-          const leg = bx(0.13, 0.53, 0.13, steel);
+        /* ================= THE CHECKPOINT BENCH =================
+
+           READ THIS FIRST IF THE NAMING LOOKS ODD. The round called for "the
+           checkpoint bench"; this card has no object by that name, and the
+           thing it means is the FACTORY LINE — the belt at x 11.4 that runs
+           parts past head 3, which the same round referred to as "the
+           checkpoint framing". So the bench grammar is applied here. If that
+           reading is wrong, this whole block is what moves.
+
+           Work act 3's bench is a top on four legs with an APRON under the
+           front edge and a LOW RAIL tying the legs, and the apron is the
+           member its note singles out — "the single thing that stops a work
+           bench looking like a table tennis table", because in silhouette it
+           gives the top a thickness instead of a 60mm line. Three bare posts
+           under a slab was this card's version of the same defect.
+
+           MEASURED OFF THE BELT, which is unchanged: 6.2 x 0.18 x 0.9 at
+           (11.4, GROUND + 0.62, -1.6), so it spans x 8.30..14.50,
+           y GROUND + 0.53..0.71, z -2.05..-1.15 and its UNDERSIDE is
+           GROUND + 0.53.
+
+           FOUR LEGS, NOT THREE, evenly pitched between an inset pair:
+             outer legs  11.4 +- (3.1 - 0.35) = 8.65 and 14.15
+             span        14.15 - 8.65 = 5.50, in three bays of 5.50/3 = 1.8333
+             so          8.65, 10.48, 12.32, 14.15   (bays 1.83/1.84/1.83)
+           Section stays 0.13 — already well over the 0.05 floor, and thinning
+           them would make the frame LESS visible, which is the opposite of
+           the ask. Height 0.53 centred GROUND + 0.265 -> floor to belt
+           underside, nothing spare at either end (unchanged).
+
+           MATERIAL: the legs move from `steel` to `cabBlue`. That is not
+           decoration — work act 3 puts its legs, aprons and rails ALL on
+           `m.rack`, its painted blue, and "the same bench grammar" is the
+           grammar including that. It also ties the checkpoint to the truck
+           cab, so the card's one saturated colour appears twice rather than
+           once. Costs nothing: the material already exists. Easy to revert —
+           it is this one identifier in three places. */
+        const BENCH_LEG_X = [8.65, 10.48, 12.32, 14.15] as const;
+        for (const lx of BENCH_LEG_X) {
+          const leg = bx(0.13, 0.53, 0.13, cabBlue);
           put(leg, lx, GROUND + 0.265, -1.6, false);
         }
+        /* ================= THE FLOATING-ROD ARTEFACT =================
+
+           FOUND, AND IT WAS THIS APRON. Reported as "a thin horizontal rod
+           floating free, left of the bench's leftmost leg, around
+           GROUND + 0.4-0.5". All three details identify it exactly:
+
+             height   the apron was 0.11 tall centred GROUND + 0.475, i.e.
+                      it spanned GROUND + 0.420..0.530 — the reported band
+             position it was 5.90 long centred at 11.4, so it spanned
+                      x 8.45..14.35 against outer legs at 8.65 and 14.15 —
+                      a 0.20 CANTILEVER past the leftmost post, which is
+                      precisely "left of the bench's leftmost leg"
+             shape    0.11 x 0.05 in section is a rod
+
+           I put that overhang there on purpose last round, reasoning that an
+           apron reaching past its end posts makes the frame read as
+           continuous. That reasoning is right on work-vision's bench (1.7
+           long, 0.07 of overhang, 4%) and wrong here: 0.20 of unsupported bar
+           at this scale, with the belt's own end at 8.30 and the leg at 8.65,
+           produced three staggered ends inside 0.35 units, and the middle one
+           reads as detached.
+
+           FIXED BY DYING INTO THE POSTS. 5.50 is EXACTLY the outer-leg span
+           (14.15 - 8.65), the same length and the same rule as the low rail
+           below, so there is now no unsupported end anywhere in the assembly.
+           At 89% of the belt's length it still reads as a full apron.
+
+           The rest is unchanged: 0.11 tall centred GROUND + 0.475 hangs
+           directly off the belt's underside (GROUND + 0.53) with no gap, and
+           z -1.17 with 0.05 of depth spans -1.195..-1.145, standing 0.005
+           proud of the belt's front face at -1.15. */
+        const benchApron = bx(5.50, 0.11, 0.05, cabBlue);
+        put(benchApron, 11.4, GROUND + 0.475, -1.17, false);
+        /* THE LOW RAIL, down the centre line in z so it passes through all
+           four legs. 5.50 long is EXACTLY the outer-leg span (14.15 - 8.65),
+           so it dies into the outer posts instead of overhanging them — a
+           rail that oversails reads as a dropped bar. At GROUND + 0.20 it
+           sits in the lower third of the 0.53 leg, where a shelf rail goes. */
+        const benchRail = bx(5.50, 0.05, 0.05, cabBlue);
+        put(benchRail, 11.4, GROUND + 0.20, -1.6, false);
         const parts: THREE.Mesh[] = [];
         for (let i = 0; i < 4; i++) {
-          const pm = bx(0.7, 0.42, 0.6, midTone);
+          /* KRAFT, like the apron cartons — and this reverses an earlier
+             call in this same pass, so the reason is worth keeping.
+
+             The argument for leaving these grey was that they are machined
+             PARTS passing a head, not parcels, and boarding them would turn
+             the factory line into a parcel conveyor. That distinction is real
+             and it does not survive this framing: at the checkpoint pan these
+             four are the most prominent boxes in shot, and an untextured box
+             at that size reads as exactly the white placeholder the rest of
+             this pass exists to eliminate. VISUAL CONSISTENCY WINS over the
+             taxonomy — a site where one row of boxes is board and another is
+             blank plastic reads as unfinished, not as two kinds of cargo.
+
+             Free, like the cartons: same shared `cartonBoard` material on the
+             same module-cached `cardboardSide()` canvas. No new texture, no
+             new material, no draw-call state change between them. */
+          const pm = bx(0.7, 0.42, 0.6, cartonBoard);
           put(pm, 0, GROUND + 0.92, -1.6);
           parts.push(pm);
         }
@@ -751,7 +1770,63 @@ export default function LeadCardScene() {
            solve a problem the rectifier had already solved. Full 0.25 it is.
            If anyone ever un-rectifies that sine, this comment is the reason
            they now have to bias it instead. */
-        const people: { grp: THREE.Group; x0: number; x1: number; z: number; sp: number; ph: number }[] = [];
+        /* ================= THE WORKERS' GROUND CONTACT =================
+
+           They read as floating bollards because nothing tied them to the
+           slab — the same problem the truck had before its decal, and the
+           same fix, so it uses the SAME TEXTURE: `csTex`, the 64px smoothstep
+           radial ramp already built above for the truck's contact shadow.
+           ZERO new canvases for five more shadows.
+
+           IT IS NOT A CHILD OF THE WALKER, AND THAT IS TWO SEPARATE BUGS
+           AVOIDED. Parenting the puck to `pr.grp` would have
+
+             1. lifted it with the walking bob. The frame loop writes the
+                stride into `pr.grp.position.y`, so a child at a fixed local y
+                rides up with every step — and a contact shadow that leaves
+                the ground is worse than none. The truck's decal note makes
+                the same call for the same reason: it takes the truck's x and
+                nothing else.
+             2. grown four detection brackets. people[0], [2], [3] and [4] are
+                all in `pools`, and the tracker boxes its target with
+                Box3.setFromObject, which walks children — a 0.62-wide flat
+                quad at the feet would have pushed each bracket 0.135 wider on
+                both sides and down to the floor. `dockedRig`'s note records
+                this exact hazard.
+
+           So the pucks live in `g` and join `dynamic`, which is precisely the
+           documented arrangement the truck's own contact shadow uses. Their x
+           is written beside the walker's in the people loop; their y and z
+           are set once here and never touched again.
+
+           SIZE. The capsule is r 0.16, so the body is 0.32 across; a 0.62
+           quad is 1.94x that, which is the spread a soft shadow from a high
+           key has. `csTex` is a square ramp and the puck is square, so no
+           elongation — a standing figure's contact patch is round.
+
+           HEIGHT GROUND + 0.004: above the studio's shadow catcher at exactly
+           GROUND and above the road paint at GROUND - 0.002. renderOrder 1
+           puts it over the paint (-1) and over the truck's decal (0). Every
+           plane in that stack has depthWrite off, so renderOrder is the only
+           authority — see the roadway's note in site.ts. */
+        const PUCK_S = 0.62;
+        const PUCK_PEAK = 0.35;
+        const puckGeo = new THREE.PlaneGeometry(PUCK_S, PUCK_S);
+        const puckMat = new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          alphaMap: csTex ?? undefined,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        /* Fogs with the ground it lies on, like the truck's decal and the
+           road paint — it is a mark on the slab, not an overlay. */
+        puckMat.fog = true;
+        /* Held OUT of `mats`: that list is a blunt "set everything to solid"
+           and this peaks at PUCK_PEAK, exactly like the roadway's paint and
+           `csMat`. It is ramped by hand in the frame loop. */
+        const people: { grp: THREE.Group; puck: THREE.Mesh; x0: number; x1: number; z: number; sp: number; ph: number }[] = [];
         const PEOPLE = [
           { x0: -9.5, x1: -2.0, z: 1.9, sp: 1.0, ph: 0.0 },
           { x0: 1.0, x1: 7.5, z: 2.4, sp: 0.72, ph: 0.35 },
@@ -761,19 +1836,114 @@ export default function LeadCardScene() {
              makes the road look used. */
           { x0: 8.0, x1: 13.5, z: 1.5, sp: 0.86, ph: 0.7 },
           { x0: -3.0, x1: 3.0, z: -1.9, sp: 0.6, ph: 0.15 },
-          { x0: 4.0, x1: 9.0, z: -2.6, sp: 0.9, ph: 0.55 },
+          /* ================= BURIED-TO-THE-NECK, CONFIRMED =================
+             z -2.6 -> -3.6. This is the only walker whose x range overlaps
+             the factory line (its 4.0..9.0 against the belt's 8.30..14.50),
+             and it was passing BEHIND it close enough to be occluded.
+
+             SOLVED FROM THE REAL CAMERA, not judged. `placeCamera` puts the
+             lens at (camX + rad sin az, rad x 0.30, -1.0 + rad cos az), so on
+             the desktop card (rad 9.34, az 0.29) it is at world y 2.802,
+             z 7.950. The belt's far edge is z -2.05 with its top at
+             GROUND + 0.71 = world -0.540. A point at world y `py` behind the
+             belt is visible over it when the ray from the lens is still above
+             -0.540 as it crosses z = -2.05:
+
+               u = (7.950 + 2.05) / (7.950 - zw)
+               y = 2.802 + u x (py - 2.802)   must be > -0.540
+
+             Run for the VEST, because the vest is the walker's one
+             identifying feature (world y -0.757 top, -1.003 bottom):
+
+               zw = -2.6    top -0.571 HIDDEN   bottom -0.805 HIDDEN
+               zw = -2.7    top -0.540 grazing  bottom -0.771 hidden
+               zw = -3.3    top -0.361 visible  bottom -0.580 hidden
+               zw = -3.436  top -0.324 visible  bottom -0.540 grazing
+               zw = -3.6    top -0.279 visible  bottom -0.493 VISIBLE
+
+             So at -2.6 the ENTIRE vest was behind the belt and only the head
+             and helmet cleared it — exactly the reported read. -3.436 is the
+             threshold and -3.6 is the first round value past it with margin.
+
+             CLEARANCES CHECKED AT THE NEW z, because -3.6 walks into the
+             dock bay. The walker is a capsule of r 0.175 about its path:
+               docked trailer body  x 0.20..3.80, z -3.55..-2.45
+                 -> walker's x never goes below 4.0 - 0.175 = 3.825   clear
+               its rear door bars   x 3.84..3.87, nearest z -3.345
+                 -> walker reaches z -3.425                    clear by 0.08
+               bogie wheels + hubs  x 2.40/3.30                       clear
+               dock wall            z -4.85..-4.35             0.75 in front
+             Fog at the new depth is ~26%, the same band the yard stacks read
+             in, so it stays a legible detection target (it is people[4], in
+             pool 3).
+
+             THE WRAP IS UNAFFECTED: z is not wrapped. Only x is, and x0/x1
+             are untouched, so the patrol's midpoint — which is what
+             `wrapTo`/`wrapWith` key on — is unchanged at 6.5. */
+          { x0: 4.0, x1: 9.0, z: -3.6, sp: 0.9, ph: 0.55 },
         ];
+        /* ================= THE CAPSULES BECOME WORKERS =================
+
+           A grey pin does not read as a person; a grey pin with a hi-vis band
+           and a yellow hat reads as one instantly, and at 20-40px tall that is
+           the ENTIRE budget. No limbs — see VEST_ORANGE's note. The walk
+           paths, speeds, phases, bob and turn are untouched.
+
+           THE VEST. "Roughly the middle third of the body height", measured
+           off the geometry that is already there rather than picked: the
+           capsule is r 0.16 / len 0.42, total height 0.42 + 2 x 0.16 = 0.74,
+           spanning GROUND + 0.00 .. 0.74. The middle third is
+           0.74/3 = 0.24667 tall, running 0.24667 .. 0.49333, so its centre is
+           GROUND + 0.37 — which is EXACTLY the torso's own centre, because a
+           capsule is symmetric about it. One number, no offset.
+
+           IT IS A CYLINDER AT r 0.175, NOT 0.16. The capsule's straight
+           section runs y 0.16 .. 0.58 (the 0.42 barrel between the two caps),
+           and the vest band 0.24667 .. 0.49333 sits wholly inside it, so a
+           plain cylinder is the exact right shape — no cap needed. 0.175 is
+           0.015 proud of the capsule so the two surfaces cannot z-fight, and
+           15mm of proud vest is also just what a vest over a shirt looks like.
+           Open-ended: the end caps would be two discs buried inside the torso.
+
+           THE HELMET is an upper hemisphere over the head sphere. Head r
+           0.145 at GROUND + 0.77; shell r 0.152 at the same centre, 7mm proud
+           for the same non-fighting reason, sweeping phiLength PI/2 so it
+           covers the crown down to the equator and leaves a band of head
+           below it. A full sphere would be a yellow ball, which is a hat only
+           by accident.
+
+           GEOMETRIES ARE BUILT ONCE AND SHARED by all five walkers, and they
+           are FRESHLY ALLOCATED here (not from `metalBox`'s shared cache), so
+           they are this scene's to dispose — see the teardown. */
+        const VEST_H = 0.74 / 3;              // 0.24667, the middle third
+        const vestGeo = new THREE.CylinderGeometry(0.175, 0.175, VEST_H, 10, 1, true);
+        const helmetGeo = new THREE.SphereGeometry(0.152, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
         for (const spec of PEOPLE) {
           const grp = new THREE.Group();
           const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.42, 4, 8), dark);
           torso.position.y = GROUND + 0.37;   // half-height 0.37 -> bottom on GROUND
           torso.castShadow = true;
           grp.add(torso);
+          const vestM = new THREE.Mesh(vestGeo, vest);
+          vestM.position.y = GROUND + 0.37;   // == the capsule's centre, see above
+          grp.add(vestM);
           const headM = new THREE.Mesh(new THREE.SphereGeometry(0.145, 12, 10), dark);
           headM.position.y = GROUND + 0.77;   // 0.40 above the torso centre, as before
           grp.add(headM);
+          const hatM = new THREE.Mesh(helmetGeo, helmet);
+          hatM.position.y = GROUND + 0.77;    // concentric with the head
+          grp.add(hatM);
           g.add(grp);
-          people.push({ grp, ...spec });
+          const puck = new THREE.Mesh(puckGeo, puckMat);
+          puck.rotation.x = -Math.PI / 2;
+          /* z is fixed for the life of the scene — a walker's patrol is a
+             straight run along x at a constant z — so only x is written per
+             frame. y is never written again. */
+          puck.position.set(0, GROUND + 0.004, spec.z);
+          puck.renderOrder = 1;
+          puck.castShadow = false;
+          g.add(puck);
+          people.push({ grp, puck, ...spec });
         }
 
         /* -- the cameras that see all of it: four poles, four arcs -- */
@@ -800,26 +1970,63 @@ export default function LeadCardScene() {
            moment the wrap boundary falls between them they would round to
            different tiles and the head would detach from its own mast. They
            are wrapped as a unit instead. */
+        /* Shared by the camera masts and the high masts below. Conical, wider
+           at the bottom; 0.10 tall centred GROUND + 0.05 so its bottom face
+           is exactly GROUND and it stands 0.10 up the pole. */
+        const footGeo = new THREE.CylinderGeometry(FOOT_R_TOP, FOOT_R_BOT, FOOT_H, 12);
+        const lensGeo = new THREE.CylinderGeometry(LENS_R, LENS_R, 0.02, 12);
         const headRig: THREE.Object3D[][] = [];
         for (const P of POLES) {
           const pole = bx(0.14, 4.6, 0.14, steel);
           put(pole, P.x, GROUND + 2.3, P.z);
           const arm = bx(0.7, 0.11, 0.11, steel);
           put(arm, P.x + 0.3, GROUND + 4.5, P.z, false);
+          /* THE BASE PLATE, and it MUST take its head's tile index like every
+             other piece of the mast. It is pushed into `headRig` below rather
+             than placed and forgotten: `headRig.forEach(...)` is what writes
+             `tileOwner`, so joining that array is the entire registration.
+             A foot left to wrap on its own would round to a different tile
+             from its pole at the boundary — the exact failure the pole/arm/
+             yawGrp note describes — and a base plate 27 units from its mast
+             is the most obvious possible artefact. */
+          const foot = new THREE.Mesh(footGeo, skirtTone);
+          put(foot, P.x, GROUND + FOOT_H / 2, P.z, false);
           const yawGrp = new THREE.Group();
-          headRig.push([pole, arm, yawGrp]);
+          headRig.push([pole, arm, yawGrp, foot]);
           yawGrp.position.set(P.x + 0.62, GROUND + 4.42, P.z);
           g.add(yawGrp);
-          const head = bx(0.5, 0.28, 0.34, dark);
+          /* HOUSING, NOT `dark`. `dark` is makeMetal's mapped `painted`
+             finish, whose panel joints and scuffs are authored for surfaces
+             metres across; on a 0.5-unit camera body they render at a scale
+             that reads as gravel. A moulded housing is smooth — see HOUSING.
+             The MAST and the ARM stay on `steel`: those really are structural
+             sections and the map is right on them. */
+          const head = bx(0.5, 0.28, 0.34, housing);
           head.castShadow = true;
           yawGrp.add(head);
-          const hood = bx(0.56, 0.07, 0.38, dark);
+          const hood = bx(0.56, 0.07, 0.38, housing);
           hood.position.y = 0.18;
           yawGrp.add(hood);
-          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.2, 14), dark);
+          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.2, 14), housing);
           barrel.rotation.z = Math.PI / 2;
           barrel.position.x = 0.3;
           yawGrp.add(barrel);
+          /* THE LENS. The head's optical axis is local +X and the barrel runs
+             x 0.20..0.40 with a front radius of 0.10, so a disc of r 0.055
+             at x 0.41 caps that face and stands 0.01 proud of it — inside the
+             barrel's own rim, which is what makes it read as glass set into a
+             housing rather than as a cap stuck on the end.
+
+             `hubTone` (#6B737E) is the lightest thing on the whole mast, and
+             deliberately: a camera reads as a device because of its glass.
+             It always faces the target, because it is parented to `yawGrp`
+             which is what the aiming code rotates — so the one bright feature
+             on the head is pointed at whatever the head is reading, which is
+             the claim this card is making. */
+          const lens = new THREE.Mesh(lensGeo, hubTone);
+          lens.rotation.z = Math.PI / 2;
+          lens.position.x = 0.41;
+          yawGrp.add(lens);
           /* the beam makes each head's aim legible without a label.
              #3AA0DC -> #5CC8FF (PALETTE.accent). These cones are unlit,
              `toneMapped: false` graphics, so they render at their literal sRGB
@@ -855,6 +2062,175 @@ export default function LeadCardScene() {
           beam.position.set(0.42, 0, 0);
           yawGrp.add(beam);
           heads.push({ yawGrp, beam, beamMat: bm });
+        }
+
+        /* ================= THE HIGH MASTS =================
+           See MAST_X / MAST_H / HALO_* at module scope for the height
+           derivation, the x spacing against the camera masts, and why no
+           THREE.Light and no pendant import.
+
+           EACH MAST IS ONE GROUP, AND THAT IS THE WRAP REGISTRATION. The
+           treadmill wraps TOP-LEVEL children of `g` by writing
+           `o.position.x = baseX + PERIOD * k`, so a group placed at
+           `position.x = MAST_X[i]` with all five of its pieces at LOCAL x
+           wraps as a single rigid unit. That is the fix the camera masts had
+           to make the hard way: pole, arm and yaw group have base x of P.x,
+           P.x+0.3 and P.x+0.62, near enough to round to different tiles at
+           the boundary and detach from each other. A group cannot do that,
+           because there is only one x to round.
+
+           They take NO tileOwner: no camera is aimed at them and they are not
+           in any pool, so they wrap to their own nearest copy and recede past
+           like the rest of the scenery. Teleport happens at PERIOD/2 = 13.5
+           from the camera, against a visible half-span of 6.39. */
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: HALO_WARM,
+          alphaMap: csTex ?? undefined,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          toneMapped: false,
+          blending: THREE.AdditiveBlending,
+        });
+        /* FOG ON, which is the opposite call from the sight cones and the
+           brackets. Those are the system's own drawing and must not dim with
+           distance; this is a real light in the yard and must. Additive plus
+           fog also behaves correctly by construction: fog pulls the source
+           toward the near-black fog colour, and adding near-black adds
+           nothing, so a far mast's halo simply fades out. */
+        haloMat.fog = true;
+        /* Held out of `mats` — peaks at HALO_PEAK, not 1. */
+        const haloGeo = new THREE.PlaneGeometry(HALO_SIZE, HALO_SIZE);
+        /* THE GROUND POOL. Its own material because its peak is a third of
+           the halo's and a material carries one opacity — same reason the
+           lane paint could not share the road paint's. Same colour, same
+           additive blend, same `csTex` ramp, so no new texture. */
+        const poolMat = new THREE.MeshBasicMaterial({
+          color: HALO_WARM,
+          alphaMap: csTex ?? undefined,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          toneMapped: false,
+          blending: THREE.AdditiveBlending,
+        });
+        poolMat.fog = true;
+        const poolGeo = new THREE.PlaneGeometry(POOL_W, POOL_D);
+        for (const mx of MAST_X) {
+          const mast = new THREE.Group();
+          mast.position.x = mx;               // the ONLY x the wrap will write
+          g.add(mast);
+
+          /* Pole 0.16 square x MAST_H, centred GROUND + MAST_H/2 = 3.5, so it
+             runs GROUND + 0.00 .. GROUND + 7.00. */
+          const pole = bx(0.16, MAST_H, 0.16, steel);
+          pole.position.set(0, GROUND + MAST_H / 2, MAST_Z);
+          pole.castShadow = false;
+          mast.add(pole);
+
+          const foot = new THREE.Mesh(footGeo, skirtTone);
+          foot.position.set(0, GROUND + FOOT_H / 2, MAST_Z);
+          mast.add(foot);
+
+          /* Cross-arm at GROUND + 6.90, i.e. 0.10 below the pole top so the
+             pole finishes above it rather than stopping at it. 1.50 long,
+             symmetric, so the two floods hang either side of the mast. */
+          const arm = bx(1.50, 0.12, 0.12, steel);
+          arm.position.set(0, GROUND + 6.90, MAST_Z);
+          arm.castShadow = false;
+          mast.add(arm);
+
+          /* Two flood boxes at x +- 0.55 (inside the arm's +- 0.75 ends),
+             hung UNDER the arm: 0.16 tall centred GROUND + 6.76 spans
+             6.68..6.84, and the arm's underside is 6.84. Tilted 0.35 rad nose
+             down, which is a fixed rotation set once — nothing here animates. */
+          for (const sx of [-0.55, 0.55]) {
+            const flood = bx(0.34, 0.16, 0.22, housing);
+            flood.position.set(sx, GROUND + 6.76, MAST_Z);
+            flood.rotation.x = 0.35;
+            flood.castShadow = false;
+            mast.add(flood);
+          }
+
+          /* ONE halo per mast, centred on the arm between the two floods.
+             NOT BILLBOARDED IN A SHADER, unlike lamp.ts's — that needs a
+             ShaderMaterial and this is a MeshBasicMaterial on the alphaMap
+             that already exists. It is left facing +z, the side the camera
+             is on. Worst-case obliquity is the camera's own azimuth (0.29)
+             plus the lateral angle to a mast at the frame edge
+             (atan(6.39/9.34) = 0.60), so ~0.89 rad and cos 0.63: a soft
+             radial blob squashed to 63% of its width, which is not a
+             readable change on a shape that has no edge. */
+          const halo = new THREE.Mesh(haloGeo, haloMat);
+          halo.position.set(0, GROUND + 6.76, MAST_Z + 0.20);
+          halo.renderOrder = 2;
+          mast.add(halo);
+
+          /* THE POOL THE FLOODS THROW. Directly under the mast, laid flat on
+             the slab at GROUND + 0.003 — above the road paint (GROUND-0.002)
+             and below the workers' pucks (GROUND+0.004), and renderOrder 0
+             sits it over the paint's -1. It never shares ground with either:
+             the masts are at z = -6.2 and the road is at z = 0, so the stack
+             order here is a formality rather than a contest.
+
+             INSIDE THE MAST GROUP, so it takes the mast's single wrapped x
+             and can never be left behind by its own lamp. */
+          const pool = new THREE.Mesh(poolGeo, poolMat);
+          pool.rotation.x = -Math.PI / 2;
+          pool.position.set(0, GROUND + 0.003, MAST_Z);
+          pool.renderOrder = 0;
+          pool.castShadow = false;
+          mast.add(pool);
+        }
+
+        /* ================= THE HORIZON =================
+           See HORIZON / HORIZON_TONE at module scope for the tone reasoning
+           and for the span chain that keeps the band gap-free across the
+           27-unit period.
+
+           ONE SHARED UNIT BOX, SCALED. Seven distinct sizes through `bx()`
+           would mint seven RoundedBoxGeometries in metal.ts's shared cache
+           for objects that are pure silhouette — nothing here has an edge
+           highlight to catch, so the rounding buys nothing and the cache
+           entries would outlive the scene. A single BoxGeometry(1,1,1) with a
+           per-mesh scale is one buffer for all seven.
+
+           Each mass is a plain top-level child of `g` with no tileOwner, so
+           each wraps to its own nearest copy exactly as `yardBoxes` do — that
+           independence is what makes the union periodic and therefore
+           continuous, and it is why the chain arithmetic has to hold. */
+        const horizonGeo = new THREE.BoxGeometry(1, 1, 1);
+        /* EACH MASS IS A GROUP, even the four that hold a single box. That is
+           what lets the three stepped towers sit at a local x OFFSET from
+           their parent: a group has ONE position.x for the wrap to write, so
+           parent and tower are welded and cannot round to different tiles at
+           a boundary. Placing the tower as a second top-level mesh would have
+           worked only at an IDENTICAL baseX (identical rounds identically —
+           it is NEAR-identical that breaks the camera masts), which would
+           have forced every tower to be dead-centred on its parent and made
+           the whole roofline symmetric. One group per mass costs an empty
+           Object3D and buys the offsets. */
+        for (const [hx, hw, hh, tw, th, tdx] of HORIZON) {
+          const grp = new THREE.Group();
+          grp.position.x = hx;              // the ONLY x the wrap will write
+          g.add(grp);
+          const m = new THREE.Mesh(horizonGeo, horizonTone);
+          m.scale.set(hw, hh, HORIZON_D);
+          /* Bottom face on GROUND: centre is half the height above it. */
+          m.position.set(0, GROUND + hh / 2, HORIZON_Z);
+          m.castShadow = false;
+          grp.add(m);
+          if (tw > 0) {
+            /* Stepped on top: its bottom face is the parent's roof, so the
+               centre is hh + th/2 above GROUND. Depth 0.75 of the parent's so
+               it steps back in z as well as in x — a tower flush with the
+               parapet reads as a taller wall, not as a separate mass. */
+            const tower = new THREE.Mesh(horizonGeo, horizonTone);
+            tower.scale.set(tw, th, HORIZON_D * 0.75);
+            tower.position.set(tdx, GROUND + hh + th / 2, HORIZON_Z);
+            tower.castShadow = false;
+            grp.add(tower);
+          }
         }
 
         /* -- detections: attach to whatever the heads are covering --
@@ -896,11 +2272,13 @@ export default function LeadCardScene() {
            longer true, so the box can sit where the object actually is. At 1.3
            a bracket on a 0.62 carton was drawing 0.19 of clear air on every
            side, which at card size reads as a box that has not quite locked. */
+        // The tick-row confidence tally was removed from detect.ts's createTracker;
+        // these are plain brackets now — do not re-add `ticks:` expecting it to work.
         const trackers = [
-          createTracker(dm.accent, { ticks: 4, pad: 1.08 }),
-          createTracker(dm.accent, { ticks: 4, pad: 1.08 }),
-          createTracker(dm.accent, { ticks: 3, pad: 1.10 }),
-          createTracker(dm.accent, { ticks: 3, pad: 1.10 }),
+          createTracker(dm.accent, { pad: 1.08 }),
+          createTracker(dm.accent, { pad: 1.08 }),
+          createTracker(dm.accent, { pad: 1.10 }),
+          createTracker(dm.accent, { pad: 1.10 }),
         ];
         trackers.forEach((t) => g.add(t.group));
         /* The pool each tracker draws from — one per product area, and now SIX
@@ -982,6 +2360,11 @@ export default function LeadCardScene() {
           contactShadow,
           ...parts,
           ...people.map((pr) => pr.grp),
+          /* The ground pucks. Their x is written beside their walker's every
+             frame, so like the truck's contact shadow they must be kept OUT
+             of the wrap or the wrap would overwrite it. Same entry, same
+             reason — see the puck note above. */
+          ...people.map((pr) => pr.puck),
           ...trackers.map((tr) => tr.group),
         ]);
 
@@ -1102,8 +2485,15 @@ export default function LeadCardScene() {
             // split across two tiles
             const owner = tileOwner.get(pr.grp);
             const off = (owner === undefined ? wrapTo(mid) : wrapWith(mid, owner)) - mid;
-            pr.grp.position.set(off + lerp(pr.x0, pr.x1, k), Math.abs(Math.sin(t * 4.2 * pr.sp)) * 0.035, pr.z);
+            const wx = off + lerp(pr.x0, pr.x1, k);
+            pr.grp.position.set(wx, Math.abs(Math.sin(t * 4.2 * pr.sp)) * 0.035, pr.z);
             pr.grp.rotation.y = fwd ? Math.PI / 2 : -Math.PI / 2;
+            /* The puck takes the walker's x and NOTHING else. It is a
+               sibling, not a child, so the bob written into `pr.grp.position.y`
+               on the line above cannot reach it and the shadow stays welded to
+               the slab through every stride. Its y and z were set at
+               construction and are never written again. */
+            pr.puck.position.x = wx;
           });
 
           /* The seam dip that used to live here is GONE, along with the thing
@@ -1121,6 +2511,12 @@ export default function LeadCardScene() {
           /* Same ramp as the road it lies on, held out of `mats` for the same
              reason the road paint is: its peak is not 1. */
           csMat.opacity = solid * CS_PEAK;
+          /* The other two ramps whose peak is not 1, held out of `mats` for
+             the same reason. NEITHER PULSES: both are a constant times
+             `solid`, and `solid` reaches 1 at SETTLE and stays there. */
+          puckMat.opacity = solid * PUCK_PEAK;
+          haloMat.opacity = solid * HALO_PEAK;
+          poolMat.opacity = solid * POOL_PEAK;
           // each beam brightens only while its own detection is live
           /* 0.17/0.05 -> 0.30/0.10. These are straight alpha blends, so the
              arithmetic is exact and it is what forced the raise: at 0.17 over
@@ -1218,7 +2614,6 @@ export default function LeadCardScene() {
             h.beam.scale.set(reach, mouth, mouth);
 
             trackers[i].follow(on ? target : null, camera);
-            trackers[i].setFill?.(0.4 + 0.6 * ((phase % 1) / 0.72));
           });
 
           /* Viewport camera: a slow lateral TRACK across the site. A site this
@@ -1356,7 +2751,42 @@ export default function LeadCardScene() {
              must never be disposed here.) */
           wheelGeo.dispose();
           axleGeo.dispose();
+          /* The workers' vest band and helmet shell. Plain Cylinder/Sphere
+             geometries built once here and shared by all five walkers, so
+             they are ours exactly as `wheelGeo` is — nothing from
+             `metalBox`'s shared cache is being touched. */
+          vestGeo.dispose();
+          helmetGeo.dispose();
+          /* The environment round's own geometries, all freshly allocated
+             here and none of them from `metalBox`'s shared cache: the wheel
+             hub disc, the shared pole/mast base plate, the workers' ground
+             puck quad, the mast halo quad, and the ONE unit box every horizon
+             mass is scaled from. */
+          hubGeo.dispose();
+          footGeo.dispose();
+          lensGeo.dispose();
+          puckGeo.dispose();
+          haloGeo.dispose();
+          poolGeo.dispose();
+          horizonGeo.dispose();
+          /* Two more materials held out of `mats` because their peaks are not
+             1, so the blanket disposal above does not reach them. */
+          puckMat.dispose();
+          haloMat.dispose();
+          poolMat.dispose();
           csTex?.dispose();
+          /* NOTHING ELSE FROM THE DRESSING PASS IS DISPOSED HERE, AND THAT IS
+             DELIBERATE — see THE DRESSING PASS at module scope.
+
+               containerSide()/cardboardSide()  live in hero-cards/skins.ts's
+                 module cache and are SHARED WITH THE HERO CARDS ON THIS PAGE.
+                 Disposing either would blank the Yard and Warehouse tiles.
+               trailerPanelMap()               module-cached in this file,
+                 kept for the next mount.
+               concreteMap()                   module-cached in site.ts, same.
+
+             The MATERIALS that wrap them are all in `mats` (or `metals`) and
+             are disposed above, which is the correct half of the pair. */
           studio.dispose();
         };
       } catch (err) {

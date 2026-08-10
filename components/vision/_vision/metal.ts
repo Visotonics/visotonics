@@ -21,6 +21,7 @@
 --------------------------------------------------------------------------- */
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { addGrain } from "./noise";
 
 /* `willReadFrequently: true` — the single most important attribute in this file.
 
@@ -141,13 +142,7 @@ function roughnessCanvas(kind: MetalKind, mid: number): HTMLCanvasElement {
     }
   }
   // fine speckle everywhere
-  const img = x.getImageData(0, 0, w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() - 0.5) * 26;
-    d[i] += n; d[i + 1] += n; d[i + 2] += n;
-  }
-  x.putImageData(img, 0, 0);
+  addGrain(x, w, h, 26);
   return c;
 }
 

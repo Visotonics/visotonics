@@ -33,7 +33,7 @@ import { clamp01, easeInOut, placeCamera, smoothstep } from "../_vision/camera";
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildMaterials } from "../container-vision/materials";
 import { DEFECT_UV, L as C_L } from "../container-vision/container";
-import { bracket, createSightCone } from "../hero-cards/detect";
+import { bracket } from "../hero-cards/detect";
 import {
   DROP, HALF_W, PAYLOAD_BOT, PAYLOAD_TOP,
   buildCrane, buildCraneMaterials,
@@ -369,7 +369,9 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
 
          y = -1.0 is the height the container's centre passes at p ≈ 0.47, the
          middle of the capture window. */
-      const CONE_R = 0.55;
+      /* CONE_R now lives in crane.ts as the rig's `coneRadius: 0.55` — same
+         number, one place, and the rig derives the half-angle from it. The
+         arithmetic below still describes what it produces. */
       /* Apex, target and length are UNCHANGED. Heads sit at
          (+-(LEG_X - 0.34), -0.06, 0.62) = (+-3.36, -0.06, 0.62); each aims at
          (+-1.5, -1.0, 1.28), so the axis is (-1.86, -0.94, 0.66) in magnitude
@@ -426,12 +428,15 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          That is exactly "occluded by the container without breaking the
          additive look". */
       const CONE_ORDER = 5;
-      const sightCones = model.heads.map((head) => {
-        const c = createSightCone({ color: PALETTE.accent });
-        c.group.traverse((o) => { o.renderOrder = CONE_ORDER; });
-        scene.add(c.group);
-        return c;
-      });
+      /* THE CONES COME FROM THE RIG NOW (crane.ts), which owns the apex and
+         the half-angle. The renderOrder traverse stays HERE and stays a
+         traverse: a Group's renderOrder does not propagate to its children,
+         which is the bug that read as the cones phasing through the box. */
+      const sightCones = model.readCams;
+      for (const c of sightCones) {
+        c.coneGroup.traverse((o) => { o.renderOrder = CONE_ORDER; });
+        scene.add(c.coneGroup);
+      }
 
       /* ---- locked-aim reticles: the vibration-compensation claim, made visible ----
          The sidebar says "VIBRATION-COMPENSATED" / "MOTION-BLUR-CORRECTED", but
@@ -987,7 +992,6 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          reader can actually use. Sentence case matches gate/yard/cargo/
          document/work; "HIGH SEVERITY" below was the odd one out. */
       const sharpLabel = createCallout(overlay, {
-        id: "sharp",
         title: "Corrosion · 0.94",
         detail: "frame 3 of 5 kept · panel 3",
         pos: RUST_LOCAL.clone().setZ(RUST_LOCAL.z + 0.04),
@@ -1015,7 +1019,6 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          pointing at. The severity verdict survives where it belongs, as the
          consequence on the end of the second line. */
       const severeLabel = createCallout(overlay, {
-        id: "severe",
         title: "Dent · 0.84",
         detail: "412 mm² · panel 2 · flagged for surveyor",
         /* DENT_LOCAL, not the anchor — see its note. The card's leader has to
@@ -1063,7 +1066,6 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
          corrosion card, which hangs off a point on the far RIGHT of the box
          and 132 up — the two never share a column. */
       const idLabel = createCallout(overlay, {
-        id: "idread",
         title: "VSTU 907032 1",
         detail: "ISO 22G1 · check digit valid · 0.99",
         pos: ID_LOCAL.clone().setZ(ID_LOCAL.z + 0.04),
@@ -1207,7 +1209,6 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
           (1 - smoothstep(W_CAPTURE[1] - 0.05, W_CAPTURE[1], p));
         for (let i = 0; i < sightCones.length; i++) {
           const c = sightCones[i];
-          const head = model.heads[i];
           /* RE-AIM EVERY FRAME at the live world position of the lift-local
              target — lift.matrixWorld was already refreshed above (rise and
              sway block). The half-angle is re-derived from the CURRENT
@@ -1244,8 +1245,9 @@ export default function CraneVisionScene({ bare = false, bleed = 0 }: { bare?: b
           } else {
             wpos.copy(CONE_TARGET_LOCAL[i]).applyMatrix4(model.lift.matrixWorld);
           }
-          const halfAngle = Math.atan(CONE_R / Math.max(head.distanceTo(wpos), 0.01));
-          c.aim(head, wpos, halfAngle);
+          /* One call: live apex from the lens mesh, half-angle derived inside
+             the rig from the current apex->target distance. */
+          c.aimAt(wpos);
           c.setOpacity(solid * CAPTURE_OPACITY * coneVis);
           // reduced motion pins a mid-sweep frame, not t=0 where the band
           // would sit on the apex under the fade and read as nothing

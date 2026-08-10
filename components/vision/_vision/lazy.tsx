@@ -242,6 +242,7 @@ export const DataCard = () => <WhenNear warm={loadCards}><DynData /></WhenNear>;
    its own; it exists to generate the DARK_METAL maps (shared with gate-vision)
    during idle rather than on the scroll path. */
 const loadWork = () => import("../work-vision/scene")
+  .then(async (m) => { (await import("../work-vision/work")).warmWorkTextures(); return m; })
   .then(async (m) => { (await import("../work-vision/work")).warmWorkTextures(); return m; });
 const DynWork = dynamic(loadWork, { ssr: false, loading: Placeholder });
 export const WorkVisionScene = (p: SceneProps) => <WhenNear warm={loadWork}><DynWork {...p} /></WhenNear>;

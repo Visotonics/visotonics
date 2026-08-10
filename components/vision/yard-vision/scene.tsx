@@ -259,7 +259,6 @@ export default function YardVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          the nearest row, so there is nothing below it but hardstand, and an
          upward leader would cross the whole yard behind it. */
       const survey = createCallout(overlay, {
-        id: "survey",
         title: "Survey complete",
         detail: "40 slots · 5 rows × 8 bays · once",
         pos: yard.centreAnchor.clone(),
@@ -269,7 +268,6 @@ export default function YardVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         win: W_SURVEY,
       });
       const slotLabel = createCallout(overlay, {
-        id: "slot",
         title: "Recommended slot",
         detail: "E-03 · inbound MSCU 418820 3",
         pos: new THREE.Vector3(bayX(SLOT.bay), GROUND + 0.4, rowZ(SLOT.row)),
@@ -294,7 +292,6 @@ export default function YardVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         win: W_SLOT,
       });
       const locateLabel = createCallout(overlay, {
-        id: "locate",
         title: "D-06 — located",
         detail: "VSTU 907032 1 · row D · bay 06 · tier 1",
         // the box's TOP face, not its centre — the leader should start on the

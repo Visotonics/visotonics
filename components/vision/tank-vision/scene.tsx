@@ -34,8 +34,9 @@ import {
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { makeMetal, metalBox, tintMetal } from "../_vision/metal";
 import { makeRustDecal } from "../container-vision/materials";
-import { createSightCone, createTracker, detectMaterials, scanPlane } from "../hero-cards/detect";
+import { createTracker, detectMaterials, scanPlane } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
+import { buildReadCamera, type ReadCamera } from "../_vision/readCamera";
 
 /* ---- the tank, in metres. ISO 20ft envelope: 6058 x 2438 x 2591 ---- */
 const GROUND = -1.30;
@@ -260,8 +261,9 @@ interface Tank {
   /** grouped so one bracket can follow the whole fitting, not a bolt */
   manlid: THREE.Group;
   valve: THREE.Group;
-  /** the CCTV head, re-aimed every frame at whatever is currently flagged */
-  camHead: THREE.Group;
+  /** the CCTV head, re-aimed every frame at whatever is currently flagged —
+      built by the shared rig; see the buildReadCamera call below. */
+  readCam: ReadCamera;
   /** geometry this scene owns outright and must dispose */
   owned: THREE.BufferGeometry[];
 }
@@ -478,40 +480,64 @@ function buildTank(m: TankMats): Tank {
      (-2.60, 1.90) is 27.8deg off axis and comfortably inside. A near-field pole
      is also magnified, so pulling it toward the tank in z helps twice. */
   const POLE_Z = 1.90;
-  // 3.40 tall, not 4.10: the head has to clear the tank (top 1.30) without
-  // riding out of the top of a frame whose vertical half-fov is only 15deg
+  /* BUILT BY THE SHARED RIG — `_vision/readCamera.ts`. Cargo is the reference
+     migration; this reproduces the hand-built housing/lens silhouette exactly.
+
+     HEAD DOES TRACK (`headTracks` left at its default true) — this camera
+     swivels onto whatever is currently flagged, every frame; see AIM_SEGMENTS
+     below. `mount`/`aim` below are the same POLE_X+0.55 head position and
+     first STOPS target the hand-built version used to seed its lookAt.
+
+     GEOMETRY, MAPPED FROM THE OLD NUMBERS (no sign flip needed — camHead was a
+     plain THREE.Group, not a Camera, so its own `lookAt` pointed local +Z at
+     the target, the same convention the rig uses; the lens sat at position.z
+     = +0.24, proud of the box on its +Z face, i.e. already on the forward
+     side): headBox = metalBox(0.42, 0.26, 0.32) with no offset -> bodySize
+     [0.42, 0.26, 0.32], bodyZ 0. lensGeo = Cylinder(0.085, 0.10, 0.18) at
+     z=0.24 -> lensR 0.085, lensR2 0.10, lensLen 0.18, lensZ 0.24. No yoke, no
+     hood — the old head had neither.
+
+     NO floorY — every STOPS target is a defect ON THE SHELL, never the
+     ground, so the cone always ran to the target itself, never to a floor
+     pool (see the old `sightCone.aim` note this replaces). SIGHT_HALF_ANGLE
+     was atan(0.11), independent of range — coneRadius: 0 with minHalfAngle:
+     SIGHT_HALF_ANGLE reproduces that constant half-angle exactly, since
+     atan(0/range) is always 0 and the floor then always wins. */
+  const readCam = buildReadCamera({
+    mount: new THREE.Vector3(POLE_X + 0.55, GROUND + 3.32, POLE_Z),
+    aim: new THREE.Vector3(...STOPS[0].pos),
+    bodyMat: m.grating,
+    lensMat: m.fitting,
+    bodySize: [0.42, 0.26, 0.32],
+    bodyZ: 0,
+    lensZ: 0.24,
+    lensR: 0.085,
+    lensR2: 0.10,
+    lensLen: 0.18,
+    yoke: false,
+    hood: false,
+    coneRadius: 0,
+    minHalfAngle: SIGHT_HALF_ANGLE,
+  });
+  root.add(readCam.group);
+
+  /* THE MAST AND ARM ARE STILL TANK'S OWN. The rig's optional `poleFrom`
+     builds a plain pole-and-footplate; this mount has an ARM offsetting the
+     head sideways off the mast, a shape the rig does not build, so no
+     `poleFrom` is passed and these two meshes are parented into the rig's
+     returned group instead — same approach cargo uses for its own bracket.
+     3.40 tall, not 4.10: the head has to clear the tank (top 1.30) without
+     riding out of the top of a frame whose vertical half-fov is only 15deg. */
   const mast = metalBox(0.12, 3.40, 0.12, m.frame);
   mast.position.set(POLE_X, GROUND + 1.70, POLE_Z);
-  add(mast);
+  mast.castShadow = true;
+  readCam.group.add(mast);
   const arm = metalBox(0.60, 0.10, 0.10, m.frame);
   arm.position.set(POLE_X + 0.30, GROUND + 3.32, POLE_Z);
-  add(arm);
+  arm.castShadow = true;
+  readCam.group.add(arm);
 
-  const camHead = new THREE.Group();
-  camHead.position.set(POLE_X + 0.55, GROUND + 3.32, POLE_Z);
-  const headBox = metalBox(0.42, 0.26, 0.32, m.grating);
-  headBox.castShadow = true;
-  camHead.add(headBox);
-  const lensGeo = new THREE.CylinderGeometry(0.085, 0.10, 0.18, 14);
-  const lens = new THREE.Mesh(lensGeo, m.fitting);
-  // built pointing along the head's local +Z, which is the direction lookAt aims
-  lens.rotation.x = Math.PI / 2;
-  lens.position.z = 0.24;
-  camHead.add(lens);
-
-  /* THE SIGHT CONE IS NO LONGER A CHILD OF THE HEAD. It used to be a local
-     unit cone rotated onto the head's +Z and rescaled every frame, which
-     worked only because it inherited camHead's lookAt. The shared builder
-     takes a world apex and a world target instead, and its ground pool has to
-     stay flat in world XZ — neither survives being parented to a rotating
-     group. It is built and aimed in the scene body; camHead still gets its
-     lookAt, because the physical lens must keep pointing where the beam goes.
-
-     `root` carries no transform of its own, so head-local and world
-     coordinates coincide and the cone can sit alongside it. */
-  root.add(camHead);
-
-  return { root, patch, manlid, valve, camHead, owned: [patchGeo, lensGeo] };
+  return { root, patch, manlid, valve, readCam, owned: [patchGeo, ...readCam.owned] };
 }
 
 /* ---- the three findings, as screen furniture -------------------------- */
@@ -598,8 +624,6 @@ const AIM_SEGMENTS: [number, number, number][] = [
   [0.36, 0.46, 1],
   [0.70, 0.78, 2],
 ];
-const headWorld = new THREE.Vector3();
-
 /** `bare` lifts the tank out of its frame — see ContainerVisionScene. */
 export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: boolean; bleed?: number } = {}) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -633,12 +657,14 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       const tank = buildTank(mats);
       scene.add(tank.root);
 
-      /* NO footprintY. Every entry in STOPS is a defect ON THE TANK SHELL, so
-         the sight line never reaches the floor plane at y = GROUND — a ground
-         pool here would be permanently hidden, i.e. a material and a draw call
-         for nothing. Add one only if this scene ever aims at the deck. */
-      const sightCone = createSightCone();
-      scene.add(sightCone.group);
+      /* The cone group is a SIBLING of readCam.group, never a child — its
+         ground pool (unused here, see NO floorY above) has to stay flat in
+         world XZ. NO floorY passed to buildReadCamera: every entry in STOPS is
+         a defect ON THE TANK SHELL, so the sight line never reaches the floor
+         plane at y = GROUND — a ground pool here would be permanently hidden,
+         i.e. a material and a draw call for nothing. Add one only if this
+         scene ever aims at the deck. */
+      scene.add(tank.readCam.coneGroup);
 
       /* The drafting sheet, not scenery — the same ground the hero cards use,
          so a bare scene still sits on a measured surface instead of floating.
@@ -680,7 +706,6 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          in on it, and gone once the camera pulls back out. */
       const marks: Callout[] = STOPS.map((s) =>
         createCallout(overlay, {
-          id: s.title,
           title: s.title,
           detail: s.detail,
           pos: new THREE.Vector3(s.pos[0], s.pos[1], s.pos[2]),
@@ -809,18 +834,18 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
           const tgt = STOPS[aimIdx].pos;
           aimPoint.set(tgt[0], tgt[1], tgt[2]);
         }
-        tank.camHead.getWorldPosition(headWorld);
-        tank.camHead.lookAt(aimPoint);
-        /* Re-aimed every frame, and now through the shared builder. The old
-           code wrote scale.set(len*0.11, len*0.11, len) on a unit cone, i.e. a
-           radius of 0.11*len at distance len — which is a half-angle of
-           atan(0.11) = 0.10956 rad, independent of length. Same volume, same
-           apex, same target; SIGHT_HALF_ANGLE is that number.
+        /* Re-aimed every frame, through the shared rig — one call re-reads
+           the live lens, turns the head, and re-throws the cone. The old code
+           wrote scale.set(len*0.11, len*0.11, len) on a unit cone, i.e. a
+           radius of 0.11*len at distance len — a half-angle of atan(0.11) =
+           0.10956 rad, independent of length. `coneRadius: 0` with
+           `minHalfAngle: SIGHT_HALF_ANGLE` reproduces exactly that constant:
+           atan(0/range) is always 0, so the floor always wins.
            0.11 and not 0.16: at 0.16 the cone covered most of the tank and
            read as haze rather than as a beam with a direction. */
-        sightCone.aim(headWorld, aimPoint, SIGHT_HALF_ANGLE);
-        sightCone.setOpacity(solid * 0.10);
-        sightCone.tick(frozen ? 1.4 : t);
+        tank.readCam.aimAt(aimPoint);
+        tank.readCam.setOpacity(solid * 0.10);
+        tank.readCam.tick(frozen ? 1.4 : t);
 
         const place = (a: Callout) => {
           const [w0, w1] = a.win;
@@ -915,7 +940,7 @@ export default function TankVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         mats.dispose();
         // metalBox geometry is cached and shared; these three are this scene's
         tank.owned.forEach((g) => g.dispose());
-        sightCone.dispose();
+        tank.readCam.dispose();
         dm.all.forEach((m) => m.dispose());
         ground.material.dispose();
         studio.dispose();

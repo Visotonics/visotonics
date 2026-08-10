@@ -143,6 +143,20 @@ export interface PendantOpts {
   beamR?: number;
   /** shade radius */
   shadeR?: number;
+  /* THE SHADE'S SHADOW IS A PER-SCENE CALL, NOT A HOUSE RULE.
+
+     Default OFF, which is work-vision's finding: on a broad concrete floor the
+     shade's shadow lands as a soft ellipse with nothing visibly above it and
+     reads as a stain rather than as the lamp's shadow, working directly
+     against the lamp's one job of explaining why the floor is bright.
+
+     Cargo wants it ON, and is right to: its shade hangs close over a narrow
+     belt among other shadow-casting geometry (carcass, pole), so the ellipse
+     lands on a surface the viewer can see it belongs to. The difference is the
+     ground, not the lamp — so it is an option, not a constant. This was
+     hardcoded false when the builder was extracted from cargo, which would
+     have silently changed cargo's render on migration. */
+  shadeCastsShadow?: boolean;
 }
 
 export interface Pendant {
@@ -154,6 +168,16 @@ export interface Pendant {
   beam: THREE.ShaderMaterial;
   /** the light that actually lights things — drive `.intensity` */
   light: THREE.PointLight;
+  /* THE MESHES, not just their materials. Returning materials alone made a
+     legitimate per-scene flag (castShadow, layers, renderOrder) unreachable
+     from the call site, which is what forced `shadeCastsShadow` above to exist
+     as an option at all. A caller that needs a flag this interface has not
+     anticipated can now set it directly instead of the builder growing a
+     parameter per flag. */
+  shadeMesh: THREE.Mesh;
+  bulbMesh: THREE.Mesh;
+  haloMesh: THREE.Mesh;
+  beamMesh: THREE.Mesh;
   /** geometry the CALLER owns and must dispose */
   owned: THREE.BufferGeometry[];
   dispose: () => void;
@@ -188,7 +212,7 @@ export function buildPendantLamp(o: PendantOpts): Pendant {
      the shade is small, high, and lit from several directions at once. The
      lamp's job is to explain why the floor is bright; a second dark blob on
      that floor works against exactly that. */
-  shadeMesh.castShadow = false;
+  shadeMesh.castShadow = o.shadeCastsShadow ?? false;
   group.add(shadeMesh);
 
   /* PROUD OF THE RIM. The cone is centred on y with its wide end DOWN, so its
@@ -236,6 +260,7 @@ export function buildPendantLamp(o: PendantOpts): Pendant {
 
   return {
     group, shade, bulb, halo, beam, light, owned,
+    shadeMesh, bulbMesh, haloMesh, beamMesh,
     /* MATERIALS ONLY by default — geometry is handed back in `owned` so the
        caller can fold it into its own disposal list, which is how every other
        builder in this family works. */

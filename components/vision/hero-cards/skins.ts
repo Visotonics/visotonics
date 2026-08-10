@@ -11,24 +11,15 @@
    Every skin is drawn once per scene and shared by every box in it.
 --------------------------------------------------------------------------- */
 import * as THREE from "three";
+import { addGrain } from "../_vision/noise";
 
-// willReadFrequently — every skin here ends in grain(), which is a getImageData
+// willReadFrequently — every skin here ends in addGrain(), which is a getImageData
 // round trip. See the long note on the same call in _vision/metal.ts: without
 // this each readback stalls on the GPU behind the live scenes' frames.
 function cv(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   return [c, c.getContext("2d", { willReadFrequently: true })!];
-}
-
-function grain(ctx: CanvasRenderingContext2D, w: number, h: number, amt: number) {
-  const img = ctx.getImageData(0, 0, w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() - 0.5) * amt;
-    d[i] += n; d[i + 1] += n; d[i + 2] += n;
-  }
-  ctx.putImageData(img, 0, 0);
 }
 
 /* Same caching rationale as _vision/metal.ts: these canvases are identical
@@ -98,7 +89,7 @@ function containerSideRaw(base: string, ink = "rgba(226,232,240,0.82)"): THREE.C
     x.ellipse(Math.random() * w, h * (0.12 + Math.random() * 0.78), 2 + Math.random() * 9, 1 + Math.random() * 4, 0, 0, Math.PI * 2);
     x.fill();
   }
-  grain(x, w, h, 14);
+  addGrain(x, w, h, 14);
   return finish(c);
 }
 
@@ -124,7 +115,7 @@ function containerEndRaw(base: string): THREE.CanvasTexture {
   x.fillStyle = "rgba(0,0,0,0.30)";
   x.fillRect(0, 0, w, h * 0.10);
   x.fillRect(0, h * 0.90, w, h * 0.10);
-  grain(x, w, h, 14);
+  addGrain(x, w, h, 14);
   return finish(c);
 }
 
@@ -144,7 +135,7 @@ function containerRoofRaw(base: string): THREE.CanvasTexture {
     x.ellipse(Math.random() * w, Math.random() * h, 8 + Math.random() * 40, 5 + Math.random() * 16, 0, 0, Math.PI * 2);
     x.fill();
   }
-  grain(x, w, h, 12);
+  addGrain(x, w, h, 12);
   return finish(c);
 }
 
@@ -195,7 +186,7 @@ function cardboardSideRaw(tint?: string): THREE.CanvasTexture {
   x.fillText("FRAGILE", w * 0.5, h * 0.47);
   x.font = "600 26px ui-monospace, Menlo, monospace";
   x.fillText("24 UNITS", w * 0.5, h * 0.57);
-  grain(x, w, h, 16);
+  addGrain(x, w, h, 16);
   recolour(c, x, tint);
   return finish(c);
 }
@@ -221,7 +212,7 @@ function cardboardTopRaw(tint?: string): THREE.CanvasTexture {
   x.fillRect(0, h / 2 - 26, w, 52);
   x.fillStyle = "rgba(255,255,255,0.10)";
   x.fillRect(0, h / 2 - 26, w, 8);
-  grain(x, w, h, 14);
+  addGrain(x, w, h, 14);
   recolour(c, x, tint);
   return finish(c);
 }

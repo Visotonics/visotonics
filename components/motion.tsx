@@ -155,6 +155,11 @@ export function CountUp({
 
     if (prefersReducedMotion()) return; // SSR already shows the final value
 
+    /* The timer is tracked so unmount can cancel it. `tick` re-schedules
+       itself 24 times over 800ms; without this, a count that is mid-run when
+       the user navigates keeps firing against a detached node — the component
+       carrying on after it has stopped existing. */
+    let timer = 0;
     const run = () => {
       el.dataset.counted = "true";
       const steps = 24;
@@ -164,7 +169,7 @@ export function CountUp({
       const tick = () => {
         i += 1;
         render(i >= steps ? target : Math.round((target * i) / steps));
-        if (i < steps) window.setTimeout(tick, dur / steps);
+        if (i < steps) timer = window.setTimeout(tick, dur / steps);
       };
       tick();
     };
@@ -182,7 +187,10 @@ export function CountUp({
       { threshold: 0.6 },
     );
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      window.clearTimeout(timer);
+    };
   }, [value]);
 
   return (
@@ -192,48 +200,3 @@ export function CountUp({
   );
 }
 
-/* §3.1 — hero headline decode. Every char is a block from frame 1, then
-   resolves left-to-right. Fires once on mount. Total ≤ --dur-3 (480ms). */
-export function DecodeHeadline({
-  text,
-  className = "",
-  style,
-}: {
-  text: string;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  const chars = Array.from(text);
-  const [on, setOn] = useState(false);
-  const stagger = Math.max(3, Math.min(14, Math.floor(420 / Math.max(1, chars.length))));
-
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setOn(true);
-      return;
-    }
-    // brief hold so the block state registers before it resolves
-    const t = window.setTimeout(() => setOn(true), 150);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  return (
-    <span className={className} style={style} aria-label={text}>
-      {chars.map((c, i) =>
-        c === " " ? (
-          " "
-        ) : (
-          <span
-            key={i}
-            aria-hidden="true"
-            className="v-dec"
-            data-on={on ? "1" : undefined}
-            style={{ transitionDelay: `${on ? i * stagger : 0}ms` }}
-          >
-            {c}
-          </span>
-        ),
-      )}
-    </span>
-  );
-}

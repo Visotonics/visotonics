@@ -13,13 +13,11 @@
 --------------------------------------------------------------------------- */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { PALETTE, sans } from "./palette";
+import { createStudio } from "../_vision/studio";
 import { mountWhenVisible } from "../_vision/mount";
 import { type CamKey, clamp01, easeInOut, lerp, makeCamPath, placeCamera, smoothstep } from "../_vision/camera";
+import { type Callout, type Readout, createCallout, createReadout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildContainer, L } from "./container";
 import { buildMaterials, makeCrackDecal, makeDentDecal } from "./materials";
 import { buildHud } from "./hud";
@@ -71,8 +69,6 @@ const sampleCam = makeCamPath(CAM);
 const REF_ASPECT = 1600 / 680;
 const fitRad = (rad: number, aspect: number) =>
   rad * Math.min(Math.max(REF_ASPECT / Math.max(aspect, 0.2), 1), 2.6);
-
-interface Anno { wrap: HTMLDivElement; local: THREE.Vector3; normal: THREE.Vector3; lane: number; up: boolean; win: [number, number] }
 
 /* Each finding gets its own leader length and direction, so labels land at
    distinct heights and never collide. A callout that still doesn't fit on
@@ -134,152 +130,18 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
     let cleanup = () => {};
 
     try {
-      const renderer = new THREE.WebGLRenderer({
-        antialias: true, alpha: bare, premultipliedAlpha: false,
-        powerPreference: "high-performance",
-      });
-      if (bare) renderer.setClearColor(0x000000, 0);
-      // A flagship canvas is large, so DPR 2 costs four times the fragments of
-      // DPR 1 for a difference that does not survive at this size; 1.75 keeps
-      // the edge quality and drops about a quarter of the pixels.
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.18;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFShadowMap;
-      wrap.appendChild(renderer.domElement);
-      renderer.domElement.style.cssText = "display:block;width:100%;height:100%";
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
-
-      /* ---- studio environment: softbox strips for crisp metal reflections ---- */
-      const envCv = document.createElement("canvas");
-      envCv.width = 1024;
-      envCv.height = 512;
-      const ex = envCv.getContext("2d")!;
-      const base = ex.createLinearGradient(0, 0, 0, 512);
-      base.addColorStop(0.0, "#2A4C86");
-      base.addColorStop(0.45, "#0D1B36");
-      base.addColorStop(1.0, "#04070F");
-      ex.fillStyle = base;
-      ex.fillRect(0, 0, 1024, 512);
-      ex.filter = "blur(22px)";
-      // three overhead softboxes -> the long specular streaks along the corrugation
-      ex.fillStyle = "rgba(255,255,255,0.95)";
-      ex.fillRect(70, 40, 330, 66);
-      ex.fillRect(560, 28, 300, 58);
-      ex.fillStyle = "rgba(196,224,255,0.75)";
-      ex.fillRect(300, 150, 420, 34);
-      ex.filter = "none";
-      const envTex = new THREE.CanvasTexture(envCv);
-      envTex.mapping = THREE.EquirectangularReflectionMapping;
-      envTex.colorSpace = THREE.SRGBColorSpace;
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      const envRT = pmrem.fromEquirectangular(envTex);
-      envTex.dispose();
-      scene.environment = envRT.texture;
-
-      /* ---- cyclorama backdrop: gradient + a soft pool of light behind ---- */
-      const backdrop = bare ? null : new THREE.Mesh(
-        new THREE.SphereGeometry(70, 40, 40),
-        new THREE.ShaderMaterial({
-          side: THREE.BackSide,
-          depthWrite: false,
-          uniforms: {
-            cTop: { value: new THREE.Color(PALETTE.bgTop) },
-            cMid: { value: new THREE.Color(PALETTE.bgMid) },
-            cBot: { value: new THREE.Color(PALETTE.bgBottom) },
-            cGlow: { value: new THREE.Color(PALETTE.bgGlow) },
-          },
-          vertexShader: "varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
-          fragmentShader: `
-            varying vec3 vP; uniform vec3 cTop; uniform vec3 cMid; uniform vec3 cBot; uniform vec3 cGlow;
-            void main(){
-              vec3 d = normalize(vP);
-              float h = clamp(d.y*0.5+0.5, 0.0, 1.0);
-              // site-canvas black -> graphite -> lifted grey, neutral throughout
-              vec3 col = h < 0.5
-                ? mix(cBot, cMid, smoothstep(0.0, 0.5, h))
-                : mix(cMid, cTop, smoothstep(0.5, 1.0, h));
-              // soft pool of light behind the subject, from the lights
-              float g = pow(max(dot(d, normalize(vec3(-0.1,0.16,-1.0))), 0.0), 3.4);
-              gl_FragColor = vec4(col + cGlow*g*0.55, 1.0);
-            }`,
-        }),
-      );
-      if (backdrop) scene.add(backdrop);
-
-      /* ---- floor: soft reflection that fades out into the backdrop ---- */
-      // No floor plane (a finite ground leaves a visible edge). Instead a solid
-      // cast shadow directly beneath the subject, as if the light is overhead:
-      // dense at the centre and falling off to nothing, so it merges seamlessly
-      // into the dark blue of the backdrop.
-      // A genuinely projected shadow. A painted blob can never be the right
-      // shape — the subject is a box lit from above, so its shadow is the box's
-      // own silhouette cast onto the ground, not an ellipse. Let the renderer
-      // solve it: the light does the projection, the plane receives it.
-      const shadowMat = new THREE.ShadowMaterial({ opacity: 0 });
-      const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), shadowMat);
-      shadowCatcher.rotation.x = -Math.PI / 2;
-      shadowCatcher.position.y = -1.36;
-      shadowCatcher.receiveShadow = true;
-      scene.add(shadowCatcher);
-
-      /* ---- lights: softbox key + strip kickers raking both edges ---- */
-      RectAreaLightUniformsLib.init();
-      const keyBox = new THREE.RectAreaLight(0xffffff, 5.6, 16, 9);
-      keyBox.position.set(1.5, 8.5, 4);
-      keyBox.lookAt(0, 0, 0);
-      scene.add(keyBox);
-      // cool kicker, back-left: draws the bright edge down the corrugations
-      const kickL = new THREE.RectAreaLight(0xcfe6ff, 7.5, 1.4, 7);
-      kickL.position.set(-7.5, 2.2, -4.5);
-      kickL.lookAt(0, 0.2, 0);
-      scene.add(kickL);
-      // subtle warm kicker, back-right: separates the door end
-      const kickR = new THREE.RectAreaLight(0xffe2c2, 4.5, 1.2, 6);
-      kickR.position.set(7.5, 1.6, -4);
-      kickR.lookAt(0, 0.2, 0);
-      scene.add(kickR);
-      // broad front fill — keeps the camera-facing side readable as the
-      // container turns, without flattening the kickers
-      const fill = new THREE.RectAreaLight(0xc2d4ee, 3.2, 20, 10);
-      fill.position.set(-1, 2.2, 12);
-      fill.lookAt(0, 0.5, 0);
-      scene.add(fill);
-      // second fill from camera-right so both long sides stay lit through the turn
-      const fillB = new THREE.RectAreaLight(0xbcd0ee, 2.1, 12, 8);
-      fillB.position.set(10, 2.0, 5);
-      fillB.lookAt(0, 0.4, 0);
-      scene.add(fillB);
-      // concentrated pool of light on the subject — keeps the illumination on
-      // the container rather than spilling evenly across the whole studio
-      const spot = new THREE.SpotLight(0xc4dcff, 230, 30, 0.5, 0.92, 2);
-      spot.position.set(0.5, 10, 3.5);
-      spot.target.position.set(0, 0, 0);
-      scene.add(spot);
-      scene.add(spot.target);
-
-      // shadow-only directional (RectAreaLights cannot cast shadows)
-      // overhead and slightly to the front, matching the softbox: the shadow it
-      // throws is the container's own footprint, pushed back and away from it
-      const shadowLight = new THREE.DirectionalLight(0xffffff, 0.32);
-      shadowLight.position.set(1.6, 12, 3.4);
-      shadowLight.target.position.set(0, -1.36, 0);
-      shadowLight.castShadow = true;
-      /* 1024, matching gate-vision. A 2048 map is four times the shadow
-     fragments for a contact shadow this soft; the flagships are now
-     consistent, which also means one number to revisit rather than two. */
-  shadowLight.shadow.mapSize.set(1024, 1024);
-      shadowLight.shadow.camera.near = 1;
-      shadowLight.shadow.camera.far = 40;
-      Object.assign(shadowLight.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7 });
-      shadowLight.shadow.bias = -0.0006;
-      shadowLight.shadow.radius = 2; // crisp edge, not a soft pool
-      scene.add(shadowLight);
-      scene.add(shadowLight.target);
-      scene.add(new THREE.HemisphereLight(0x3f63b0, 0x050c22, 0.4));
+      /* ---- studio: renderer, environment, cyclorama, shadow catcher, the
+         five-light rig, shadow-only directional and restrained bloom ----
+         Same cost profile as the other two flagships: maxDpr 1.75 (a flagship
+         canvas is large, so DPR 2 costs four times the fragments of DPR 1 for
+         a difference that does not survive at this size) and a 1024 shadow
+         map (matching gate-vision; a 2048 map is four times the shadow
+         fragments for a contact shadow this soft). Every other option —
+         floorY, shadowExtent, spread, exposure, bloom strength/radius/
+         threshold — is left at the studio default because this scene's
+         previous inline values were already identical to it. */
+      const studio = createStudio(wrap, { bare, maxDpr: 1.75, shadowMapSize: 1024 });
+      const { renderer, scene, camera, bloom, shadowMat } = studio;
 
       /* ---- subject ---- */
       const mats = buildMaterials();
@@ -311,108 +173,48 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
       addRoofDecal("dent-top", makeDentDecal(), 1.3);
       addRoofDecal("crack", makeCrackDecal(), 1.5);
 
-      /* ---- callouts: dot + hairline + label ---- */
-      const annos: Anno[] = container.defects.map((d) => {
+      /* ---- callouts: dot + hairline + label ----
+         Migrated to the shared overlay helper. `onDark: true` because this
+         scene sits on the site's near-black canvas — overlay.ts's default ink
+         is tuned for a light-surfaced scene (Tank, the hero cards); on dark
+         ground it renders the same near-invisible leader this scene used to
+         draw by hand (see overlay.ts's onDark comment). onDark switches to a
+         2px/72%-alpha light leader, which is actually visible. */
+      const annos: Callout[] = container.defects.map((d) => {
         const lane = LANE[d.id] ?? { dir: "up" as const, len: 52 };
-        const up = lane.dir === "up";
-        const c = d.severe ? PALETTE.warn : PALETTE.accent;
-        const w = document.createElement("div");
-        w.style.cssText = "position:absolute;left:0;top:0;opacity:0;transition:opacity .4s ease;pointer-events:none;will-change:transform,opacity;";
-        // solid marker, no glow
-        const dot = document.createElement("div");
-        dot.style.cssText = `position:absolute;left:0;top:0;width:9px;height:9px;transform:translate(-50%,-50%);border-radius:50%;background:#0A0D14;border:2px solid ${c};`;
-        w.appendChild(dot);
-        // plain black leader — a drafting line, not a light beam
-        const leader = document.createElement("div");
-        leader.style.cssText = `position:absolute;left:0;${up ? "bottom" : "top"}:6px;width:1.5px;height:${lane.len}px;transform:translateX(-50%);background:#05070C;`;
-        w.appendChild(leader);
-        // all cards are plain black; the finding's own colour lives in its title
-        const label = document.createElement("div");
-        label.style.cssText = `position:absolute;left:0;${up ? "bottom" : "top"}:${lane.len + 4}px;transform:translateX(-50%);white-space:nowrap;text-align:center;font-family:${sans};border-radius:3px;padding:14px 26px;background:rgba(3,5,9,0.9);`;
-        label.innerHTML =
-          `<div style="font-size:21px;font-weight:600;letter-spacing:-0.02em;color:${c};line-height:1.18">${d.title}</div>` +
-          `<div style="font-size:14px;font-weight:400;color:rgba(255,255,255,0.72);margin-top:4px">${d.detail}</div>`;
-        w.appendChild(label);
-        overlay.appendChild(w);
-        return { wrap: w, local: d.pos.clone(), normal: d.normal.clone(), lane: lane.len, up, win: WINDOW[d.id] ?? [0, 1] };
+        return createCallout(overlay, {
+          title: d.title,
+          detail: d.detail,
+          pos: d.pos,
+          normal: d.normal,
+          severe: d.severe,
+          onDark: true,
+          lane,
+          win: WINDOW[d.id] ?? [0, 1],
+        });
       });
 
-      /* ---- OCR marker + specs card ---- */
-      const ocrLocal = container.ocr.pos.clone();
-      const ocrNormal = container.ocr.normal.clone();
-      const ocrDot = document.createElement("div");
-      // solid marker, matching the defect dots — no glow halo. Centred via
-      // margin, not transform: the render loop overwrites .transform every
-      // frame with a plain translate(x,y) for positioning.
-      ocrDot.style.cssText = `position:absolute;left:0;top:0;opacity:0;transition:opacity .3s;pointer-events:none;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:#0A0D14;border:2px solid ${PALETTE.accent};`;
-      overlay.appendChild(ocrDot);
-
       // Values match the paint on the steel exactly, character for character.
-      // Set as plain type on the backdrop — no card, no glass.
-      const OCR_FIELDS = [
+      const OCR_FIELDS: [string, string][] = [
         ["Container ID", "VSTU 907032 1"],
         ["ISO type", "22G1"],
         ["Max gross", "30480 KG"],
         ["Tare", "2200 KG"],
         ["Manufactured", "03-2019"],
       ];
-      // tier 2 — reads below the headline, above the labels. Plain structured
-      // type on the same left margin as the wordmark and headline: no panel,
-      // no glass, no glow — just aligned label/value columns.
-      const ocrPanel = document.createElement("div");
-      ocrPanel.style.cssText =
-        `position:absolute;left:${PAD_X}px;top:${PAD_TOP + 82}px;opacity:0;transition:opacity .6s ease;font-family:${sans};width:270px;`;
-      const ocrHead = document.createElement("div");
-      ocrHead.textContent = "Extracted markings";
-      ocrHead.style.cssText = "font-size:9.5px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.5);padding-bottom:14px;";
-      ocrPanel.appendChild(ocrHead);
-      // real table structure — two aligned columns — just without a panel behind it
-      const ocrTable = document.createElement("div");
-      ocrTable.style.cssText = "display:grid;grid-template-columns:auto 1fr;column-gap:28px;align-items:baseline;";
-      ocrPanel.appendChild(ocrTable);
-      // each row is a pair of grid cells (no wrapping row element — CSS grid
-      // items just need to share a column track); opacity is set on both
-      // cells together since a grid can't fade a "row" that doesn't exist as
-      // a single element
-      const ocrRows = OCR_FIELDS.map(([k, v]) => {
-        const cellK = document.createElement("div");
-        cellK.style.cssText = "padding:7px 0;font-size:11px;font-weight:400;color:rgba(255,255,255,0.6);white-space:nowrap;opacity:0;transition:opacity .35s ease;";
-        cellK.textContent = k;
-        const cellV = document.createElement("div");
-        cellV.style.cssText = "padding:7px 0;font-size:15px;font-weight:600;letter-spacing:-0.015em;color:#fff;text-align:right;white-space:nowrap;opacity:0;transition:opacity .35s ease;";
-        cellV.textContent = v;
-        ocrTable.appendChild(cellK);
-        ocrTable.appendChild(cellV);
-        return { setOpacity: (o: string) => { cellK.style.opacity = o; cellV.style.opacity = o; } };
-      });
-      overlay.appendChild(ocrPanel);
+      /* ---- OCR marker + specs card ----
+         createReadout builds the same dot + plain structured type this scene
+         drew by hand, on its own hardcoded left:34px/top:104px — which is
+         this scene's own FRAMED-mode numbers by coincidence, not by design.
+         In bare mode the type has to line up with the page's own text column
+         (PAD_X/PAD_TOP), so the panel position is overridden right after. */
+      const readout: Readout = createReadout(overlay, "Extracted markings", OCR_FIELDS);
+      readout.panel.style.left = `${PAD_X}px`;
+      readout.panel.style.top = `${PAD_TOP + 82}px`;
+      const ocrLocal = container.ocr.pos.clone();
+      const ocrNormal = container.ocr.normal.clone();
 
-      /* ---- post: restrained bloom, only true highlights ---- */
-      let composer: EffectComposer | null = null;
-      let bloom: UnrealBloomPass | null = null;
-      try {
-        // bloom composites over an opaque buffer and would fill the
-        // transparency back in with black
-        if (bare) throw new Error("bare: no post");
-        composer = new EffectComposer(renderer);
-        composer.addPass(new RenderPass(scene, camera));
-        bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.45, 0.96);
-        composer.addPass(bloom);
-      } catch {
-        composer = null;
-      }
-
-      const size = () => {
-        const w = wrap.clientWidth || 900;
-        const h = wrap.clientHeight || 380;
-        renderer.setSize(w, h, false);
-        composer?.setSize(w, h);
-        bloom?.setSize(w, h);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-      };
-      size();
-      const ro = new ResizeObserver(size);
+      const ro = new ResizeObserver(studio.size);
       ro.observe(wrap);
 
       /* Only DRAW while on screen. mountWhenVisible gates construction, not
@@ -438,10 +240,7 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
       const clock = new THREE.Clock(false);
       let clockStarted = false;
       const target = new THREE.Vector3();
-      const ndc = new THREE.Vector3();
       const wpos = new THREE.Vector3();
-      const tmpN = new THREE.Vector3();
-      const tmpC = new THREE.Vector3();
       let raf = 0;
 
       const STATUS = [
@@ -453,17 +252,12 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
       let sealed = false;   // see the seal note in the render loop
       let justSealed = false; // set by the seal block, read by the ?perf draw timer
 
-      const project = (world: THREE.Vector3, normal: THREE.Vector3, w: number, h: number) => {
-        const wn = tmpN.copy(normal).applyQuaternion(container.group.quaternion);
-        if (wn.dot(tmpC.copy(camera.position).sub(world)) <= 0.08) return null;
-        const p = ndc.copy(world).project(camera);
-        if (p.z > 1) return null;
-        /* The canvas is `bleed` px taller than the overlay on each side, so a
-           point at canvas-Y lands at overlay-Y minus the bleed. Without this
-           every callout and marker is off by exactly the bleed — which is what
-           made them all drift off their features. */
-        return { sx: (p.x * 0.5 + 0.5) * w, sy: (-p.y * 0.5 + 0.5) * h - bleed };
-      };
+      /* The shared projector does not know about `bleed` — the canvas is
+         `bleed` px taller than the overlay on each side, so every screen
+         point it returns has to be shifted up by `bleed` before it is handed
+         to placeCallout, or every callout and marker drifts off the feature
+         it names (same fix tank-vision uses). */
+      const project = makeProjector(camera, container.group);
 
       const applyFrame = () => {
         const frozen = reduce;
@@ -587,26 +381,16 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         // Callouts: each fades in/out around its own window (see WINDOW above).
         // A label is welded to its feature and never nudged, so it always
         // points at the thing it names — if the whole callout can't fit on
-        // screen it fades out rather than drifting off its mark.
-        const LBL = 46;
+        // screen it fades out rather than drifting off its mark. placeCallout
+        // runs the identical fit test this scene used to run by hand; bounds
+        // are the OVERLAY's, not the canvas's, so height is bleed-adjusted.
         annos.forEach((a) => {
           const [w0, w1] = a.win;
           const inWin = phase < 0 ? 0 : smoothstep(w0, w0 + 0.05, phase) * (1 - smoothstep(w1 - 0.05, w1, phase));
+          const vis = frozen ? 1 : inWin;
           const world = wpos.copy(a.local).applyMatrix4(container.group.matrixWorld);
-          const r = (frozen ? 1 : inWin) > 0.01 ? project(world, a.normal, w, h) : null;
-          if (!r) { a.wrap.style.opacity = "0"; return; }
-          const top = a.up ? r.sy - a.lane - 4 - LBL : r.sy;
-          const bot = a.up ? r.sy : r.sy + a.lane + 4 + LBL;
-          // the subject lives in the right half, so callouts must stay clear of
-          // the left type column entirely
-          // bounds are the OVERLAY's, not the canvas's — the canvas is taller
-          // by the bleed, and testing against it would let labels sit outside
-          // the visible slot
-          const oh = h - bleed * 2;
-          const fits =
-            r.sx > w * 0.3 && r.sx < w * 0.97 && top > oh * 0.03 && bot < oh * 0.94;
-          a.wrap.style.transform = `translate(${r.sx}px,${r.sy}px)`;
-          a.wrap.style.opacity = fits ? String(frozen ? 1 : inWin) : "0";
+          const r = vis > 0.01 ? project(world, a.normal, w, h) : null;
+          placeCallout(a, r ? { sx: r.sx, sy: r.sy - bleed } : null, vis, w, h - bleed * 2, 0.3);
         });
 
         // OCR
@@ -614,18 +398,18 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         {
           const world = wpos.copy(ocrLocal).applyMatrix4(container.group.matrixWorld);
           const r = dotVis > 0.01 ? project(world, ocrNormal, w, h) : null;
-          if (!r) ocrDot.style.opacity = "0";
+          if (!r) readout.dot.style.opacity = "0";
           else {
-            ocrDot.style.transform = `translate(${r.sx}px,${r.sy}px)`;
-            ocrDot.style.opacity = String(dotVis);
+            readout.dot.style.transform = `translate(${r.sx}px,${r.sy - bleed}px)`;
+            readout.dot.style.opacity = String(dotVis);
           }
         }
         // table appears as the markings are read and persists to the end
         // fills in at the markings stop, holds through the damage stop, then
         // clears before the roof — it has been read, it does not need to linger
         const cardVis = phase < 0 ? 0 : smoothstep(0.07, 0.13, phase) * (1 - smoothstep(0.56, 0.63, phase));
-        ocrPanel.style.opacity = String(frozen ? 1 : cardVis);
-        ocrRows.forEach((row, i) => {
+        readout.panel.style.opacity = String(frozen ? 1 : cardVis);
+        readout.rows.forEach((row, i) => {
           row.setOpacity(String(frozen ? 1 : smoothstep(0.09 + i * 0.015, 0.12 + i * 0.015, phase)));
         });
 
@@ -714,8 +498,7 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
           try {
             setSealed(true); // explicit — the catch path above arrives unflipped
             applyFrame();
-            if (composer) composer.render();
-            else renderer.render(scene, camera);
+            studio.render();
           } catch { /* a failed warm draw must not block the scene */ }
           if (!reduce) setSealed(false);
           compiled = true;
@@ -733,8 +516,7 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
           if (!primed) {
             primed = true;
             applyFrame();
-            if (composer) composer.render();
-            else renderer.render(scene, camera);
+            studio.render();
           }
           return;
         }
@@ -756,8 +538,7 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         const _td = performance.now();
         applyFrame();
         const _ta = performance.now();
-        if (composer) composer.render();
-        else renderer.render(scene, camera);
+        studio.render();
         if ((drawN < 6 || justSealed) && location.search.includes("perf")) {
           const w = window as unknown as { __visionDraw?: string[] };
           (w.__visionDraw ||= []).push(
@@ -775,20 +556,17 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         ro.disconnect();
         vis.disconnect();
         annos.forEach((a) => a.wrap.remove());
-        ocrDot.remove();
-        ocrPanel.remove();
+        readout.dot.remove();
+        readout.panel.remove();
         decalTex.forEach((x) => x.dispose());
         decalMats.forEach((m) => m.dispose());
-        envRT.dispose();
-        pmrem.dispose();
         mats.dispose();
-        scene.traverse((o) => {
-          const mesh = o as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-        });
-        composer?.dispose?.();
-        renderer.dispose();
-        renderer.domElement.remove();
+        // studio.dispose() traverses the scene itself and skips any geometry
+        // tagged userData.shared (metal.ts's rounded-box cache, detect.ts's
+        // tracker bar) — see studio.ts's dispose comment. The old cleanup here
+        // disposed EVERY mesh geometry with no such guard, which is exactly
+        // the bug studio.ts documents and fixes.
+        studio.dispose();
       };
     } catch (err) {
       console.error("[container-vision] init failed:", err);

@@ -30,6 +30,7 @@
      · nothing is modelled below: the load is in the air, which is the shot.
 --------------------------------------------------------------------------- */
 import * as THREE from "three";
+import { buildReadCamera, type ReadCamera } from "../_vision/readCamera";
 import { buildContainer } from "../container-vision/container";
 import { DEFECT_UV, H as C_H, L as C_L } from "../container-vision/container";
 import { warmContainerTextures } from "../container-vision/materials";
@@ -155,7 +156,8 @@ export interface CraneModel {
   /** the two gantry legs and their camera heads. Never moves. */
   fixed: THREE.Group;
   /** world positions of the two head lenses, for the sight-cone apexes. */
-  heads: THREE.Vector3[];
+  /** the two detection cameras, on the shared rig. */
+  readCams: ReadCamera[];
   /** lift-local anchors for the callouts */
   anchors: Record<string, CraneAnchor>;
   /** hardware meshes whose opacity the intro has to ramp alongside the shell */
@@ -268,7 +270,7 @@ export function buildCrane(mats: CraneMaterials, cmats: MaterialSet): CraneModel
      itself. A cone whose apex is buried in the leg is not geometry worth
      preserving. */
   const BODY_IN = 0.40;
-  const heads: THREE.Vector3[] = [];
+  const readCams: ReadCamera[] = [];
   const lensGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.07, 18);
   owned.push(lensGeo);
   for (const sx of [-1, 1]) {
@@ -280,7 +282,33 @@ export function buildCrane(mats: CraneMaterials, cmats: MaterialSet): CraneModel
     lens.rotation.z = Math.PI / 2;                 // cylinder axis along X
     lens.position.set(sx * (LEG_X - 0.65), -0.06, 0.62);
     fixed.add(lens);
-    heads.push(new THREE.Vector3(sx * (LEG_X - 0.68), -0.06, 0.62));
+
+    /* ON THE SHARED RIG, KEEPING THIS HOUSING. `lensObject` hands the rig the
+       glass built above and suppresses its own housing entirely — see the
+       option's note in _vision/readCamera.ts, which crane is the reason for.
+       The geometry here is placed to the centimetre against the leg and is
+       not worth relocating to satisfy a builder.
+
+       WHAT CRANE GAINS ANYWAY: the apex is now the LENS MESH'S live world
+       position rather than a hand-maintained `heads[]` vector sitting 0.03
+       ahead of it, and the half-angle comes from the rig's one
+       `atan(coneRadius / range)` instead of a fourth copy in scene.tsx.
+       `heads[]` existed only to carry that apex and is gone.
+
+       BOLTED DOWN: `headTracks: false`. The whole claim of this scene is that
+       the heads never move while the load swings, so the cone re-aims and the
+       housing does not. And no `setSignal` — crane STAYS on the accent by
+       explicit product-owner instruction, which is the opt-out working as
+       designed, not an exception to it. */
+    readCams.push(buildReadCamera({
+      mount: lens.position.clone(),
+      aim: new THREE.Vector3(sx * 1.5, -1.0, 1.28),
+      bodyMat: mats.dark,
+      lensMat: mats.lens,
+      lensObject: lens,
+      headTracks: false,
+      coneRadius: 0.55,
+    }));
   }
 
   /* ---- callout anchors, in LIFT-local space ----
@@ -336,5 +364,5 @@ export function buildCrane(mats: CraneMaterials, cmats: MaterialSet): CraneModel
     },
   };
 
-  return { lift, fixed, heads, anchors, containerHardware: container.hardware, owned };
+  return { lift, fixed, readCams, anchors, containerHardware: container.hardware, owned };
 }

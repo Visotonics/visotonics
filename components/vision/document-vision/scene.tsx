@@ -248,8 +248,20 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
          near-white surface filling most of the frame, and at 1.18 the page
          clips and the crease, ring and stamp roll off into a flat white
          field. Those four marks are the entire "defeats generic OCR" claim. */
+      /* `noEnv`: this scene has no metal in it.
+
+         The environment map exists so PBR metal has something to reflect — a
+         metal surface is very nearly ONLY its reflection. Document Vision's
+         entire subject is a sheet of paper: one matte, near-Lambertian
+         material at roughness ~1, which takes essentially nothing from an
+         environment and everything from the five-light rig, which stays.
+
+         PMREM prefiltering runs per renderer and cannot be shared across
+         contexts, so this was ~27 ms of pure waste on every load — measured
+         via `window.__visionStudio` (see PERFORMANCE.md #40). Same reasoning
+         and the same flag the hero cards and the lead card already use. */
       const studio = createStudio(wrap, {
-        floorY: GROUND, shadowExtent: 6, spread: 1.0, bare,
+        floorY: GROUND, shadowExtent: 6, spread: 1.0, bare, noEnv: true,
         maxDpr: 1.75, shadowMapSize: 1024, exposure: 0.95,
       });
       const { renderer, scene, camera, bloom, shadowMat } = studio;
@@ -470,7 +482,6 @@ export default function DocumentVisionScene({ bare = false, bleed = 0 }: { bare?
          find room is a callout in the wrong scene. */
       const hardAnchor = fieldCenterLocal(FIELDS[HARD].uv, BOX_Z);
       const finding = createCallout(overlay, {
-        id: "hard",
         title: "Read under stamp",
         detail: `${FIELDS[HARD].value} · 0.97`,
         pos: hardAnchor,

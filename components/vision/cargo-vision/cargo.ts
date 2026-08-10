@@ -29,6 +29,8 @@ import type { MaterialSet } from "../container-vision/materials";
 import { CANONICAL_BRUSHED, makeMetal, metalBox, tintMetal } from "../_vision/metal";
 import { PALETTE } from "../_vision/palette";
 import { cardboardSide } from "../hero-cards/skins";
+import { buildPendantLamp } from "../_vision/lamp";
+import { buildReadCamera, type ReadCamera } from "../_vision/readCamera";
 
 /* Ground plane. Everything — container floor, run-out, cargo — sits on it, and
    the studio's cast-shadow catcher is placed here. */
@@ -545,8 +547,6 @@ export interface CargoModel {
   flagged: THREE.Mesh;
   /** the container's shell + hardware, so the scene can ramp their opacity */
   container: { shell: THREE.Mesh[]; hardware: THREE.Mesh[]; edges: THREE.LineSegments };
-  /** world-space centre of the door opening — the anchor the stream comes from */
-  mouth: THREE.Vector3;
   /** The pendant lamp over the belt. Exposed because the reveal ramp sets
       materials by name rather than walking `mats.all`, and because the
       PointLight's intensity has to ramp too — it is the scene's practical
@@ -560,7 +560,8 @@ export interface CargoModel {
   };
   /** World position of the read camera's lens — the apex every sight cone is
    *  thrown from. Fixed: the pole never moves. */
-  lensPos: THREE.Vector3;
+  /** The shared detection-camera rig — housing, cone, aim and colour flip. */
+  readCam: ReadCamera;
   /** Advance the stream. `p` is 0..1 through the loop. Pure function of p. */
   advance: (p: number) => void;
   /** geometry this scene OWNS and must dispose. The carton's RoundedBoxGeometry
@@ -744,11 +745,6 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      "this door is shut" and nothing else. */
   for (const hw of build.hardware) hw.visible = hw.position.x <= hx;
 
-  /* The mouth, in world space. Local (hx, 0, 0) through the yaw. */
-  const mouth = new THREE.Vector3(hx, 0, 0)
-    .applyAxisAngle(new THREE.Vector3(0, 1, 0), CONT_YAW)
-    .add(CONT_POS);
-
   /* ---- THE DECK -----------------------------------------------------------
 
      A REAL, LIT, OPAQUE FLOOR. What was here before was a drafting grid at 10%
@@ -927,6 +923,11 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      the brightest thing in frame. A practical light answers both — the fill
      it throws is motivated by an object you can see.
 
+     Built from the shared pendant machinery (`_vision/lamp.ts`), the same
+     builder work-vision's aisle lamp uses, rather than a second local copy of
+     the same shaders — see that file for the wire/shade/bulb/halo/beam
+     construction and the shader source.
+
      Hung from y = 4.6, well above the top of frame, so the wire runs out of
      shot the way a real drop does rather than starting at a visible ceiling
      that does not exist. Shade at 2.05 clears the tallest staged item and
@@ -934,15 +935,7 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      streetlight. Centred on the belt's own midpoint so it is obviously
      lighting this machine and not the yard.
 
-     The cone is OPEN-ENDED and DoubleSide: a closed shade seen from slightly
-     below shows its cap and reads as a solid lump. Bulb is a small emissive
-     sphere just inside the mouth — toneMapped false so ACES cannot pull the
-     filament grey, the same rule every signal graphic in this repo follows.
-
-     The PointLight is what actually brightens the scene. Distance-limited so
-     it falls off before it reaches the back row and flattens the fog
-     gradient the depth read depends on. */
-  /* OVER THE BELT'S CENTRELINE, AND LOWER. At Z = FRAME_Z - 0.15 the lamp
+     OVER THE BELT'S CENTRELINE, AND LOWER. At Z = FRAME_Z - 0.15 the lamp
      hung over the near side channel rather than over the running surface, so
      the brightest part of its pool fell on the frame and the deck beside it —
      which is why it read as a light hanging next to the conveyor instead of
@@ -951,210 +944,36 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      2.05 -> 1.70 drops it 0.35: the tallest staged item is the 0.82 drum
      topping out at BELT_TOP + 0.82 = 0.87, so there is still 0.83 of
      clearance, and halving the drop distance to the surface quadruples the
-     illuminance there at decay 2. */
+     illuminance there at decay 2.
+
+     INTENSITY. At decay 2 the illuminance at the belt is intensity / d^2,
+     and it has to beat the five-source studio rig it is competing with (key
+     box at 5.6). 3.4, then 14, delivered 1.3 and 5.3 at the belt and read as
+     unlit and as a faint tint respectively; scene.tsx's ramp drives this to
+     40, which delivers ~15 — see its own note for the arithmetic.
+
+     SHADOW ON. Unlike work-vision's aisle lamp, this shade casts
+     (`shadeCastsShadow: true`): it hangs close over a narrow belt among other
+     shadow-casting geometry (carcass, pole), so the ellipse lands on a
+     surface the viewer can see it belongs to, rather than on an open floor
+     where it would read as an unexplained stain — see the option's own note
+     in `_vision/lamp.ts`. */
   const LAMP_X = BELT_CX + 0.6;
   const LAMP_Y = 1.70;
   const LAMP_Z = 0.10;
 
-  const wireGeo = new THREE.CylinderGeometry(0.012, 0.012, 4.6 - LAMP_Y, 6);
-  owned.push(wireGeo);
-  const wire = new THREE.Mesh(wireGeo, m.frame);
-  wire.position.set(LAMP_X, (4.6 + LAMP_Y) / 2, LAMP_Z);
-  belt.add(wire);
-
-  const shadeGeo = new THREE.ConeGeometry(0.30, 0.34, 20, 1, true);
-  owned.push(shadeGeo);
-  const shadeMat = new THREE.MeshStandardMaterial({
-    color: "#3B424C", metalness: 0.55, roughness: 0.42, side: THREE.DoubleSide,
-    transparent: true, opacity: 0,
+  const lamp = buildPendantLamp({
+    x: LAMP_X, y: LAMP_Y, z: LAMP_Z,
+    planeY: BELT_TOP,
+    ceilingY: 4.6,
+    wireMat: m.frame,
+    beamR: 0.85,
+    shadeR: 0.30,
+    shadeCastsShadow: true,
   });
-  m.all.push(shadeMat);
-  const shade = new THREE.Mesh(shadeGeo, shadeMat);
-  shade.position.set(LAMP_X, LAMP_Y, LAMP_Z);
-  shade.castShadow = true;
-  belt.add(shade);
-
-  /* THE BULB IS LIT, NOT DECORATIVE. It was a small pale sphere with a
-     point light too weak to survive the five-source rig: at decay 2 and
-     intensity 3.4, the belt 1.6 units below was receiving 3.4/1.6² = 1.3,
-     which is under the ambient it was competing with, so the lamp hung there
-     unlit. 14 gives 5.5 at the running surface — a clear warm pool under the
-     shade that falls off before it reaches the back row and flattens the fog.
-
-     The filament sphere is bigger (0.11) and pushed to a true hot white so it
-     reads as the SOURCE of that pool rather than as a bead hanging in it. A
-     second, wider sphere at 0.22 in a dim warm carries the halo: bloom picks
-     up the inner one and the outer one gives the glow a body, which is what
-     an incandescent under a shade actually looks like. Both toneMapped false
-     — ACES would pull a filament grey, the standing rule for every emissive
-     graphic in this repo. */
-  const bulbGeo = new THREE.SphereGeometry(0.11, 14, 12);
-  owned.push(bulbGeo);
-  const bulbMat = new THREE.MeshBasicMaterial({
-    color: "#FFF3D8", toneMapped: false, transparent: true, opacity: 0,
-  });
-  m.all.push(bulbMat);
-  /* BELOW THE RIM, NOT INSIDE IT. The shade is a 0.34-tall cone centred on
-     LAMP_Y with its wide end DOWN, so its mouth is at LAMP_Y - 0.17. A bulb at
-     LAMP_Y - 0.14 sat 0.03 ABOVE that mouth, i.e. up inside the shade, where
-     an 18-degree camera looking slightly down sees almost none of it — which
-     is why the lamp lit the cargo correctly and still did not look lit itself.
-     LAMP_Y - 0.21 hangs it 0.04 proud of the rim: fully visible, and still
-     close enough to the shade to read as being in it. */
-  const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-  bulb.position.set(LAMP_X, LAMP_Y - 0.21, LAMP_Z);
-  belt.add(bulb);
-
-  /* A SOFT GLOW, NOT A SPHERE. A uniformly-coloured additive sphere has a hard
-     silhouette — the sphere reads as a flat disc with a visible rim the moment
-     it is lit from one side, because every silhouette pixel has the same
-     alpha as the centre. The fix is a view-facing billboard with a radial
-     alpha gradient instead: a plane that always faces the camera (billboarded
-     in the vertex shader by taking the mesh's WORLD TRANSLATION only and
-     adding the local xy offset directly in view space, so the quad's own
-     rotation — always identity here — never matters and it can never be seen
-     edge-on) with alpha falling off smoothly from centre to rim. */
-  const HALO_SIZE = 0.62;
-  const haloGeo = new THREE.PlaneGeometry(HALO_SIZE, HALO_SIZE);
-  owned.push(haloGeo);
-  const HALO_VERT = `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      vec3 worldPos = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-      vec4 mvPosition = viewMatrix * vec4(worldPos, 1.0);
-      mvPosition.xy += position.xy;
-      gl_Position = projectionMatrix * mvPosition;
-    }
-  `;
-  const HALO_FRAG = `
-    varying vec2 vUv;
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    void main() {
-      // CircleGeometry-style radial parameter: 0 at the centre, 1 at the rim.
-      float r = length(vUv - vec2(0.5)) * 2.0;
-      float a = 1.0 - smoothstep(0.0, 1.0, r);
-      a *= a;   // steepen the core so it reads as a glow, not a soft-edged disc
-      float alpha = a * uOpacity;
-      if (alpha < 0.004) discard;
-      gl_FragColor = vec4(uColor, alpha);
-      #include <colorspace_fragment>
-    }
-  `;
-  const haloMat = new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color("#FFCD7A") }, uOpacity: { value: 0 } },
-    vertexShader: HALO_VERT,
-    fragmentShader: HALO_FRAG,
-    transparent: true, depthWrite: false,
-    toneMapped: false, blending: THREE.AdditiveBlending,
-  });
-  Object.defineProperty(haloMat, "opacity", {
-    get: () => haloMat.uniforms.uOpacity.value as number,
-    set: (v: number) => { haloMat.uniforms.uOpacity.value = v; },
-    configurable: true,
-  });
-  m.all.push(haloMat);
-  const halo = new THREE.Mesh(haloGeo, haloMat);
-  halo.position.copy(bulb.position);
-  belt.add(halo);
-
-  /* THE BEAM. A hollow cone of additive warm hanging from the bulb down to
-     the running surface — the light you can SEE, as opposed to the light that
-     is doing the work.
-
-     This is not a volumetric solve and does not pretend to be. It is the same
-     trick createSightCone uses two files over: an open-ended cone, additive,
-     no depth write, at an opacity low enough that it tints rather than
-     occludes. A destuff bay is a dusty room and a shop light in one has a
-     visible shaft; without it the pool on the cargo has no stated cause and
-     the lamp reads as a prop that happens to hang near a bright patch.
-
-     Geometry: apex at the bulb, base on the belt. Height = bulb height above
-     BELT_TOP = (LAMP_Y - 0.21) - BELT_TOP, and the base radius is 0.85 —
-     a ~30-degree half-angle, which is roughly what a 0.30 shade at this drop
-     actually throws.
-
-     NOTHING HERE PULSES. The scene's standing rule after the strobe was
-     reverted: no repeating brightness cycle anywhere. The beam ramps once
-     with the intro and then holds. */
-  const BEAM_H = (LAMP_Y - 0.21) - BELT_TOP;
-  const beamGeo = new THREE.ConeGeometry(0.85, BEAM_H, 24, 1, true);
-  owned.push(beamGeo);
-  /* DIFFUSED, NOT DRAWN. A flat-coloured additive cone has a hard silhouette —
-     the same trap createSightCone (hero-cards/detect.ts) already solved once
-     for the sight-line volumes. Same fix here: a ShaderMaterial whose alpha
-     falls off along the cone's length (so it dies before it reads as a solid
-     edge at the belt) AND toward the silhouette rim via a fresnel term (face-on
-     pixels stay, grazing/edge-on pixels — which is what draws the crisp outline
-     of an additive DoubleSide cone — fade toward zero). Nothing here touches
-     the PointLight; the actual illumination on the cargo is untouched. */
-  const BEAM_VERT = `
-    varying vec2 vUv;
-    varying vec3 vN;
-    varying vec3 vV;
-    void main() {
-      vUv = uv;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      vN = normalize(normalMatrix * normal);
-      vV = normalize(-mv.xyz);
-      gl_Position = projectionMatrix * mv;
-    }
-  `;
-  const BEAM_FRAG = `
-    varying vec2 vUv;
-    varying vec3 vN;
-    varying vec3 vV;
-    uniform vec3 uColor;
-    uniform float uOpacity;
-    void main() {
-      /* ConeGeometry's v runs 0 at the base (the belt) to 1 at the apex (the
-         bulb), so 1.0 - vUv.y is the axial parameter t: 0 at the source,
-         1 at the belt. */
-      float t = 1.0 - vUv.y;
-      // fades in off the apex singularity, then dies out over the last 45%
-      // of the drop so it never resolves into a hard ring at the belt.
-      float near = smoothstep(0.0, 0.10, t);
-      float far = 1.0 - smoothstep(0.55, 1.0, t);
-      // fresnel rim: face-on pixels (where the volume actually reads as haze)
-      // stay, grazing pixels — the ones that draw the cone's crisp outline —
-      // fade toward the 0.18 floor rather than a hard edge.
-      vec3 n = normalize(vN);
-      vec3 v = normalize(vV);
-      float rim = 1.0 - abs(dot(n, v));
-      float body = 0.18 + 0.82 * (1.0 - smoothstep(0.55, 1.0, rim));
-      float alpha = near * far * body * uOpacity;
-      if (alpha < 0.004) discard;
-      gl_FragColor = vec4(uColor, alpha);
-      /* REQUIRED — three converts uColor sRGB->linear on the way in and a
-         custom shader gets none of the output plumbing back without this;
-         documented trap, already paid for twice in this repo. */
-      #include <colorspace_fragment>
-    }
-  `;
-  const beamMat = new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color("#FFB863") }, uOpacity: { value: 0 } },
-    vertexShader: BEAM_VERT,
-    fragmentShader: BEAM_FRAG,
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    toneMapped: false, blending: THREE.AdditiveBlending,
-  });
-  /* `.opacity` aliased onto the uniform — a ShaderMaterial's own `opacity`
-     field is inert, and scene.tsx's reveal ramp writes `model.lamp.beam.opacity`
-     directly, the same convention createSightCone documents at length. */
-  Object.defineProperty(beamMat, "opacity", {
-    get: () => beamMat.uniforms.uOpacity.value as number,
-    set: (v: number) => { beamMat.uniforms.uOpacity.value = v; },
-    configurable: true,
-  });
-  m.all.push(beamMat);
-  const beam = new THREE.Mesh(beamGeo, beamMat);
-  beam.position.set(LAMP_X, BELT_TOP + BEAM_H / 2, LAMP_Z);
-  belt.add(beam);
-
-  const lampLight = new THREE.PointLight("#FFD9A0", 0, 9.5, 2);
-  lampLight.position.set(LAMP_X, LAMP_Y - 0.20, LAMP_Z);
-  belt.add(lampLight);
+  owned.push(...lamp.owned);
+  m.all.push(lamp.shade, lamp.bulb, lamp.halo, lamp.beam);
+  belt.add(lamp.group);
 
   /* ---- THE READ CAMERA, ON A POLE BEHIND THE BELT --------------------------
 
@@ -1178,63 +997,59 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
      behind it), low enough to stay under the fog band that starts at 18 and
      well inside frame at the shipped 16:9.
 
-     The lens is a separate small cylinder proud of the housing, and `lensPos`
-     is published in WORLD space because the scene aims a sight cone from it
-     every frame and must not have to re-derive the pole's transform. */
+     The lens is a separate small cylinder proud of the housing, and the rig
+     publishes its world position through `readCam.lensWorld()` — read live,
+     every frame, so the scene never has to re-derive the pole's transform and
+     can never throw the cone from a stale apex. */
   const CAM_X = 0.0;
   const CAM_Z = -1.85;
   const CAM_Y = 2.35;
 
-  const camGroup = new THREE.Group();
-  root.add(camGroup);
+  /* BUILT BY THE SHARED RIG — `_vision/readCamera.ts`. This scene is the
+     reference migration for it, so the numbers below are the ones the
+     hand-built version shipped with and are reproduced exactly.
 
-  const poleGeo = new THREE.CylinderGeometry(0.055, 0.075, CAM_Y - GROUND, 10);
-  owned.push(poleGeo);
-  const pole = new THREE.Mesh(poleGeo, m.frame);
-  pole.position.set(CAM_X, GROUND + (CAM_Y - GROUND) / 2, CAM_Z);
-  pole.castShadow = true;
-  camGroup.add(pole);
+     HEAD DOES NOT TRACK. `headTracks: false`. The housing is bolted looking at
+     the count line and only its CONE moves between items — which is what a
+     destuff-bay camera actually is. The old code expressed this as a derived
+     pitch, `-atan2(CAM_Y - BELT_TOP, |CAM_Z|)`; passing the same point as
+     `aim` produces the identical orientation, because the rig orients from the
+     aim point at build time regardless of whether it tracks afterwards.
 
-  // a foot plate, so the pole stands on the deck rather than growing out of it
-  const footGeo = new THREE.CylinderGeometry(0.20, 0.20, 0.035, 12);
-  owned.push(footGeo);
-  const foot = new THREE.Mesh(footGeo, m.frame);
-  foot.position.set(CAM_X, GROUND + 0.018, CAM_Z);
-  camGroup.add(foot);
-
-  /* The housing, yawed to face the count line and pitched down onto it. Angle
-     is derived, not eyeballed: the target is the belt surface at x = 0, so the
-     drop is CAM_Y - BELT_TOP over a reach of |CAM_Z|. */
-  const head = new THREE.Group();
-  head.position.set(CAM_X, CAM_Y, CAM_Z);
-  head.rotation.x = -Math.atan2(CAM_Y - BELT_TOP, Math.abs(CAM_Z));
-  camGroup.add(head);
-
-  const bodyGeo = new THREE.BoxGeometry(0.22, 0.20, 0.36);
-  owned.push(bodyGeo);
-  const body = new THREE.Mesh(bodyGeo, m.frame);
-  body.castShadow = true;
-  head.add(body);
-
-  const lensGeo = new THREE.CylinderGeometry(0.075, 0.085, 0.10, 14);
-  owned.push(lensGeo);
-  const lens = new THREE.Mesh(lensGeo, m.roller);
-  lens.rotation.x = Math.PI / 2;
-  lens.position.z = 0.22;
-  head.add(lens);
+     The apex is still read LIVE from the lens rather than sampled here. That
+     used to be a `lensPos` computed once, justified by "nothing about the pole
+     ever moves" — true today, and precisely the assumption that broke
+     work-vision when its head started tracking. The live read costs nothing
+     and the assumption no longer has to hold. */
+  const readCam = buildReadCamera({
+    mount: new THREE.Vector3(CAM_X, CAM_Y, CAM_Z),
+    aim: new THREE.Vector3(CAM_X, BELT_TOP, 0),
+    bodyMat: m.frame,
+    lensMat: m.roller,
+    headTracks: false,
+    poleFrom: GROUND,
+    // housing and glass, matching the hand-built silhouette exactly
+    bodySize: [0.22, 0.20, 0.36],
+    bodyZ: 0,
+    lensZ: 0.22,
+    lensR: 0.075,
+    lensR2: 0.085,
+    lensLen: 0.10,
+    yoke: false,
+    hood: false,
+    // the cone: 0.62 footprint radius, pooling on the BELT, not the deck
+    coneRadius: 0.62,
+    floorY: BELT_TOP + 0.006,
+  });
+  root.add(readCam.group);
+  owned.push(...readCam.owned);
 
   // the bracket that ties the housing to the pole top
   const armGeo = new THREE.BoxGeometry(0.07, 0.16, 0.07);
   owned.push(armGeo);
   const arm = new THREE.Mesh(armGeo, m.frame);
   arm.position.set(CAM_X, CAM_Y + 0.14, CAM_Z);
-  camGroup.add(arm);
-
-  /* World-space lens position — the apex every sight cone is thrown from.
-     Computed once here because nothing about the pole ever moves. */
-  camGroup.updateMatrixWorld(true);
-  const lensPos = new THREE.Vector3();
-  lens.getWorldPosition(lensPos);
+  readCam.group.add(arm);
 
   /* THE SLATS — the running surface, and the only thing on this belt that
      moves. A featureless belt under featureless cargo has nothing for the eye
@@ -1538,14 +1353,13 @@ export function buildCargo(m: CargoMaterials, cmats: MaterialSet): CargoModel {
     items,
     flagged,
     container: { shell: build.shell, hardware: build.hardware, edges: build.edges },
-    mouth,
     /* Exposed because the reveal ramp in scene.tsx sets every material BY NAME
        rather than walking mats.all — a lamp pushed into mats.all alone would
        sit at opacity 0 forever, and its PointLight starts at intensity 0 for
        the same reason. Both have to be driven with `solid`. */
-    lamp: { shade: shadeMat, bulb: bulbMat, halo: haloMat, beam: beamMat, light: lampLight },
+    lamp: { shade: lamp.shade, bulb: lamp.bulb, halo: lamp.halo, beam: lamp.beam, light: lamp.light },
     /** world-space lens of the read camera — the apex of the sight cone */
-    lensPos,
+    readCam,
     advance,
     owned,
   };

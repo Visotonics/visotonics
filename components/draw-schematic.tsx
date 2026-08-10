@@ -88,6 +88,19 @@ export function DrawSchematic({
         t.style.opacity = "0";
       });
 
+      /* EVERY TIMER IS TRACKED SO UNMOUNT CAN CANCEL IT.
+
+         The three acts below are staggered with `setTimeout`, and the label
+         act schedules one PER LABEL inside its own timeout — so a schematic
+         that scrolls into view and is then navigated away from used to leave a
+         tail of callbacks writing styles onto a detached SVG. Harmless in the
+         sense that nothing crashes, and wrong in the sense that the component
+         kept working after it stopped existing. */
+      const timers: number[] = [];
+      const after = (ms: number, fn: () => void) => {
+        timers.push(window.setTimeout(fn, ms));
+      };
+
       const start = () => {
         root.dataset.drawn = "true";
         // ACT 1 — outline draws
@@ -97,24 +110,24 @@ export function DrawSchematic({
         });
         const OUT = 800;
         // ACT 2 — labels snap, staggered
-        window.setTimeout(() => {
+        after(OUT, () => {
           let i = 0;
           texts.forEach((t) => {
             if (orange.includes(t)) return;
-            window.setTimeout(() => {
+            after(i * 40, () => {
               t.style.transition = "opacity var(--duration-dur-1) linear";
               t.style.opacity = "";
-            }, i * 40);
+            });
             i += 1;
           });
-        }, OUT);
+        });
         // ACT 3 — detection ignites last
-        window.setTimeout(() => {
+        after(OUT + 200, () => {
           orange.forEach((o) => {
             o.style.transition = "opacity var(--duration-dur-2) linear";
             o.style.opacity = "";
           });
-        }, OUT + 200);
+        });
       };
 
       const io = new IntersectionObserver(
@@ -130,7 +143,10 @@ export function DrawSchematic({
         { threshold: 0.35, rootMargin: "0px 0px -10% 0px" },
       );
       io.observe(root);
-      return () => io.disconnect();
+      return () => {
+        io.disconnect();
+        for (const t of timers) window.clearTimeout(t);
+      };
     } catch {
       // any failure → leave the schematic fully visible
       root.dataset.drawn = "true";

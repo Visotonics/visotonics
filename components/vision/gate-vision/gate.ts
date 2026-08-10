@@ -23,6 +23,7 @@ import { buildContainer } from "../container-vision/container";
 import { H as C_H, L as C_L } from "../container-vision/container";
 import type { MaterialSet } from "../container-vision/materials";
 import { metalBox } from "../_vision/metal";
+import { buildReadCamera, type ReadCamera } from "../_vision/readCamera";
 import type { GateMaterials } from "./materials";
 
 export const GROUND_Y = -1.9;
@@ -55,6 +56,16 @@ export interface GateModel {
   headAnchor: GateAnchor;
   /** the boom arm. Rotate on X: 0 = up/clear, negative = down/blocking. */
   barrier: THREE.Group;
+  /** The shared detection-camera rig — housing, cone, aim and colour flip,
+   *  for the ONE gantry head that is actually a detection camera (the
+   *  middle head of the three-head row, the one `headAnchor`/the sight cone
+   *  point at). The other two heads in that row and the low side-reading
+   *  head on the column are cosmetic gantry housings with no cone of their
+   *  own and stay hand-built — see the note at the migration site. */
+  readCam: ReadCamera;
+  /** geometry this scene OWNS and must dispose — currently just the read
+   *  camera rig's, folded in here so scene.tsx has one list to walk. */
+  owned: THREE.BufferGeometry[];
 }
 
 /* Every structural box on the truck and gantry is a ROUNDED box. A perfect 90°
@@ -70,6 +81,7 @@ const cyl = (r: number, len: number, m: THREE.Material, seg = 20) =>
 export function buildGate(mats: GateMaterials, cmats: MaterialSet): GateModel {
   const vehicle = new THREE.Group();
   const fixed = new THREE.Group();
+  const owned: THREE.BufferGeometry[] = [];
 
   const put = (g: THREE.Group) => (m: THREE.Mesh, x: number, y: number, z: number) => {
     m.position.set(x, y, z);
@@ -208,16 +220,94 @@ export function buildGate(mats: GateMaterials, cmats: MaterialSet): GateModel {
   brace.rotation.x = -0.62;
   addF(brace, GANTRY_X, beamY - 0.85, colZ + 1.15);
 
-  /* ---- camera heads ---- */
+  /* ---- camera heads ----
+     Three heads in a row on the beam. Only the MIDDLE one (i===1) is a
+     detection camera — it is the one `headAnchor` names and the only one
+     scene.tsx ever throws a sight cone from. The other two are cosmetic
+     gantry hardware: same silhouette, no cone, never referenced outside
+     this loop. That one head is migrated onto the shared rig below; the
+     other two (and the low side-reading head further down) stay hand-built,
+     because the rig always builds a cone with the housing and these two
+     never had one — giving them one would be inventing machinery the old
+     scene never shipped, not reproducing it. */
   let headPos = new THREE.Vector3();
+  let readCam!: ReadCamera;
   [-1.9, -0.4, 1.1].forEach((z, i) => {
+    if (i === 1) {
+      headPos = new THREE.Vector3(GANTRY_X, beamY - 0.44, z + 0.32);
+      /* THE HOUSING'S TILT IS NOT THE CONE'S AIM, AND THAT IS THE WHOLE
+         REASON THIS HEAD NEEDS A TWO-STEP AIM RATHER THAN CARGO'S ONE-STEP.
+         The hand-built body/lens pitched down by a fixed 0.34 rad — a
+         cosmetic cant with no relationship to where the cone actually
+         points, which is a separately computed ray from `headPos` to a
+         ground target ~5.17 m away (scene.tsx's `coneTarget`), at roughly
+         1.02 rad below horizontal. The rig's `aim` sets BOTH the housing's
+         build-time orientation AND the cone's initial target from the same
+         point (see readCamera.ts's "THE BUILD-TIME ORIENTATION IS
+         UNCONDITIONAL" note), so passing the real cone target here would
+         swing the housing to the cone's much steeper angle and visibly
+         change the shipped look.
+
+         `aimPoint` is instead a synthetic point along the EXACT old 0.34
+         rad pitch: the old tilt was `rotation.x = 0.34` only, a pure
+         X-axis rotation with no yaw, so (0, -sin(0.34), cos(0.34)) from
+         `headPos` reproduces it exactly via the rig's
+         `setFromUnitVectors(+Z, aim-mount)`. The real cone target is
+         applied a moment later from scene.tsx with a plain `aimAt()` call
+         — because `headTracks: false`, that retargets only the cone, not
+         the housing (see readCamera.ts's own note on the flag). */
+      const tilt = 0.34;
+      const aimPoint = new THREE.Vector3(
+        GANTRY_X, headPos.y - Math.sin(tilt), headPos.z + Math.cos(tilt),
+      );
+      /* Housing geometry, mapped from the hand-built numbers above rather
+         than accepted at rig defaults:
+           body   box(0.34, 0.26, 0.5)      -> bodySize [0.34, 0.26, 0.5]
+           lens   cyl(r 0.1, len 0.06)      -> lensR/lensR2 0.1, lensLen 0.06
+         `lensZ: 0` is deliberate, not a default fallthrough: it puts the
+         rig's live lens-world read — the cone's apex — exactly on
+         `headPos`, the point scene.tsx's CONE_HALF_ANGLE arithmetic is
+         pinned to. `bodyZ: -0.322` is the old body's offset from `headPos`
+         projected onto the housing's own local Z axis; `bodyY: -0.050` is
+         the same offset's local-Y component (the rig grew a `bodyY` option
+         for exactly this — the body no longer needs to sit centred on the
+         sight axis), so together the body lands at the old position exactly,
+         not approximately.
+         `yokeSize: [0.06, 0.22, 0.06]` reproduces the old hand-built yoke
+         block exactly (the rig grew a size option for this too, in place of
+         its own fixed 0.07 x 0.14 x 0.07 default). `hood: false` — the old
+         lens had no sun hood. */
+      readCam = buildReadCamera({
+        mount: headPos,
+        aim: aimPoint,
+        bodyMat: mats.dark,
+        lensMat: mats.lens,
+        headTracks: false,
+        bodySize: [0.34, 0.26, 0.5],
+        bodyZ: -0.322,
+        bodyY: -0.050,
+        lensZ: 0,
+        lensR: 0.1,
+        lensR2: 0.1,
+        lensLen: 0.06,
+        yoke: true,
+        yokeSize: [0.06, 0.22, 0.06],
+        hood: false,
+        // the cone: 0.8 footprint radius, the exact constant the old
+        // hand-built atan(0.8 / dist) half-angle used
+        coneRadius: 0.8,
+        floorY: GROUND_Y,
+      });
+      fixed.add(readCam.group);
+      owned.push(...readCam.owned);
+      return;
+    }
     const body = addF(box(0.34, 0.26, 0.5, mats.dark), GANTRY_X, beamY - 0.38, z);
     body.rotation.x = 0.34;
     addF(box(0.06, 0.22, 0.06, mats.dark), GANTRY_X, beamY - 0.2, z);
     const l = cyl(0.1, 0.06, mats.lens, 18);
     l.rotation.x = Math.PI / 2 + 0.34;
     addF(l, GANTRY_X, beamY - 0.5, z + 0.24);
-    if (i === 1) headPos = new THREE.Vector3(GANTRY_X, beamY - 0.44, z + 0.32);
   });
   // side-reading head low on the column, aimed across the lane at the plate
   addF(box(0.3, 0.24, 0.44, mats.dark), GANTRY_X, 0.55, colZ + 0.42);
@@ -294,5 +384,7 @@ export function buildGate(mats: GateMaterials, cmats: MaterialSet): GateModel {
     },
     headAnchor: { id: "head", pos: headPos, normal: new THREE.Vector3(0.1, 0.2, 1).normalize() },
     barrier: barrierArm,
+    readCam,
+    owned,
   };
 }

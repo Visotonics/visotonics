@@ -61,10 +61,18 @@ export interface StudioOpts {
   /** Path to a real HDRI (.hdr) for the environment, served from /public.
       When absent the hand-painted softbox canvas below is used instead.
 
-      This is the single highest-leverage upgrade available to these scenes:
-      a PBR metal is very nearly ONLY its environment reflection, and right now
-      that environment is three blurred white rectangles. A real captured studio
-      HDRI changes every metal surface at once, for one file and no code. */
+      Potentially the highest-leverage upgrade available to these scenes: a PBR
+      metal is very nearly ONLY its environment reflection, and right now that
+      environment is three blurred white rectangles. A real captured studio
+      HDRI would change every metal surface at once, for one file and no code.
+
+      UNEXERCISED AS OF 2026-08-08. No scene passes this and no .hdr ships in
+      /public, so the claim above is untested — the loader path below has never
+      run outside of being written. Treat it as a hypothesis with a working
+      implementation, not as a known win, and if it is ever tried, measure it
+      on a production build and log the number in PERFORMANCE.md before
+      believing it. Note it also costs a download and a second PMREM prefilter
+      per renderer, which is the very cost `noEnv` exists to avoid. */
   envHdr?: string;
   /** BARE mode: no cyclorama at all and a transparent framebuffer, so the
       subject sits directly on the page instead of inside a rendered picture.
@@ -102,18 +110,55 @@ export interface Studio {
 let _envCanvas: HTMLCanvasElement | null = null;
 function envCanvas(): HTMLCanvasElement {
   if (_envCanvas) return _envCanvas;
-  const EW = 1024, EH = 512;
+  /* 512x256, HALVED from 1024x512 — measured, and the reason is PMREM, not
+     the canvas fill.
+
+     `pmrem.fromEquirectangular()` runs PER RENDERER and cannot be shared
+     across contexts, so a page of eight scenes pays it eight times. Measured
+     on /platform/viso-yard?perf via `window.__visionStudio`, the prefilter was
+     the single largest step in every studio build: ~35 ms of a ~73-100 ms
+     studio, ~280 ms across the page. Its first pass renders this equirect into
+     a cubemap, so its cost tracks the SOURCE resolution.
+
+     Halving the source is free visually because nothing ever sees this texture
+     directly — PMREM's whole job is to blur it into roughness mips, and the
+     content is five soft radial gradients with no detail finer than ~40 px at
+     1024. The one thing that would suffer is a mirror-finish surface at
+     roughness ~0, and this site has none: the lowest is the camera lens at
+     0.08, on a 15 cm cylinder.
+
+     Everything below is expressed as fractions of EW/EH or scaled by S, so
+     this stays a single-number change. */
+  const EW = 512, EH = 256;
+  const S = EW / 1024;
   const cv = document.createElement("canvas");
   cv.width = EW;
   cv.height = EH;
   const ex = cv.getContext("2d")!;
 
+  /* THE ROOM, second draft — 2026-08-08, the one change that touches every
+     metal on the site at once.
+
+     A PBR metal is very nearly only its environment reflection, and the first
+     draft of this environment was five round white blobs. A round highlight
+     reads as "a light near some plastic"; what makes steel read as steel is a
+     LONG highlight — the smear a strip source leaves across a curved or
+     brushed surface. Real product studios light metal with strip banks for
+     exactly this reason. So the softboxes up top are now strips (drawn through
+     the same helper — a strip is just an ellipse with rx >> ry), the floor
+     half of the room is deeper so the strips have contrast to bite against,
+     and the one warm source agrees with the light rig's own warm kick
+     (`kickR`, #ffe2c2) instead of fighting it.
+
+     The value rule applies here doubly: this canvas is integrated by PMREM
+     into every roughness mip, so a small overall lift here lifts EVERYTHING.
+     Peaks stay where they were; only the shapes and the floor changed. */
   const room = ex.createLinearGradient(0, 0, 0, EH);
-  room.addColorStop(0.00, "#3E5A86");
-  room.addColorStop(0.32, "#1B2942");
-  room.addColorStop(0.52, "#0C1424");
-  room.addColorStop(0.72, "#141A26");
-  room.addColorStop(1.00, "#252A33");
+  room.addColorStop(0.00, "#37507A");
+  room.addColorStop(0.32, "#182741");
+  room.addColorStop(0.52, "#090F1C");
+  room.addColorStop(0.74, "#0C1017");
+  room.addColorStop(1.00, "#1C2129");
   ex.fillStyle = room;
   ex.fillRect(0, 0, EW, EH);
 
@@ -132,11 +177,23 @@ function envCanvas(): HTMLCanvasElement {
     ex.fill();
     ex.restore();
   };
-  softbox(EW * 0.30, EH * 0.15, 210, 75, 0.95, "rgba(226,238,255,0.45)");
-  softbox(EW * 0.72, EH * 0.12, 165, 60, 0.85, "rgba(214,232,255,0.40)");
-  softbox(EW * 0.06, EH * 0.34, 95, 130, 0.55, "rgba(180,210,255,0.28)");
-  softbox(EW * 0.94, EH * 0.36, 85, 120, 0.45, "rgba(255,236,214,0.22)");
-  softbox(EW * 0.50, EH * 0.88, 350, 100, 0.30, "rgba(190,200,214,0.18)");
+  /* TWO STRIP BANKS where the two round keys were — same centres, same peaks,
+     rx stretched ~1.6x and ry crushed to a bar. These are what draw the long
+     highlight along a container's corrugation crest or a tank barrel's crown.
+     The staggered heights (0.15 vs 0.10) keep the two smears from fusing into
+     one ring on a cylinder. */
+  softbox(EW * 0.30, EH * 0.15, 330 * S, 26 * S, 0.95, "rgba(226,238,255,0.50)");
+  softbox(EW * 0.72, EH * 0.10, 260 * S, 22 * S, 0.85, "rgba(214,232,255,0.45)");
+  /* The tall cool side source stays tall — it is the one that lights vertical
+     edges, and an edge wants a vertical smear. */
+  softbox(EW * 0.06, EH * 0.34, 80 * S, 150 * S, 0.55, "rgba(180,210,255,0.28)");
+  /* The warm kick becomes a low warm STRIP, and slightly warmer — it now
+     agrees with kickR (#ffe2c2) instead of reading as a smudge. On dark steel
+     this is the cool-top/warm-flank duotone the whole palette is built on. */
+  softbox(EW * 0.94, EH * 0.40, 150 * S, 42 * S, 0.50, "rgba(255,224,194,0.26)");
+  /* Floor bounce: wider, flatter, slightly dimmer — undersides stay alive but
+     the deepened floor keeps its contrast against the strips. */
+  softbox(EW * 0.50, EH * 0.90, 400 * S, 80 * S, 0.26, "rgba(184,196,212,0.15)");
 
   ex.globalAlpha = 0.05;
   for (let i = 0; i < 22; i++) {
@@ -194,15 +251,35 @@ export function createStudio(wrap: HTMLElement, opts: StudioOpts = {}): Studio {
      was: this is a blurred reflection source, and nothing in it survives the
      prefilter at 2048 that does not survive at 1024. */
   mark("renderer");
-  const envTex = new THREE.CanvasTexture(envCanvas());
-  mark("envCanvas");
 
-  envTex.mapping = THREE.EquirectangularReflectionMapping;
-  envTex.colorSpace = THREE.SRGBColorSpace;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envRT = pmrem.fromEquirectangular(envTex);
-  envTex.dispose();
-  scene.environment = envRT.texture;
+  /* `noEnv` IS HONOURED HERE — AND UNTIL 2026-08-08 IT WAS NOT.
+
+     The option was documented at the top of this file, six scenes passed it
+     (four hero cards, the lead card, ascii-hero), and PERFORMANCE.md #6
+     credited it with "4 prefilters -> 0" — but the guard was never written.
+     Every one of those scenes built the canvas texture and ran the full PMREM
+     prefilter anyway. The claimed saving had never once occurred.
+
+     Found by measuring rather than reading: `window.__visionStudio` showed a
+     ~23 ms `pmrem` step on a scene that had just been given `noEnv: true`.
+     This is the third instance in this codebase of a cache or a flag that was
+     written, documented, credited and never wired (see #23's `cached()` and
+     `Tracked.setFill`), which is why the standing rule is that no entry goes
+     in PERFORMANCE.md without a measured number. */
+  let pmrem: THREE.PMREMGenerator | null = null;
+  let envRT: THREE.WebGLRenderTarget | null = null;
+  if (!opts.noEnv) {
+    const envTex = new THREE.CanvasTexture(envCanvas());
+    mark("envCanvas");
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    envTex.colorSpace = THREE.SRGBColorSpace;
+    pmrem = new THREE.PMREMGenerator(renderer);
+    envRT = pmrem.fromEquirectangular(envTex);
+    envTex.dispose();
+    scene.environment = envRT.texture;
+  } else {
+    mark("envCanvas");
+  }
   mark("pmrem");
 
   /* If a real HDRI is supplied, swap it in as soon as it lands. The painted
@@ -371,12 +448,25 @@ export function createStudio(wrap: HTMLElement, opts: StudioOpts = {}): Studio {
   size();
 
   const render = () => {
+    /* THE BACKDROP FOLLOWS THE CAMERA IN XZ. The cyclorama is a radius-70
+       sphere, and it used to be pinned at the world origin — fine for every
+       orbiting scene, but the lead card's lateral track is UNBOUNDED, so at
+       t ≈ 70s its camera physically exited the backdrop and the sky went
+       wrong. Found during the lead card's uplift pass, latent since the
+       scene was written. Recentring on the camera each frame is invisible to
+       every static scene (a sphere is translation-symmetric to a camera at
+       its centre; y stays 0 so the horizon gradient holds) and makes the
+       sphere inescapable for any pan of any length. */
+    if (backdrop) {
+      backdrop.position.x = camera.position.x;
+      backdrop.position.z = camera.position.z;
+    }
     if (composer) composer.render();
     else renderer.render(scene, camera);
   };
 
   const dispose = () => {
-    envRT.dispose();
+    envRT?.dispose();
     hdrRT?.dispose();
     pmrem?.dispose();
     /* SKIP SHARED GEOMETRY. This traverse used to dispose EVERY mesh geometry

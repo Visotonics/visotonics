@@ -36,7 +36,7 @@ import { mountWhenVisible } from "../_vision/mount";
 import { clamp01, easeInOut, placeCamera, smoothstep } from "../_vision/camera";
 import { type Callout, createCallout, makeProjector, placeCallout } from "../_vision/overlay";
 import { buildMaterials } from "../container-vision/materials";
-import { createSightCone, createTracker, detectMaterials } from "../hero-cards/detect";
+import { createTracker, detectMaterials } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 import {
   BELT_TOP, FLAGGED, GROUND, ITEM_N, SEQUENCE, buildCargo, buildCargoMaterials,
@@ -350,22 +350,22 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
 
          `footprintY` is the belt's running surface, not the deck: the pool at
          the cone's foot has to land where the cargo actually is. */
-      const readCone = createSightCone({
-        color: PALETTE.accent, footprintY: BELT_TOP + 0.006,
-      });
-      scene.add(readCone.group);
-      const CONE_R = 0.62;              // target footprint radius, world units
+      /* THE CONE BELONGS TO THE RIG NOW. It is built in cargo.ts by
+         `buildReadCamera`, which owns the apex, the half-angle and the colour
+         flip; this scene only says WHERE to look and HOW WARM to be. Its group
+         is added to the scene rather than to the model root because the pool
+         at its foot must stay flat in world XZ. */
+      const readCone = model.readCam.cone;
+      scene.add(model.readCam.coneGroup);
       const coneAim = new THREE.Vector3();
-      /* THE SIGNAL ORANGE, NOT PALETTE.warn's AMBER. #FFB020 is the severity
-         LABEL's type colour and it is close to the pendant lamp's own
-         #FFD9A0 — at 34% additive over a lit belt the two are indistinguishable,
-         which is why the flip was reported as not happening at all. #ED510C is
-         the site's SIGNAL, a full 60 degrees of hue away from the accent and
-         from the lamp, and it is the correct member of the two-value warm pair
-         here anyway: this is a MARK, not a name. */
-      const coneWarn = new THREE.Color("#ED510C");
-      const coneCool = new THREE.Color(PALETTE.accent);
-      const coneCol = new THREE.Color();
+      /* The accent->SIGNAL pair the rig lerps between is its default, and it
+         is #ED510C rather than PALETTE.warn's amber for a reason worth keeping
+         here: #FFB020 is the severity LABEL's type colour and sits close to the
+         pendant lamp's own #FFD9A0 — at 34% additive over a lit belt the two
+         are indistinguishable, which is why the flip was once reported as not
+         happening at all. #ED510C is a full 60 degrees of hue away from both,
+         and is the right member of the warm pair anyway: this is a MARK, not
+         a name. See `setSignal` in _vision/readCamera.ts. */
 
       /* And the damage bracket stays separate, in orange — the CONCLUSION
          colour. It sits ON TOP of the flagged carton's routine read, which is
@@ -385,7 +385,6 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
          needs a name and a confidence, which a bracket cannot carry. Everything
          else in the overlay is bespoke (see below). */
       const damage = createCallout(overlay, {
-        id: "damage",
         title: "Crushed corner",
         detail: "89% confidence · case 51 · logged, not stopped",
         pos: new THREE.Vector3(),          // replaced per frame — the target moves
@@ -956,8 +955,10 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         if (coneItem >= 0 && coneBest > 0.01) {
           const cg = model.items[coneItem].grp;
           coneAim.set(cg.position.x, cg.position.y + 0.30, cg.position.z);
-          const range = Math.max(model.lensPos.distanceTo(coneAim), 0.01);
-          readCone.aim(model.lensPos, coneAim, Math.atan(CONE_R / range));
+          /* One call: re-reads the live lens, derives the half-angle from the
+             apex->target distance, and re-throws the cone. The trigonometry
+             that used to sit here is inside the rig. */
+          model.readCam.aimAt(coneAim);
           /* WARMTH COMES FROM THE CONE'S OWN READ, NOT FROM `dmgVis`, and the
              first version got this wrong in a way that could never fire.
 
@@ -976,8 +977,7 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
              so the bracket and the label arrive while the cone is still on
              the case rather than after it has left. */
           const warmth = coneItem === FLAGGED ? coneBest : 0;
-          coneCol.copy(coneCool).lerp(coneWarn, warmth);
-          (readCone.material.uniforms.uColor.value as THREE.Color).copy(coneCol);
+          model.readCam.setSignal(warmth);
           /* AND IT BRIGHTENS AS IT WARMS. 0.34 was tuned for a cool volume
              reading against a dark deck; the same alpha in orange, over the
              warm pool the pendant throws on exactly that stretch of belt,
@@ -1213,7 +1213,7 @@ export default function CargoVisionScene({ bare = false, bleed = 0 }: { bare?: b
         model.owned.forEach((g) => g.dispose());
         model.container.edges.geometry.dispose();
         (model.container.edges.material as THREE.Material).dispose();
-        readCone.dispose();
+        model.readCam.dispose();
         dm.all.forEach((m) => m.dispose());
         // the nine per-item bracket materials are clones this scene made
         readMats.forEach((m) => m.dispose());

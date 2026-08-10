@@ -142,18 +142,6 @@ export function bracket(w: number, h: number, mat: THREE.Material, arm = 0.22, t
   return g;
 }
 
-/** A tick mark under a bracket — stands in for the confidence readout that
-    would be there at full size but is illegible at 320px. */
-export function ticks(count: number, mat: THREE.Material, span = 0.5) {
-  const g = new THREE.Group();
-  for (let i = 0; i < count; i++) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(span / (count * 2), 0.05), mat);
-    m.position.x = (i - (count - 1) / 2) * (span / count);
-    g.add(m);
-  }
-  return g;
-}
-
 /** The sweep plane that drives detection. Thin, bright, and always vertical. */
 export function scanPlane(height: number, mat: THREE.Material, thickness = 0.05) {
   return new THREE.Mesh(new THREE.PlaneGeometry(thickness, height), mat);
@@ -172,11 +160,9 @@ export function billboard(o: THREE.Object3D, camera: THREE.Camera) {
    scale and depth-offset from it directly, so it locks on regardless of
    where the camera is looking from. */
 export interface Tracked {
-  group: THREE.Group;      // bracket + optional ticks, billboarded
-  /** Swap the bracket/ticks material (e.g. accent <-> warn) without rebuilding. */
+  group: THREE.Group;      // bracket, billboarded
+  /** Swap the bracket material (e.g. accent <-> warn) without rebuilding. */
   setMaterial: (mat: THREE.Material) => void;
-  /** Show only the first `frac` (0..1) of the tick row — the confidence/tally readout. No-op if built without ticks. */
-  setFill: (frac: number) => void;
   /** Multiply this tracker's padding. Drives the hover ACQUIRE settle: >1 sits
       the bracket oversized and loose, 1 is locked snug on its target. Relative
       to the tracker's own `pad`, so a tracker built deliberately tight stays
@@ -220,7 +206,7 @@ const STROKE = 0.065;
    no-op at REF, so the cards are untouched. */
 const STROKE_REF_DIST = 10;
 
-export function createTracker(mat: THREE.Material, opts?: { ticks?: number; pad?: number }): Tracked {
+export function createTracker(mat: THREE.Material, opts?: { pad?: number }): Tracked {
   const pad = opts?.pad ?? 1.12;
   let padScale = 1;
   const setPad = (sc: number) => { padScale = sc; };
@@ -262,11 +248,6 @@ export function createTracker(mat: THREE.Material, opts?: { ticks?: number; pad?
   const setMaterial = (m: THREE.Material) => {
     for (const b of bars) b.mesh.material = m;
   };
-
-  /* Retained as a no-op so callers that reported confidence through the tick
-     row keep compiling. The row itself is gone: at 320px it was unreadable
-     floating dashes that only added clutter. */
-  const setFill = (_frac: number) => {};
 
   const follow = (target: THREE.Object3D | null, camera: THREE.Camera) => {
     if (!target) {
@@ -332,7 +313,7 @@ export function createTracker(mat: THREE.Material, opts?: { ticks?: number; pad?
     group.visible = true;
   };
 
-  return { group, setMaterial, setFill, setPad, follow };
+  return { group, setMaterial, setPad, follow };
 }
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));

@@ -530,3 +530,212 @@ Under 60 ms on the busiest page. Not worth the risk.
   Without it, uniforms three converted sRGB→linear are written straight into an
   sRGB framebuffer: the authored colour renders at ~⅛ brightness.
 - **Dev Strict Mode double-builds every scene.** Never trust a dev timing.
+
+---
+
+## 39 — The shared-machinery refactor. Measured: NOT a performance change.
+
+2026-08-08. `_vision/readCamera.ts` extracted and all five detection cameras
+migrated onto it; Container Vision moved off its hand-rolled studio onto
+`createStudio` + `overlay.ts`; Cargo moved onto `buildPendantLamp`; `addGrain`
+extracted from two copies; four dead exports removed.
+
+**This was correctness and drift work, not optimisation, and the numbers say
+so.** Recording it here anyway, because "we refactored and assumed it helped"
+is exactly what this document exists to prevent.
+
+Production build, `/platform/viso-yard?perf`, warm (no scroll — scenes build at
+idle per #34). **Medians of 4 runs:**
+
+| scene | ms |
+|---|---|
+| container | 133 |
+| tank | 126 |
+| gate | 157 |
+| yard-vision | 71 |
+| crane | 144 |
+| cargo | 133 |
+| document | 71 |
+| work-vision | 102 |
+| **total** | **~937** |
+
+Container alone on `/lab/container-vision?perf`: **173, 178** — stable.
+
+### Two things about this measurement that must not be read as fact
+
+1. **The run-to-run noise was larger than any effect being looked for.** Single
+   runs produced `container 354` and, in another run, `gate 482`, while the same
+   scenes measured 130 and 155 in adjacent runs. The outlier moved between
+   scenes, which is the signature of machine load, not of a scene. A second
+   agent was running `next build` on the same machine throughout. **Any single
+   run of this instrument is worthless; take medians, and take them on an idle
+   machine.**
+
+2. **Container's 133 vs the 90 recorded in #33 is UNRESOLVED.** It may be the
+   `createStudio` migration; it may be that #33 was measured with four scenes on
+   the page where there are now eight; it may be the machine. **Not attributed,
+   and deliberately not claimed as a regression or as noise.** Needs a clean
+   re-measure on a quiet machine against a pre-migration build. This is the one
+   open number from this pass.
+
+### Falsified by this pass
+
+- **"Gate Vision skips the shared metal/texture system"** — carried in
+  `06-owed.md` as an open performance item. Stale: #32 fixed it. Gate imports
+  `makeMetal`, caches all five textures module-level and warms them at idle.
+  Measured here at 157 ms with its internal marks reading `containerMats 0 /
+  gateMats 0 / buildGate 75`. The owed entry has been removed.
+- **"Container and crane duplicate `skins.ts`'s container textures"** — raised
+  in the audit (`docs/12`). Wrong. Container builds true folded corrugation
+  *geometry* (`container.ts:46-88`), not a painted skin; there is no duplicated
+  texture generator to extract.
+
+### Small removals, no measured delta, done for correctness
+
+- `ticks()` (`hero-cards/detect.ts`) — zero callers, and its companion
+  `setFill` was already a documented no-op. Deleted.
+- `bloom.strength = 0.18` assigned every frame in `card-scene.tsx`'s render
+  loop where `bloom` is always `null` (cards run `bloom: false`). Dead work in
+  a hot loop; removed. Too small to measure, which is why it is filed here as
+  a removal rather than as an optimisation.
+
+### Still open, still unmeasured
+
+- **PMREM prefiltering runs per renderer** (`studio.ts:55-60`). Still true, still
+  the largest structural cost in the shared layer, and still not isolated —
+  `__visionPerf` reports whole-scene build time and there is no mark around the
+  prefilter itself. Measuring it needs an instrument that does not exist yet.
+- **`envHdr` has never run.** No scene passes it and no `.hdr` ships. Its
+  comment used to call it "the single highest-leverage upgrade available"; that
+  claim is now marked in-code as an untested hypothesis. If it is ever tried:
+  measure first, and note it costs a download plus a second prefilter per
+  renderer — the very cost `noEnv` exists to avoid.
+
+---
+
+## 40 — `noEnv` was never implemented. Entry #6 never happened.
+
+2026-08-08. The largest finding of this pass, and it is a **correction to this
+document**, not a new optimisation.
+
+`StudioOpts.noEnv` has been documented at the top of `_vision/studio.ts` since
+it was written. Six scenes pass it: the four hero cards, the lead card and
+ascii-hero. Entry **#6 above credits it with "4 prefilters → 0"**.
+
+**The guard was never written.** There was no `if (opts.noEnv)` anywhere in the
+file. Every scene that asked to skip the environment built the canvas texture
+and ran the full PMREM prefilter regardless. #6's saving never once occurred,
+on any load, since the day it was recorded.
+
+Found by measuring, not by reading: `window.__visionStudio` reported a ~23 ms
+`pmrem` step on a scene that had *just* been given `noEnv: true`.
+
+| | before | after |
+|---|---|---|
+| homepage PMREM (5 studios: 4 cards + lead) | ~27–35 ms **each** | **0** |
+| homepage total scene build | — | **506 ms** (yard 79 / warehouse 96 / factory 217 / data 44 / lead 70) |
+
+Verified on screen: the cards are pixel-unchanged. They were authored for
+`noEnv` — `subjects.ts:1472` says "metalness stays low throughout: these cards
+run `noEnv`" — so they were always designed around an environment they were,
+in fact, still paying to build.
+
+**This is the third flag-or-cache in this codebase written, documented,
+credited and never wired** — after `cached()` in `metal.ts` (#23) and
+`Tracked.setFill`. The pattern is now explicit enough to state as a rule:
+*a documented optimisation is a hypothesis until an instrument shows it firing.*
+
+### 40b — the environment canvas halved: 1024×512 → 512×256
+
+For the scenes that DO want an environment. PMREM's first pass renders the
+equirect into a cubemap, so its cost tracks source resolution.
+
+Measured on `/platform/viso-yard?perf`, median PMREM per studio across 8 scenes:
+
+| | ms per studio | page total |
+|---|---|---|
+| 1024×512 | 35.5 | ~280 ms |
+| 512×256 | **27** | **~193 ms** |
+
+Free visually: nothing sees this texture directly — PMREM blurs it into
+roughness mips, and the content is five soft radial gradients. The only surface
+that could reveal it is a mirror at roughness ~0; the lowest on this site is
+the camera lens at 0.08, on a 15 cm cylinder. Container Vision checked on
+screen after the change — metal sheen and corrugation unchanged.
+
+### 40c — Container Vision did NOT get slower. A/B'd against git.
+
+Reported as feeling slower after the `createStudio` migration. Measured both
+builds on `/lab/container-vision?perf`, production, same session:
+
+| build | ms |
+|---|---|
+| pre-migration (hand-rolled studio, HEAD) | 194, 187 |
+| post-migration (`createStudio`, 1024 env) | 173, 178 |
+| post-migration + 512 env | **165, 168** |
+
+**~190 → ~166, about 13% faster.** Runtime also clean: median frame 6.1 ms,
+p95 7.4 ms, max 7.8 ms, zero frames over 40 ms.
+
+The 90 ms in #33 is not reproducible in the current tree at any point in this
+A/B — including on the pre-migration code — so it is a stale figure measured
+under different page composition (four scenes, not eight), not a regression.
+`__visionPerf`'s single-run noise on a loaded machine is ±200 ms; see #39.
+
+---
+
+## 41 — A systematic sweep for the #40 defect class. Four more found.
+
+2026-08-08. After `noEnv` turned out to have never been wired, the whole tree
+was swept for the same shape: **declared, documented, sometimes credited —
+never actually honoured.** Four Haiku explorers covered the shared layer, the
+ten scene folders, the app/component level, and every cache and disposal path;
+every hit was then verified by hand before being touched.
+
+### Found and removed
+
+1. **`createTracker`'s `ticks` option and `Tracked.setFill`** — the worst of the
+   four, because a scene was actively using them. `ticks` was accepted and never
+   read; `setFill` was `(_frac) => {}`. `lead-card/scene.tsx` built four
+   trackers with `{ ticks: 4 }` / `{ ticks: 3 }` and called
+   `setFill(0.4 + 0.6 * ((phase % 1) / 0.72))` **every frame, per tracker, in
+   the render loop** — computing a confidence fraction and handing it to a
+   function that discards it. The scene was written as though it displayed a
+   tally it has not displayed since the tick row was deleted. API and call
+   sites both removed.
+2. **`CalloutSpec.id`** — a REQUIRED field never read by `createCallout` or
+   `placeCallout`, and absent from the returned `Callout`. **15 call sites**
+   across eight scenes were each inventing a value for it. Removed.
+3. **`CargoModel.mouth`** — built, documented, returned, never read. Removed.
+   (The prose comments about the door mouth's geometry are load-bearing and
+   were kept.)
+4. **Two timer leaks** — `draw-schematic.tsx` schedules three staggered acts
+   plus one timeout per label, and `motion.tsx`'s `CountUp` re-schedules itself
+   24 times over 800 ms. **Neither tracked its timers, and neither cleanup
+   cancelled them**, so a component scrolled into view and then navigated away
+   kept writing styles to a detached node. Both now track and clear.
+
+### Checked and found CLEAN — recorded so it is not re-swept
+
+- **All 12 module-level caches** (metal ×3, container ×2, gate ×2, cargo,
+  document, yard, skins, ascii) are genuinely read on hit, correctly keyed, and
+  every `warm*()` is actually in `lazy.tsx`'s idle chain. `noEnv` was the
+  outlier, not the pattern.
+- **Every disposal path.** Shared geometry is tagged `userData.shared` and
+  studio's sweep honours it; no scene disposes a shared cache entry; no
+  per-scene geometry is left unfreed.
+- **All other `StudioOpts` / `ReadCameraOpts` / `PendantOpts` / `MetalOpts`
+  fields** are read.
+
+### The standing rule this produces
+
+Three of these (`noEnv`, `cached()`, `setFill`/`ticks`) share one signature:
+**an API whose callers pass it in good faith while the implementation ignores
+them.** Type checking cannot catch it — every one of these compiled cleanly for
+months. Only two things find it: an instrument showing the work not happening,
+or a grep from the DECLARATION to the READ.
+
+So, added to this document's rules: **when adding an option, add the guard and
+the measurement in the same commit — and when auditing, grep declaration-to-read
+rather than reading the comment.** The comment is the thing most likely to be
+wrong.

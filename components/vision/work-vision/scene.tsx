@@ -28,8 +28,8 @@
         -> each act's register row writes itself while the walker is still
            moving through that act.
 
-   THE COLOUR GRAMMAR. Blue (#5CC8FF) is the system observing: the one cone
-   act 1 keeps, every bracket, the callout title, the register, the resolve
+   THE COLOUR GRAMMAR. Blue (#5CC8FF) is the system observing: all three
+   acts' cones, every bracket, the callout title, the register, the resolve
    line. No orange anywhere — nothing here fails, nothing is flagged.
 
    Every graphic carries `toneMapped: false`. Fills its parent. Not
@@ -42,17 +42,22 @@ import { createStudio } from "../_vision/studio";
 import { mountWhenVisible } from "../_vision/mount";
 import { clamp01, easeInOut, placeCamera, smoothstep } from "../_vision/camera";
 import { createCallout, makeProjector, placeCallout } from "../_vision/overlay";
-import { createSightCone, createTracker } from "../hero-cards/detect";
+import { createTracker } from "../hero-cards/detect";
 import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 import {
-  CONE_HALF_ANGLE, GROUND_Y, buildWork, buildWorkMaterials, WALK_FROM, WALK_TO, walkerX,
+  GROUND_Y, buildWork, buildWorkMaterials, WALK_FROM, WALK_TO, walkerX,
 } from "./work";
 
 /* 13.5s total, three equal 4.5s acts. Long enough per act for a 1.6 m/s walk
    to clear the frame and for a read to land without being a flash. */
 const ACT_DUR = 4.5;
 const LOOP = ACT_DUR * 3;
-const SETTLE = 0.9;      // each act's own dressing fades up over this long
+/* The PAGE intro, in seconds of absolute elapsed time — the one and only fade
+   up of the set, paid once when the section first comes on screen. It is NOT
+   per act: see the long note at `solid` in applyFrame for why a per-act ramp
+   was removed (it made every hard cut open on a near-black frame, which is the
+   opposite of how a VMS cut reads). */
+const SETTLE = 0.9;
 
 /* Reduced-motion still frame: parked in the last beat of act 3, where the
    callout has resolved, the register carries all three rows and the resolve
@@ -184,6 +189,8 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       wmark("buildWork");
       scene.add(model.root);
       scene.add(model.fixed);
+      scene.add(model.fixed2);
+      scene.add(model.fixed3);
       for (const g of model.envActs) scene.add(g);
       /* NO CAMERA-LOCKED CORNER PROPS. Three small housings used to be
          parented to the render camera's transform so one sat in a screen
@@ -193,8 +200,9 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          read as an unidentifiable dark shape rather than as equipment.
          Cargo Vision's read camera is the model to follow instead: a real
          object, on a real pole, standing in the scene at the place the read
-         actually happens. Acts 2 and 3 currently have no camera in shot as a
-         result; that is the honest state until each gets a real one. */
+         actually happens. All three acts now have one, built from the SAME
+         spec (work.ts's `makeActCam`) and differing only in the mount: a rack
+         clamp, a dock-wall arm, a ceiling stem. */
 
       /* ---- fog: same colour, same idea, every act ----
          #0A0B0E is PALETTE.bgBottom, the backdrop's own bottom stop, so a
@@ -205,22 +213,33 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          edge, not to grade any one act's set dressing precisely. */
       scene.fog = new THREE.Fog(PALETTE.bgBottom, 6.0, 26.0);
 
-      /* ---- the floor: a drafting sheet on the slab, shared by every act ---- */
+      /* ---- the floor: a drafting sheet on the slab, shared by every act ----
+
+         OPACITY HALVED, 0.12 -> 0.06, AND THE REASON IS THAT THE FLOOR IS A
+         FLOOR NOW. The drafting grid is the site's language for "a measured
+         space" and it belongs here — but at 0.12 over three acts it was the
+         strongest thing on the ground plane, so a warehouse slab read as a
+         diagram someone had put objects on. Review called it "floor grid
+         confusing", and that is what it was confusing WITH: the concrete's own
+         expansion joints, which are on a 2.4m pitch, crossing a 1m grid.
+
+         Driven at the CALL SITE, on this scene's own instance. `draftingGround`
+         is shared with the hero cards and every other dark scene; the number
+         that is right for a card at 320px is not the number that is right for a
+         13-unit warehouse frame, and this is exactly the parameter the builder
+         exposes so a scene can say so without touching the shared file. */
       const ground = draftingGround({
         size: 64, y: GROUND_Y - 0.018, step: 1,
-        color: PALETTE.grid, opacity: 0.12, glow: 2.2, majorBoost: 2.2,
+        color: PALETTE.grid, opacity: 0.06, glow: 2.2, majorBoost: 2.2,
         fadeStart: 0.24, fadeEnd: 0.62,
       });
       ground.mesh.renderOrder = -3;
       scene.add(ground.mesh);
 
-      /* ---- act 1's one sight cone ----
-         Built once, aimed once — a fixed head's fixed field of view, not a
-         searchlight. Acts 2 and 3 carry no cone (see work.ts's header): a
-         cone per act across three independent places added ink without
-         adding read; the bracket alone already says "a machine is watching"
-         in every act, and act 1 is where a held static shot benefits most
-         from also showing the field of view. */
+      /* ---- the sight cones — one per act, because one rig per act ----
+         A cone belongs to a LENS. All three acts now have a real rig standing
+         in their own place, so all three throw one; a beam with no visible
+         source would be the same decal problem the corner props had. */
       /* THE CONE TRACKS THE WALKER. It used to be aimed ONCE, here at build
          time, at a fixed point on the floor — so it was a static wedge of
          light the subject happened to walk through, and it could not do the
@@ -237,12 +256,25 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          CONE_HALF_ANGLE is now a FLOOR rather than the value: at the far end
          of the walk the range is long enough that a constant footprint would
          ask for a needle-thin cone, which reads as a laser rather than a
-         field of view. */
-      const sightCone = createSightCone({ color: PALETTE.accent, footprintY: GROUND_Y });
-      scene.add(sightCone.group);
+         field of view.
+
+         Migrated onto the shared read-camera rig (see work.ts): the housing,
+         the cone, the apex-from-live-glass read, and the CONE_FOOT/
+         CONE_HALF_ANGLE half-angle formula all now live in `model.readCam`,
+         built once in work.ts. This call site only says WHERE to look —
+         `model.readCam.aimAt(coneAim)` re-points the head and re-throws the
+         cone in one call, same as cargo-vision's call site. */
+      /* TWO CONES NOW, ONE AT A TIME. Acts 1 and 2 each have a real camera in
+         the world and each throws its own cone; act 3 still has neither. Both
+         cone groups live in the scene permanently and the per-frame block
+         below gives the ACTIVE act's cone the opacity and zeroes the other —
+         a cone group is not gated by `.visible` like dressing is, because its
+         opacity is already the thing being ramped and two ways of hiding the
+         same object is how one of them gets forgotten. */
+      scene.add(model.readCam.coneGroup);
+      scene.add(model.readCam2.coneGroup);
+      scene.add(model.readCam3.coneGroup);
       const coneAim = new THREE.Vector3();
-      const coneApex = new THREE.Vector3();
-      const CONE_FOOT = 0.85;   // target footprint radius on the subject, m
 
       /* ---- the detection bracket, one tracker for all three acts ----
          CRITICAL: every subject material ramps opacity (transparent: true),
@@ -286,7 +318,6 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          the act-index check below), so there is never ambiguity about which
          one a viewer is reading. */
       const idents = ACT_COPY.map((c, i) => createCallout(overlay, {
-        id: `ident${i}`,
         title: c.title,
         detail: c.detail,
         pos: model.headAnchor.clone(),
@@ -466,6 +497,8 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         model.walk(t);
         model.root.updateMatrixWorld(true);
         model.fixed.updateMatrixWorld(true);
+        model.fixed2.updateMatrixWorld(true);
+        model.fixed3.updateMatrixWorld(true);
 
         /* ---- 2. camera: one pose per act, HARD CUT, never animated ---- */
         const elev = (A.elevDeg * Math.PI) / 180;
@@ -490,56 +523,181 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            act 1's set dressing, so it toggles with everything else in
            envActs[1]. */
         model.fixed.visible = act === 0;
+        /* Act 2's wall-mounted rig, gated the same way and for the same
+           reason. Both rigs are equipment rather than dressing, so they sit
+           beside envActs rather than inside them, but the visibility rule is
+           identical: exactly one act's hardware is ever in shot. */
+        model.fixed2.visible = act === 1;
+        model.fixed3.visible = act === 2;
 
-        /* ---- 5. intro: each act's own dressing fades up on cut ----
-           SETTLE runs from the START OF THE ACT (q, not t), so every hard
-           cut opens on an empty-feeling frame the same way the original
-           single-aisle open did, rather than only the very first act getting
-           an intro and the other two just snapping to full opacity. */
-        const solid = frozen ? 1 : easeInOut(clamp01(q / (SETTLE / ACT_DUR)));
+        /* ---- 5. THE INTRO IS ONCE, ON MOUNT — NOT ONCE PER ACT ----
+
+           A HARD CUT LANDS ON A CAMERA THAT IS ALREADY LIVE. This ramp used to
+           run off `q`, the act's OWN local phase, on the reasoning that every
+           hard cut should open on an empty-feeling frame the way the original
+           single-aisle scene opened. Measured on screen at p = 0.345 — 0.16s
+           past the act-1 -> act-2 boundary — the frame was almost entirely
+           black: nothing but the register. The dock then materialised over the
+           next second, and the pack line did it again 4.5s later.
+
+           That contradicts the grammar this file states at the top. A video
+           management system cutting to camera 11 does not fade camera 11 up;
+           the dock has been standing there, lit, all shift. Three fades per
+           loop also make the act boundary read as a transition effect rather
+           than as a cut, which is the one thing a VMS cut must not look like.
+
+           So SETTLE now runs off ABSOLUTE ELAPSED TIME. It is the page intro
+           and nothing else: one 0.9s fade-up when the section first comes on
+           screen, after which `solid` is pinned at 1 for the rest of the
+           session and every act boundary — including the loop's own wrap from
+           act 3 back to act 1 — arrives fully dressed on its first frame.
+
+           WHAT THIS CARRIES WITH IT, because `solid` is the multiplier on all
+           of them: every material in mats.all, the paint stripes, the walkway
+           lines, the skylights, the shadow catcher, the drafting ground, the
+           three remaining pendant ramps (act 2's, and act 3's two — act 1 no
+           longer has one) AND their PointLight intensities, the cone opacity
+           and the bracket. The lamp
+           gates are `act === n ? solid : 0`, so with solid pinned at 1 the
+           active act's lamp is at full intensity on the boundary frame rather
+           than ramping in behind the dressing — that was the second half of
+           the same defect and it is fixed by the same line.
+
+           THE WALKER STILL ENTERS LATE and that is correct: he is gated by
+           WALK_WIN on the act's own phase, not by `solid`, because a person
+           walking into shot is the subject arriving, not the set arriving.
+           Nothing here pulses — this removes a ramp, it does not add an
+           effect. */
+        const solid = frozen ? 1 : easeInOut(clamp01(t / SETTLE));
         for (const m of mats.all) (m as THREE.Material & { opacity: number }).opacity = solid;
         mats.paint.opacity = solid * 0.38;
+        /* THE TWO NEW BY-NAME MATERIALS. Both are deliberately outside
+           `mats.all` because both need a multiplier of their own, and both
+           would be pinned at 1 by the sweep above if they were in it — which
+           for the skylights means two white rectangles in the roof.
+
+           0.70 ON THE WALKWAY LINES, UP FROM 0.55, AND THE LIGHT IS WHY IT HAD
+           TO GO UP RATHER THAN DOWN. `lineY` is a MeshBasicMaterial with
+           toneMapped false, so the paint's own value is FIXED — it does not
+           see act 1's new daylight at all. The floor under it does. So the
+           light that fixes the "too dark" note also cuts the line's contrast
+           against its own background, and the line was already reported
+           marginal at the darker exposure.
+
+           The composite is line*a + floor*(1-a). #8F7A1E has a relative
+           luminance of 0.198, so against a slab sitting near 0.05:
+
+             a = 0.55  ->  0.55*0.198 + 0.45*0.05 = 0.1315   (2.6x the floor)
+             a = 0.70  ->  0.70*0.198 + 0.30*0.05 = 0.1536   (3.1x the floor)
+
+           and the brighter the floor gets, the more the 0.55 version washes
+           out — at a floor of 0.09 it falls to 2.1x while 0.70 holds 2.0x of
+           a much larger absolute gap. 0.70 it is. The alpha MAP then varies it
+           0.78..1.00 along the run, so the line lands between 0.55 and 0.70 —
+           the old flat value is now this line's worn FLOOR rather than its
+           peak, which is the right way round for paint.
+
+           0.10 on the skylights is unchanged: they are motivation, not a light
+           source the renderer knows about (act 1's PointLight below is the
+           light they motivate). NOTHING PULSES — these two lines are the
+           entire drive for both. */
+        mats.lineY.opacity = solid * 0.70;
+        mats.sky.opacity = solid * 0.10;
         shadowMat.opacity = 0.5 * solid;
         setGroundOpacity(ground, solid);
 
-        /* ---- act 1's pendant ----
+        /* ---- act 1's DAYLIGHT, THROUGH THE ROOF ----
+           NO FIXTURE, SO NO MATERIAL RAMP — this is the one light in the scene
+           with nothing to fade up, because the object motivating it (the two
+           skylight strips in the roof) is dressing in env1 and is already
+           carried by the mats.sky drive above. Two lines instead of five.
+
+           The pendant that used to be driven here is gone from work.ts: act 1
+           is a 3.9m-clear aisle and a single practical at 2.55 over the walk
+           line was the wrong fixture for that height, as well as the one thing
+           in act 1 competing with the walker's head. Removing it cost the
+           floor ~4.0 of illuminance and the frame went too dark, which is what
+           this replaces — at a deliberately lower 3.0, because the job is
+           filling the frame back up, not reinstating a practical.
+
+           42.3 IS DERIVED, NOT PICKED: 3.0 target x 3.60^2 throw, divided by
+           the 0.91967 windowing term three.js applies at distance 8.0. The
+           full arithmetic, and why D = 8.0 makes it die before the back wall
+           at z = -9.5, is in work.ts at the light itself.
+
+           GATED ON act === 0, and that gate is the load-bearing half exactly
+           as it is for acts 2 and 3: `env1.visible = false` does NOT switch a
+           light off in three.js, so an ungated act-1 daylight would be pouring
+           through the dock's roof and the pack room's ceiling. It multiplies
+           `solid` like every other lamp, so it arrives at full strength on the
+           first frame of the act — a VMS cut lands on a camera already live —
+           and it does not pulse, ramp or flicker. */
+        model.dayLight.intensity = (act === 0 ? solid : 0) * 42.3;
+
+        /* ---- act 2's pendant, over the dock walk line ----
+           The FIRST practical in the loop now that act 1 has none. Its drop is
+           2.55 to the apron, so 26 at decay 2 delivers 26/2.55^2 = 4.0 —
+           just under the studio key box's 5.6, which reads as a lamp
+           contributing to a lit room rather than as a lamp that IS the room.
+
            DRIVEN BY NAME, not by the mats.all sweep above: the lamp's
            materials are owned by the shared builder and are not in this
            scene's material list, so a lamp left to that sweep would sit at
            opacity 0 forever and its PointLight at intensity 0 — the exact
-           defect cargo-vision shipped once. Both have to be written here.
+           defect cargo-vision shipped once. The PointLight gate is the
+           load-bearing half: env2.visible = false does NOT switch a light off
+           in three.js, so an ungated lamp2 would light the racking aisle and
+           the pack line from a fitting neither act contains. */
+        const lamp2On = act === 1 ? solid : 0;
+        model.lamp2.shade.opacity = lamp2On;
+        model.lamp2.bulb.opacity = lamp2On;
+        model.lamp2.halo.opacity = lamp2On * 0.55;
+        model.lamp2.beam.opacity = lamp2On * 0.085;
+        model.lamp2.light.intensity = lamp2On * 26;
 
-           GATED ON ACT 1. The pendant belongs to env1, which is hidden in
-           acts 2 and 3 — but a PointLight is NOT hidden by its parent group's
-           visibility in three.js, it keeps illuminating the whole scene. Left
-           on, act 1's lamp would light the dock and the pack line from a
-           fixture neither of them contains.
+        /* ---- act 3's two task pendants over the pack benches ----
+           Same drive again, gated on act === 2, and the PointLight gate is
+           the load-bearing half for the third time: TWO ungated lights here
+           would be lighting the racking aisle and the dock from fittings
+           neither act contains, and two is harder to spot than one because
+           the result just looks like the scene being slightly too bright.
 
-           40 at decay 2 over a 2.55 drop delivers 40 / 2.55^2 = 6.2 at the
-           aisle floor, comfortably over the studio key box's 5.6, which is
-           the bar a practical has to clear to read as the reason a surface is
-           lit rather than as decoration hanging near one. */
-        const lampOn = act === 0 ? solid : 0;
-        model.lamp.shade.opacity = lampOn;
-        model.lamp.bulb.opacity = lampOn;
-        model.lamp.halo.opacity = lampOn * 0.55;
-        model.lamp.beam.opacity = lampOn * 0.085;
-        /* 26, down from 40. 40 was computed to clear the studio key at a
-           2.55 drop and it did — but "clears the key" is the floor for a
-           practical reading as motivated, not the target, and at 40 the pool
-           under it blew out the aisle. 26 gives 26/2.55^2 = 4.0, just under
-           the key box's 5.6, which reads as a lamp contributing to a lit room
-           rather than as a lamp that IS the room. */
-        model.lamp.light.intensity = lampOn * 26;
+           20.4, not 26 — these are small fittings whose light sits 2.08 above
+           the slab rather than high bays 2.35 above theirs. 4.71 * 2.08^2 =
+           20.38 reproduces act 1's illuminance at the floor; see work.ts for
+           the full derivation and for why these moved off the benches. */
+        const taskOn = act === 2 ? solid : 0;
+        for (const tl of model.taskLamps) {
+          tl.shade.opacity = taskOn;
+          tl.bulb.opacity = taskOn;
+          tl.halo.opacity = taskOn * 0.55;
+          tl.beam.opacity = taskOn * 0.085;
+          tl.light.intensity = taskOn * 20.4;
+        }
 
-        /* ---- 6. the read: cone (act 1 only) + bracket (every act) ---- */
+        /* ---- 6. the read: cone (acts 1 and 2) + bracket (every act) ---- */
         const walkOn = win(q, WALK_WIN);
-        const coneOn = act === 0 ? solid * 0.30 * walkOn : 0;
+        /* ACTS 0 AND 1 HAVE A CAMERA IN THE WORLD, ACT 2 DOES NOT (yet). The
+           cone belongs to a real lens: an act with no rig in shot must not
+           grow a beam out of nowhere, which is what a bare `solid * 0.30 *
+           walkOn` would do here. `coneOn` therefore stays 0 through act 3,
+           and the bloom lift at the bottom of this function reads the same
+           value, so it can never brighten for a cone that is not drawn. */
+        /* ALL THREE ACTS CARRY A CONE NOW. Each act has a real rig standing
+           in its own place, so item 2 of the docs/11 standard applies to all
+           of them and the old "acts 2 and 3 carry no cone" carve-out is gone.
+           It was never an aesthetic judgement — it was a description of the
+           fact that those acts had no camera to throw one from. */
+        const coneOn = solid * 0.30 * walkOn;
         /* re-aim at the walker's chest — see the note at createSightCone.
-           THE HOUSING TURNS WITH IT: model.aimAt re-points act 1's camera
-           head at the same target, so the body and the sight line can never
-           disagree. A camera whose housing stares down the aisle while its
-           cone swings across to follow is worse than no camera at all. */
+           THE HOUSING TURNS WITH IT: model.readCam.aimAt re-points act 1's
+           camera head AND re-throws the cone from the live lens in one call,
+           so the body and the sight line can never disagree — the apex-from-
+           live-glass read and the CONE_FOOT/CONE_HALF_ANGLE half-angle floor
+           this call site used to compute by hand now live in the rig, built
+           in work.ts (see buildReadCamera's header, point 3). A camera whose
+           housing stares down the aisle while its cone swings across to
+           follow is worse than no camera at all. */
         /* `cx`, NOT model.figure.position.x — and this was a real bug that
            only a second phase caught.
 
@@ -553,22 +711,35 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            frame edge while the cone still pointed at empty aisle on the left.
 
            A local position on a translated parent is not a world position. */
+        /* ONE AIM POINT, BOTH RIGS. `cx` already carries the act's direction
+           (walkerXFor reverses it for act 2), so the same chest-height point
+           on the walk line is correct for whichever camera is live — act 2's
+           head simply swings the other way, which is what selling "two
+           cameras" needs it to do.
+
+           Only the ACTIVE act's rig is re-aimed: aimAt writes the head's
+           quaternion and re-throws the cone, and doing that to a hidden rig
+           every frame is work whose result nobody sees. The other cone is
+           driven to zero opacity explicitly rather than left at whatever it
+           held when its act ended. */
         coneAim.set(cx, GROUND_Y + 1.05, 0);
-        if (act === 0) model.aimAt(coneAim);
-        /* APEX FROM THE LIVE GLASS. Measured with ?debug=1: the lens projects
-           to canvas y 117 and the cone's apex sat at y 253 — 136px below it,
-           because `coneApex` was never written and stayed at (0,0,0), so the
-           beam fired from the world origin. The head rotates now, so the lens
-           swings through an arc and the apex has to be read from the mesh
-           every frame, after aimAt has turned it. */
-        if (act === 0) model.lensWorld(coneApex);
-        if (coneOn > 0.001) {
-          const range = Math.max(coneApex.distanceTo(coneAim), 0.01);
-          sightCone.aim(coneApex, coneAim,
-            Math.max(CONE_HALF_ANGLE, Math.atan(CONE_FOOT / range)));
+        /* ONE LOOP OVER THE THREE RIGS, rather than three hand-written
+           branches. The third camera is where a copy-paste chain starts
+           dropping a line — the missing `lensWorld` the rig's own header
+           records is exactly that failure — so the per-act difference is
+           reduced to one index comparison and there is only one call to each
+           method in the whole file.
+
+           ALL THREE tick: the cone's shader animation is a pure function of
+           the time it is handed, so ticking a dormant one costs a uniform
+           write and guarantees it is never a frame stale on the hard cut. */
+        const rigs = [model.readCam, model.readCam2, model.readCam3];
+        for (let i = 0; i < rigs.length; i++) {
+          const live = i === act;
+          if (live) rigs[i].aimAt(coneAim);
+          rigs[i].setOpacity(live ? coneOn : 0);
+          rigs[i].tick(frozen ? 1.4 : t);
         }
-        sightCone.setOpacity(coneOn);
-        sightCone.tick(frozen ? 1.4 : t);
 
         tracker.follow(walkOn > 0.01 ? model.figure : null, camera);
         brkMat.opacity = solid * walkOn;
@@ -648,9 +819,14 @@ export default function WorkVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         reg.remove();
         resolve.remove();
         scene.remove(tracker.group);
-        sightCone.dispose();
+        scene.remove(model.readCam.coneGroup);
+        scene.remove(model.readCam2.coneGroup);
+        scene.remove(model.readCam3.coneGroup);
         brkMat.dispose();
         ground.material.dispose();
+        // model.dispose() folds readCam.dispose() (and so the cone's own
+        // materials-only dispose) in — see work.ts. Not called separately,
+        // same contract as cargo-vision's cleanup.
         model.dispose();
         mats.dispose();
         studio.dispose();

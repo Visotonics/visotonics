@@ -210,15 +210,27 @@ function Hero() {
     <section style={{ background: DARK, borderTop: `1px solid ${GRID_D}` }}>
       <style>{HERO_CARD_CSS}</style>
       {/* DESKTOP */}
-      {/* BAND 1 — THE FIRST SCREEN, AND ONLY TWO THINGS ON IT: the nav (from
-          the layout) and the headline. The hero used to be a fixed 828px slab
-          that put the headline, a log row and all four animation cards in the
-          same viewport, so the page opened on five competing objects and the
-          scenes were doing their loudest work before anyone had read what the
-          company does. This band is now exactly one screen tall — 100vh less
-          the 72px sticky nav — and holds the headline alone. The cards start
-          below the fold and are arrived at, not presented. */}
-      <div className="hidden md:flex" style={{ ...SHEET, minHeight: "calc(100vh - 72px)", flexDirection: "column" }}>
+      {/* BAND 1 — THE HEADLINE, AND THE CARDS DIRECTLY UNDER IT.
+
+          REVERTED 2026-08-10, by request, to the original arrangement: the
+          animations sit at the top of the page immediately below the heading
+          line, not below the fold.
+
+          The intervening design made this band exactly one screen tall
+          (100vh - 72px nav) holding the headline ALONE, on the reasoning that
+          the page opened on five competing objects and the scenes were doing
+          their loudest work before anyone had read what the company does.
+          That reasoning is recorded here rather than deleted, because it is
+          the argument to answer if this is ever revisited.
+
+          384 is not an arbitrary compact value — it restores the original
+          slab's proportion exactly. The old hero was an 828px sheet whose
+          second rule sat at 384 with the cards starting just under it, so a
+          384-tall headline band puts the callout rule (drawn at 100% - 48)
+          back at y=336 — the original's FIRST rule position — and starts the
+          cards where they always used to start. Nothing else about the cards,
+          their full-bleed treatment or the page's colour system changes. */}
+      <div className="hidden md:flex" style={{ ...SHEET, minHeight: 384, flexDirection: "column" }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
           <Verticals color={GRID_D} />
           {/* One rule, 48px off the bottom of the screen, carrying the callout.

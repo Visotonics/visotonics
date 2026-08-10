@@ -1,0 +1,51 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 770 >>
+stream
+BT /F1 11 Tf 14 TL 60 760 Td
+(VISOTONICS PARTNER NON-DISCLOSURE AGREEMENT) Tj T*
+() Tj T*
+(*** PLACEHOLDER DOCUMENT - NOT LEGAL COPY ***) Tj T*
+() Tj T*
+(This file exists so the partner portal signing flow can be built and) Tj T*
+(tested end to end. It has NOT been drafted or reviewed by a lawyer.) Tj T*
+(Replace it with the real executed NDA before any partner is asked to) Tj T*
+(agree to it, and bump NDA_VERSION in lib/nda.ts when you do.) Tj T*
+() Tj T*
+(1. Purpose) Tj T*
+(2. Confidential information) Tj T*
+(3. Obligations) Tj T*
+(4. Duration) Tj T*
+(5. Return of material) Tj T*
+(6. No licence) Tj T*
+() Tj T*
+(The readable text of each clause is rendered in the portal itself at) Tj T*
+(/client-portal/onboarding/nda - see lib/nda.ts for the source.) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001062 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1132
+%%EOF

@@ -7,6 +7,7 @@ import { JsonLd, organizationSchema, websiteSchema } from "@/components/json-ld"
 import { ConsentBanner } from "@/components/analytics/consent-banner";
 import { TrackingScripts } from "@/components/analytics/tracking-scripts";
 import { ConditionalFooter } from "@/components/campaign/campaign-chrome";
+import { HideOnPortalApp } from "@/components/portal/portal-chrome";
 import { CampaignFooter } from "@/components/campaign/campaign-footer";
 import {
   DEFAULT_DESCRIPTION,
@@ -81,9 +82,13 @@ export default function RootLayout({
         </noscript>
         <JsonLd data={organizationSchema()} />
         <JsonLd data={websiteSchema()} />
-        <SiteNav />
+        <HideOnPortalApp>
+          <SiteNav />
+        </HideOnPortalApp>
         <main className="flex-1">{children}</main>
-        <ConditionalFooter full={<SiteFooter />} minimal={<CampaignFooter />} />
+        <HideOnPortalApp>
+          <ConditionalFooter full={<SiteFooter />} minimal={<CampaignFooter />} />
+        </HideOnPortalApp>
         <ConsentBanner />
         <TrackingScripts />
       </body>

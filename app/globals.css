@@ -583,3 +583,54 @@
 @media (prefers-reduced-motion: reduce) {
   .nav-mega-fade { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Client portal — the NDA document panel's scrollbar.
+   From the Claude Design "Portal Restyling" study 1c: the agreement is printed
+   on light paper inside a dark sheet, so the scrollbar has to be dark-on-light
+   or it disappears against the page.
+--------------------------------------------------------------------------- */
+.doc-scroll {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(10, 11, 14, 0.28) transparent;
+}
+.doc-scroll::-webkit-scrollbar { width: 6px; }
+.doc-scroll::-webkit-scrollbar-thumb { background: rgba(10, 11, 14, 0.28); border-radius: 0; }
+.doc-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------------------------------------------------------------------
+   Portal application shell (dashboard + admin) — responsive behaviour.
+
+   The imported designs are drawn at 1600px and use fixed-width table columns.
+   Below roughly 1400px the right rail and a six-column table cannot both fit:
+   measured at 1024px the page overflowed by 157px and the company cell
+   collapsed to zero width. These two rules are what stop that.
+
+   Inline styles can't carry media queries, hence the classes.
+--------------------------------------------------------------------------- */
+.portal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--portal-rail, 380px);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1400px) {
+  /* Rail drops below the main column rather than squeezing the table. */
+  .portal-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Tables keep their column widths and scroll inside the panel. */
+.portal-table-scroll { overflow-x: auto; }
+.portal-table-scroll > * { min-width: 1180px; }
+/* 1180 = the five fixed columns (776) + gaps (100) + row padding (48) + a
+   readable 256px for the company name. Anything smaller and the company
+   column — the one you actually scan — collapses to a few pixels. */
+
+@media (max-width: 900px) {
+  /* Narrower than this the sidebar is more harm than help; it becomes a
+     horizontal strip above the content so sign-out stays reachable. */
+  .portal-shell { grid-template-columns: minmax(0, 1fr) !important; }
+  .portal-sidebar { border-right: none !important; border-bottom: 1px solid rgba(244,245,247,0.1); }
+  .portal-nav { display: none; }
+}

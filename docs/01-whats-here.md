@@ -27,9 +27,15 @@ Careers · Newsroom · Investor relations · Partners · Sustainability · Testi
 
 **Case studies is worse than a stub** — it's a blank page, not even a "coming soon" card.
 
-## Client portal — looks real, isn't
+## Client portal — real, but not switched on yet
 
-Login, register, and reset-password pages exist and look finished, but there is **no authentication behind any of them** — no accounts, no sessions, nothing checks a password. Treat this as a design mockup, not a working login, until someone builds the backend. Not in Google.
+Once a mockup with nothing behind it; **as of 2026-08-08 it is a working application**. Partners register, an admin approves or rejects them with a reason, they pick which of the three partner types they are, sign an NDA, and land on a dashboard. Real accounts, real sessions, a real database, and emails at each step.
+
+**It is not live.** The production deployment is missing its environment variables, so visotonics.com still shows a "not available yet" state. Two things are outstanding before real partners can use it: those variables, and a real NDA — the current agreement text is a placeholder, not lawyer-reviewed.
+
+Never in Google, by design.
+
+Full detail in `10-partner-portal.md`.
 
 ## Internal-only pages (never shown to visitors)
 

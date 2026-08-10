@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
+import { Brand } from "@/components/brand";
 import SignOutButton from "@/app/client-portal/sign-out-button";
 
 /* ---------------------------------------------------------------------------
@@ -187,13 +188,14 @@ export function AppShell({
       <div className="portal-sidebar" style={{ borderRight: `1px solid ${HAIR}`, display: "flex", flexDirection: "column" }}>
         <div style={{ height: 68, display: "flex", alignItems: "center", padding: `0 ${GUT}px`, borderBottom: `1px solid ${HAIR}` }}>
           <Link href="/" aria-label="Visotonics home" style={{ display: "flex", alignItems: "center" }}>
-            {/* The real wordmark, as the nav and footer use it. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/visotonics-high-resolution-logo-transparent.png"
-              alt="Visotonics"
-              style={{ display: "block", height: 16, width: "auto" }}
-            />
+            {/* The house wordmark component, exactly as SiteNav uses it.
+                Do NOT hand-roll an <img> here — Brand also applies
+                `filter: invert(1)` (the artwork is dark and disappears on a
+                dark ground without it) and a negative left margin that
+                cancels the transparent padding baked into the PNG so the
+                mark optically aligns to the sidebar's 24px gutter. Both were
+                missing when this was an inline <img>. */}
+            <Brand height={24} />
           </Link>
         </div>
 

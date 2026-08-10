@@ -170,3 +170,13 @@ bands deleted — ellipse defect; straps front+back; torso z×0.85), act-1 penda
 removed, clean `m.camBody` on all rigs, act-2 bollards/lip recoloured, act-3
 totes recoloured. Verified on production build against the owner's critique
 list, all three acts + both boundaries.
+
+## Update 8 — one cross-stream touch, disclosed
+
+To unbreak the build (the portal stream's `OnboardingStep` lost `"choose-type"`
+mid-flight, killing type-check and BUILD_ID), this stream made one minimal edit
+in portal territory: `app/client-portal/dashboard/page.tsx` — dropped the dead
+`step === "choose-type"` half of a comparison, behaviour identical. A second
+fix in `onboarding/partner-type/page.tsx` was made moot seconds later when the
+portal agent deleted that route entirely. Portal stream: fold or discard the
+dashboard edit as you see fit — it is commented in-file.

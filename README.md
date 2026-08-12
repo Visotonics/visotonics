@@ -43,9 +43,9 @@ npm run lint
   /register
   /reset-password
     /update
-  /onboarding/partner-type        onboarding step 1  (gated)
-  /onboarding/nda                 onboarding step 2  (gated)
+  /onboarding/nda                 required NDA step  (gated)
   /dashboard                      partner home       (gated)
+    /deals/new                    deal registration  (gated)
   /admin                          approval queue     (admin only)
   /auth/callback                  lands emailed confirmation + reset links
 /legal
@@ -55,9 +55,10 @@ npm run lint
 api/
   /lead                           contact + campaign lead capture (Resend)
   /partner-register
-  /partner-type
   /partner-nda
   /partner-approve
+  /deal-register
+  /deal-decide
 ```
 
 ## Structure
@@ -78,7 +79,8 @@ lib/
   auth.ts                    SERVER ONLY (uses next/headers) — session and role helpers
   supabase/                  browser client, server clients, env-var resolution
   nda.ts                     NDA text, clauses and version — PLACEHOLDER, not legal copy
-  partner-mail.ts            the four portal notification emails (Resend)
+  deal.ts                    client-safe deal vocabulary and value helper
+  partner-mail.ts            portal account and NDA notification emails (Resend)
   partner-crm.ts             the deliberately-empty Zoho seam
 supabase/migrations/        SQL, applied by hand in the Supabase dashboard. Not run by the build
 tests/                      vitest — `npm test` for unit, PORTAL_E2E=1 for integration

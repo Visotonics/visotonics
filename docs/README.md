@@ -39,7 +39,8 @@ Verified against the actual `app/`, `components/` and `lib/` tree at time of wri
 | # | File | Answers |
 |---|---|---|
 | 10 | `10-partner-portal.md` | **The backend reference.** Supabase, schema, auth, sessions, API routes, email, tests, security |
-| 15 | `15-partner-portal-design-prompts.md` | Ready-to-dispatch design briefs for the portal screens (not yet executed) |
+| 15 | `15-partner-portal-design-prompts.md` | Historical portal design briefs; the type-selection brief is superseded |
+| 16 | `16-credentials-and-services.md` | Sanitized credential inventory, service configuration and rotation rules |
 
 **Elsewhere in the repo**
 
@@ -53,4 +54,4 @@ Verified against the actual `app/`, `components/` and `lib/` tree at time of wri
 
 Marketing site for a machine-vision company, four products (Viso Yard, Warehouse, Factory, Data). The headline feature is a set of real, working 3D animated scenes (vanilla three.js, not a template) that show the product "seeing" things — a truck's plate, a container's damage, a warehouse worker. Several more product sections exist as static diagrams with no 3D scene behind them. About a third of the site's planned pages (careers, investor relations, whitepapers, etc.) are placeholder "coming soon" cards. There is no CMS — every word of marketing copy is in code, and every change is a code change and a redeploy.
 
-**The one exception is the partner portal.** `/client-portal` is now a real application with accounts, an approval workflow, an NDA signing flow and a database behind it — Supabase Auth and Postgres, with row-level security and a test suite. It is built and verified but **not yet deployed**: the Netlify environment variables are unset, so in production it still shows a "not configured" state. See `10-partner-portal.md`.
+**The one exception is the partner portal.** `/client-portal` is now a real application with accounts, approval/rejection, NDA signing, deal registration and a database behind it — Supabase Auth and Postgres, with row-level security and a test suite. See `10-partner-portal.md`; use `16-credentials-and-services.md` to verify a deployment.

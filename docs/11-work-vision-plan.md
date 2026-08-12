@@ -1,8 +1,9 @@
-# Work Vision — the rebuild plan
+# Work Vision — historical rebuild plan
 
-The one scene still mid-build. This is what it is becoming, what is done, and
-what each remaining act needs. Written down because the work is being done act
-by act and the standard has to survive between passes.
+This was the implementation plan while Work Vision was being rebuilt. Work
+Vision is complete; the remaining-action language below is historical. Use
+`06-owed.md` for current gaps and `09-scene-craft-and-learnings.md` for the
+durable scene rules.
 
 ## The concept
 
@@ -23,10 +24,10 @@ camera" before the viewer has even parsed the dressing. The shift register
 gains a row per act and a resolve line lands in the last beat of act 3 —
 `ONE IDENTITY ACROSS 3 CAMERAS · OPERATIVE W-2291`.
 
-## The standard every act must meet
+## The standard every act had to meet
 
-Act 1 now meets it. Acts 2 and 3 do not. This list IS the definition of done
-for each, and it is the same house standard as the rest of the family (see
+All three acts now meet this standard. This list was the definition of done
+for each, and remains the house standard for the rest of the family (see
 `09-scene-craft-and-learnings.md`):
 
 1. **A real camera in the world.** On a pole or a wall mount, standing at the
@@ -85,17 +86,16 @@ overall detail.** Adding polygons to a wrong silhouette does nothing.
   `hide(name)` toggles one off. Added after two wrong guesses about what an
   object on screen was; use it rather than inferring from screenshots.
 
-## To do
+## Completion record
 
-**Act 2 — inbound dock.** Currently a wall and a few pallets. Needs: roller
-shutter doors with visible ribs and guide rails, a dock leveller plate, the
-nose of a trailer backed onto one bay, edge protection bollards, and pallets
-staged at dock-apron spacing rather than aisle spacing. Plus items 1, 2 and 5
-of the standard above.
+**Act 2 — inbound dock.** Built with a ribbed roller shutter and guide rails,
+dock leveller, trailer nose, bollards, staged pallets, mounted read camera and
+tracked cone.
 
-**Act 3 — pack line.** Currently a bench run. Needs: benches with visible
-frames and under-shelves, totes with lips, a roller section, stacked flat
-cartons, task lights over the benches. Plus items 1, 2 and 5.
+**Act 3 — pack line.** Built with framed benches, under-shelves, lipped totes,
+a roller section, cartons, ceiling mount, task pendants and tracked cone.
 
-**Then:** re-check the three acts read as three PLACES at a glance, which is
-the thing the whole structure exists to do.
+The subsequent visual pass added the shared warehouse enclosure, painted-metal
+anchor materials, a less cylindrical figure, and the act-one roof/daylight
+motivation. Future work is visual acceptance against the real page slot, not
+missing structural features.

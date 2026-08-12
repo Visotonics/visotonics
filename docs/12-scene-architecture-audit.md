@@ -4,6 +4,12 @@
 homepage and Viso Yard, with every load-bearing claim re-verified by hand
 (several agent findings were wrong and are corrected below).
 
+**Status:** historical audit. Its three main recommendations were implemented:
+Container migrated to the shared studio/overlay, Cargo migrated to the shared
+pendant, and the five detection-camera consumers migrated to
+`_vision/readCamera.ts`. `14-learnings.md` and `touchmatrix.md` are the current
+references for the resulting architecture.
+
 **Purpose.** Three questions, in priority order:
 1. What are we rebuilding that already exists?
 2. What is that costing us at runtime?
@@ -142,15 +148,15 @@ refactor-for-tidiness; it fixes three live defects and deletes ~250 lines.
 
 ## 3. The lamp: extracted, then not adopted
 
-`_vision/lamp.ts` was extracted from Cargo Vision. **Cargo was never migrated
-onto it.** `cargo.ts:1030` and `cargo.ts:1104` still hold their own `HALO_FRAG`
-and `BEAM_FRAG` — the same shaders, duplicated. Work Vision is the module's only
-consumer.
+At the time of this audit, `_vision/lamp.ts` had been extracted from Cargo
+Vision but Cargo itself had not yet migrated. The duplicate local shaders were
+subsequently removed; Cargo and Work Vision now consume the shared builder.
 
 This is the failure mode to watch for: extraction without migration leaves *two*
 copies where there was one, and the original is now the one that will drift.
 
-**Verdict: migrate cargo onto `buildPendantLamp`, delete the local shaders.**
+**Outcome: completed — Cargo uses `buildPendantLamp`; no local lamp shaders
+remain.**
 
 ---
 
@@ -213,7 +219,7 @@ Recording these so nobody re-derives them from the agent reports:
 The lamp proves the second clause matters as much as the first. Extraction
 without migration doubles the copies instead of halving them.
 
-### Proposed: `_vision/readCamera.ts`
+### Implemented after this audit: `_vision/readCamera.ts`
 
 The rig, owning the parts that keep breaking:
 

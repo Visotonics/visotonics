@@ -84,7 +84,7 @@ Settled across Crane Vision and Cargo Vision. Any new scene that wants to show a
 
 ## Motivated light — the pendant
 
-- **A lit working surface with no visible cause reads as a lighting rig, not as a place.** Cargo Vision and Work Vision both hang the same pendant from `_vision/lamp.ts` over their working plane, and the reason is the same in both: the brightest thing in frame needs an object in frame explaining it. Use the shared builder; do not write a second one.
+- **A lit working surface with no visible cause reads as a lighting rig, not as a place.** Cargo Vision and Work Vision's acts 2 and 3 use the same pendant from `_vision/lamp.ts` over their working plane. Work Vision act 1 instead uses roof/skylight-motivated daylight. In either case, the brightest thing in frame needs a visible reason; use the shared builder when the reason is a pendant, never write a second one.
 - **Every part of that lamp answers a specific failure**, all found on cargo: the flex must run out of the top of frame (one starting at a visible plate announces there is no ceiling); the shade must be open-ended and DoubleSide (a closed one seen from below shows its cap and reads as a lump); the bulb must hang PROUD of the shade's rim (tucked inside, a camera looking slightly down sees none of it, and the lamp lights the scene while appearing unlit itself); the halo must be a view-facing billboard with radial falloff, never a sphere; the beam must fade along its length AND toward its silhouette via a fresnel term.
 - **Intensity is computed, not chosen.** At decay 2 the illuminance at the working plane is `intensity / d²`, and it has to beat the studio rig's key box at 5.6. Cargo's first two attempts delivered 1.3 and 5.3 and read as unlit and as a faint tint respectively.
 - **A PointLight is NOT hidden by its parent group's `visible = false`.** A lamp belonging to one act of a multi-act scene keeps lighting every other act unless its intensity is explicitly gated. Work Vision hits this exactly.
@@ -186,9 +186,10 @@ parent `group` wherever it belongs.
 > commit.**
 
 The second clause is not decoration. `_vision/lamp.ts` was extracted *from*
-Cargo Vision and Cargo was never migrated, so for months there were two copies
-of `HALO_FRAG`/`BEAM_FRAG` where there had been one, and the original was the
-copy that would drift. Extraction without migration doubles the problem.
+Cargo Vision but Cargo was not initially migrated, so for months there were two
+copies of `HALO_FRAG`/`BEAM_FRAG` where there had been one. Cargo has since
+migrated onto the shared builder; the incident remains the reason this rule
+exists. Extraction without migration doubles the problem.
 
 That migration also surfaced the general hazard: the extracted `lamp.ts` had
 hardcoded `shadeMesh.castShadow = false` with a comment giving a

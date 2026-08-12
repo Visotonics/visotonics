@@ -19,7 +19,14 @@ All 8 real scenes are hand-built, vanilla three.js (no template, no react-three-
 | Document Vision | A bill of lading scanned once, its fields filling a table that was already on screen | 9.0s | Yard §7, **and** Warehouse, **and** Factory | `/lab/document-vision` |
 | Work Vision | One worker seen by three cameras in three places, resolving to one identity | 13.5s | Warehouse §5, **and** Yard §8, **and** Factory §4 | `/lab/work-vision` |
 
-**Work Vision is mid-rebuild and is the one scene not to show anyone right now.** It was restructured from a single aisle into three hard-cut acts; the act structure and labels are in, the environments are not — they read as undifferentiated blobs, two of the three acts are missing their camera and detection marks, and there is a stray object drawing in all three. Treat it as work in progress until this note is removed.
+**Work Vision is structurally complete, with final visual acceptance still open.**
+It now has three hard-cut acts, one mounted detection camera and tracked cone
+per act, a re-identification payoff, and distinct racking-aisle, inbound-dock
+and pack-line dressing. The latest pass added an enclosed warehouse language
+(painted racking, roof/skylight structure, wall treatment, lane markings and a
+daylight-motivated act-one light) rather than the former placeholder blobs.
+Do not represent it as design-approved until it has been signed off from the
+actual deployed slot.
 
 **Document Vision and Work Vision each appear on three product pages at once**, not one — they're shared code, not three separate builds. See `04-change-risk.md` before editing either.
 

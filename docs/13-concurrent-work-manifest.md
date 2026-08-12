@@ -67,7 +67,7 @@ Only these. If a conflict shows up, it will be here:
 
 ## One thing deliberately NOT done
 
-`touchmatrix.md` is now **stale** — this stream added two shared modules
+At this point in the concurrent stream, `touchmatrix.md` was **stale** — this stream added two shared modules
 (`_vision/readCamera.ts`, `_vision/noise.ts`) and deleted four components.
 CLAUDE.md requires it be regenerated (not hand-edited) after a structural
 change. It was left alone on purpose: the partner-portal stream is adding
@@ -141,11 +141,11 @@ assumes `envRT` is always present will need updating.
 `overlay.ts`'s `CalloutSpec` no longer has `id`. Any concurrent code passing it
 will now be a type error — that is intended and is the safety net.
 
-## Update 5 — Work Vision build-out + shared env redraw (in progress)
+## Update 5 — Work Vision build-out + shared env redraw (historical snapshot)
 
 | File | Change |
 |---|---|
-| `components/vision/work-vision/work.ts` + `scene.tsx` | Acts 2 and 3 built to the act standard: `makeActCam` factory (3 cameras from act 1's spec), dock dressing (segmented wall + part-raised shutter + leveller + trailer + bollards + pallets), pack-line dressing (bench frames, lipped totes, roller deck, task pendants), per-act cone gating, figure arm fix, `dockWall`/`plate`/`ceil` materials. Round 3 (ceiling raise to 2.90 + lamp raise) in flight. |
+| `components/vision/work-vision/work.ts` + `scene.tsx` | Acts 2 and 3 built to the act standard: `makeActCam` factory (3 cameras from act 1's spec), dock dressing (segmented wall + part-raised shutter + leveller + trailer + bollards + pallets), pack-line dressing (bench frames, lipped totes, roller deck, task pendants), per-act cone gating, figure arm fix, `dockWall`/`plate`/`ceil` materials. At this snapshot, round 3 (ceiling raise to 2.90 + lamp raise) was in flight. |
 | `components/vision/_vision/studio.ts` | `envCanvas()` second draft — strip banks, deeper floor, warm strip. See DECISIONS.md. |
 
 Also note for conflict resolution: repeated `.next` corruption from concurrent

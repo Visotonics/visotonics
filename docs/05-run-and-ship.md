@@ -27,7 +27,27 @@ Separately: **timings measured on the dev server (`npm run dev`) are never a rel
 
 ## Deploy
 
-**Not determinable from the codebase itself** — there's no hosting config, no CI/CD pipeline file, checked into this repo. Wherever it's deployed is set up outside this codebase (or not set up at all yet). Check with whoever manages infrastructure rather than assuming a target.
+The site is deployed through **Netlify's automatic Next.js detection**; there
+is intentionally no `netlify.toml` or checked-in CI workflow. The Netlify site
+settings decide the production branch, build command, environment variables and
+custom domain.
+
+Before treating a deploy as current, confirm all four things in Netlify:
+
+1. The site is connected to this repository and the intended production branch.
+2. The latest successful deploy was built from the commit containing the scene
+   changes, not an older interim-site commit.
+3. The Netlify preview URL renders the expected scenes before changing DNS.
+4. `visotonics.com` is attached to this Netlify site, not the interim site.
+   A custom domain can only belong to one site at a time; detach it from the
+   interim site before assigning it here, then follow Netlify's DNS records.
+
+If Supabase login works but the scenes do not, that proves only that the
+environment variables reached a deploy. Check the deploy's commit, build log,
+and browser console/network requests for missing Next static chunks before
+changing scene code. The local production build mounted the Viso Yard scenes
+on 2026-08-11, so the reported public absence is a deployment/caching problem
+until proven otherwise.
 
 ## Environment variables (names only — no values live here or should ever be pasted into a doc)
 

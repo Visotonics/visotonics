@@ -1,6 +1,11 @@
 # What's here
 
-What is on visotonics.com right now, and what state each part is in. For anyone planning content, a launch, or ads.
+What exists in this codebase, and what state each part is in. For anyone planning content, a launch, or ads.
+
+**Deployment note (2026-08-11):** the local production build contains the
+current scenes and portal, but the public Netlify domain was reported to still
+serve an interim site. The table below describes this repository, not a claim
+that `visotonics.com` has already been cut over. See `05-run-and-ship.md`.
 
 ## The real site
 
@@ -27,11 +32,11 @@ Careers · Newsroom · Investor relations · Partners · Sustainability · Testi
 
 **Case studies is worse than a stub** — it's a blank page, not even a "coming soon" card.
 
-## Client portal — real, but not switched on yet
+## Client portal — real application
 
-Once a mockup with nothing behind it; **as of 2026-08-08 it is a working application**. Partners register, an admin approves or rejects them with a reason, they pick which of the three partner types they are, sign an NDA, and land on a dashboard. Real accounts, real sessions, a real database, and emails at each step.
+Once a mockup with nothing behind it; **as of 2026-08-08 it is a working application**. Partners choose one of three partner types while registering, an admin approves or rejects them with a reason, approved partners sign an NDA, and then land on a dashboard where they can register deals. Real accounts, sessions, a database, approval audit trail, and emails exist at each partner-account step.
 
-**It is not live.** The production deployment is missing its environment variables, so visotonics.com still shows a "not available yet" state. Two things are outstanding before real partners can use it: those variables, and a real NDA — the current agreement text is a placeholder, not lawyer-reviewed.
+Before inviting real partners, verify the deployed environment variables and Supabase SMTP delivery. The current NDA text is placeholder scaffolding, not lawyer-reviewed.
 
 Never in Google, by design.
 

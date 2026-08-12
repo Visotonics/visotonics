@@ -94,9 +94,10 @@ scene needs a thing, it moves to `_vision/` before it is written the second
 time — and the first scene migrates onto it in the same commit." The
 lamp.ts case is the cautionary tale for skipping the second half: the
 pendant lamp was extracted from Cargo the moment Work needed one, but Cargo
-was never migrated onto the extraction — two live copies of `HALO_FRAG` /
-`BEAM_FRAG` existed for months (docs/12). **Extraction without migration
-doubles the copies, it doesn't remove one.**
+was not initially migrated onto the extraction — two live copies of
+`HALO_FRAG` / `BEAM_FRAG` existed for months (docs/12). Cargo now uses the
+shared builder. **Extraction without migration doubles the copies, it doesn't
+remove one.**
 
 **Shared machinery is a defect-rate argument, not just a DRY argument.**
 The architecture audit found zero per-scene bugs in the shared `_vision/`

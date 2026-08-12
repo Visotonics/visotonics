@@ -1,9 +1,9 @@
 # Partner portal — design prompts, in the industrial-materialist system
 
-**Purpose.** Ready-to-dispatch prompts for a design-capable Claude agent, one
-per portal surface. Each is self-contained: hand it the COMMON BRIEF plus its
-own section. Drafted 2026-08-08 against the pages as built (the portal stream's
-files under `app/client-portal/**`).
+**Purpose.** Historical design briefs drafted on 2026-08-08. The dashboard and
+auth surfaces have since been implemented, and partner type moved into
+registration on 2026-08-10. Do not dispatch the partner-type-selection brief;
+use `10-partner-portal.md` for the current flow.
 
 **The unifying idea, before any page:** the portal is where a partner is
 *measured and admitted* by the system. The site already has a visual grammar

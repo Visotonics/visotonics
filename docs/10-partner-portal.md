@@ -9,9 +9,9 @@ described here is new as of 2026-08-08.
 in `DECISIONS.md` (two dated 2026-08-08 entries). This file is current state:
 what exists, how it works, how to run it, and what is still owed.
 
-**Status: built and verified end to end against the live Supabase project.
-Not yet deployed** — the Netlify environment variables are unset, so the
-production site still renders a "not configured" state.
+**Status: built and verified against the live Supabase project.** All four
+migrations have been run. Deployment configuration is environment-specific;
+use the credentials runbook before treating a Netlify deploy as ready.
 
 ---
 
@@ -173,7 +173,7 @@ whole record. If deals ever gain a re-decide flow, copy the
 | `0001_partners.sql` | `partners`, RLS, `is_admin()` |
 | `0002_onboarding_and_nda.sql` | Drops `approved` for `status`; makes `partner_type` nullable; adds rejection/decision/NDA columns; creates `nda_signatures` |
 | `0003_partner_decisions.sql` | The audit log |
-| `0004_deals.sql` | `deals`, its two indexes, RLS. **NOT YET APPLIED — see §12** |
+| `0004_deals.sql` | `deals`, its two indexes and RLS. Applied to the live project on 2026-08-11 |
 
 Nothing applies these automatically. `npm run build` does not touch the database.
 
@@ -463,14 +463,12 @@ records against placeholder text. Delete before launch.
 
 | Item | Blocking |
 |---|---|
-| **Apply `supabase/migrations/0004_deals.sql`** | Yes — every deal read and write fails until it exists. Nothing in the build applies it |
-| **Netlify env vars** | Yes — production renders "not configured" |
-| **Custom SMTP via Resend in Supabase** | Yes — real registration cannot complete without it |
+| Netlify environment variables | Verify per deploy — the build cannot validate the deployed environment |
+| Custom SMTP via Resend in Supabase | Verify per deploy — confirmation and reset delivery depend on it |
 | **Real NDA text** | Yes for real partners — current text is placeholder, not lawyer-reviewed |
 | Deal decision emails | No — an admin approving or rejecting a deal notifies nobody. `lib/partner-mail.ts` has no deal sender yet |
 | Dashboard content — catalogue and resources | No — still "Coming soon". Deals are live |
 | Zoho | No — parked behind the seam |
-| Design pass on the seven new screens | No — functional but plumbing-grade |
-| Mobile testing | No — **never rendered below desktop width** |
+| Mobile testing | No — needs a production-device pass |
 | Audit log UI | No — SQL-only |
 | Privacy policy | Not technical, but you now store names, emails, IPs and user agents |

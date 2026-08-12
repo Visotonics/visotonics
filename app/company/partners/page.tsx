@@ -47,64 +47,66 @@ export const metadata = pageMeta({
 export default function PartnersPage() {
   return (
     <section style={{ background: CANVAS_DARK }}>
-      {/* DESKTOP — 1c "The Manifest". Design's own canvas is 1040px, but the
-          house pages wrap at 1440 with generous padding, so this wraps the
-          1040px content column inside the same 1440 shell (padding echoes
-          the 56px the spec gives the content itself) rather than shipping a
-          visibly narrower page than every sibling under /company. */}
-      <div className="hidden md:block" style={{ maxWidth: 1440, margin: "0 auto", boxSizing: "border-box", padding: "96px 96px 0" }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-          <h1 style={{ margin: 0, fontFamily: sans, fontSize: 64, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color: TXT_D1, textAlign: "left" }}>
-            Grow with
-            <br />
-            Visotonics.
-          </h1>
-          <p style={{ margin: "24px 0 0 auto", textAlign: "right", fontSize: 16, lineHeight: 1.6, color: TXT_D2, maxWidth: "46ch" }}>
-            Sell physical AI into the yards, warehouses and plants you already work in. Register deals, protect your
-            pipeline, and get certified to deploy.
-          </p>
-          <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 28 }}>
-            <Link
-              href="/client-portal"
-              className="dt-underline-draw"
+      {/* DESKTOP — 1c "The Manifest". The spec's own card is a standalone
+          1040px canvas with padding:56px 56px 0 baked into the card itself.
+          Rather than re-wrapping that in a second, separately-centered
+          1040px column inside a 1440px/96px shell (two nested padding
+          boxes, which is what made the live page read as "off" vs. the
+          design), this is a single 1440px shell with one padding rhythm —
+          the same 96px used by sibling /company pages (see
+          app/company/about/page.tsx's `md:p-24`) — with a matching 96px
+          bottom so the strip doesn't sit flush against the footer. */}
+      <div className="hidden md:block" style={{ maxWidth: 1440, margin: "0 auto", boxSizing: "border-box", padding: "96px 96px 96px" }}>
+        <h1 style={{ margin: 0, fontFamily: sans, fontSize: 64, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color: TXT_D1, textAlign: "left" }}>
+          Grow with
+          <br />
+          Visotonics.
+        </h1>
+        <p style={{ margin: "24px 0 0 auto", textAlign: "right", fontSize: 16, lineHeight: 1.6, color: TXT_D2, maxWidth: "46ch" }}>
+          Sell physical AI into the yards, warehouses and plants you already work in. Register deals, protect your
+          pipeline, and get certified to deploy.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 28 }}>
+          <Link
+            href="/client-portal"
+            className="dt-underline-draw"
+            style={{
+              height: 44,
+              padding: "0 26px",
+              borderRadius: 999,
+              background: TXT_D1,
+              color: CANVAS_DARK,
+              fontFamily: sans,
+              fontSize: 14,
+              fontWeight: 600,
+              width: 188,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+            }}
+          >
+            Register as our partner!
+          </Link>
+        </div>
+
+        <div style={{ marginTop: 56, borderTop: `1px solid ${BORDER_D_18}`, display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+          {STRIP.map((c, i) => (
+            <div
+              key={c.n}
               style={{
-                height: 44,
-                padding: "0 26px",
-                borderRadius: 999,
-                background: TXT_D1,
-                color: CANVAS_DARK,
-                fontFamily: sans,
-                fontSize: 14,
-                fontWeight: 600,
-                width: 188,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textDecoration: "none",
+                borderRight: i < STRIP.length - 1 ? `1px solid ${BORDER_D}` : "none",
+                padding: i === 0 ? "22px 20px 40px 0" : i === STRIP.length - 1 ? "22px 0 40px 20px" : "22px 20px 40px",
               }}
             >
-              Register as our partner!
-            </Link>
-          </div>
-
-          <div style={{ marginTop: 56, borderTop: `1px solid ${BORDER_D_18}`, display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
-            {STRIP.map((c, i) => (
-              <div
-                key={c.n}
-                style={{
-                  borderRight: i < STRIP.length - 1 ? `1px solid ${BORDER_D}` : "none",
-                  padding: i === 0 ? "22px 20px 40px 0" : i === STRIP.length - 1 ? "22px 0 40px 20px" : "22px 20px 40px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: mono, fontSize: 11, color: SIGNAL }}>{c.n}</span>
-                  <span style={{ width: 5, height: 5, background: SIGNAL, borderRadius: 999 }} />
-                </div>
-                <h2 style={{ margin: "14px 0 0", fontFamily: sans, fontSize: 15, fontWeight: 600, color: TXT_D1 }}>{c.title}</h2>
-                <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.55, color: TXT_D3 }}>{c.body}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: mono, fontSize: 11, color: SIGNAL }}>{c.n}</span>
+                <span style={{ width: 5, height: 5, background: SIGNAL, borderRadius: 999 }} />
               </div>
-            ))}
-          </div>
+              <h2 style={{ margin: "14px 0 0", fontFamily: sans, fontSize: 15, fontWeight: 600, color: TXT_D1 }}>{c.title}</h2>
+              <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.55, color: TXT_D3 }}>{c.body}</p>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -392,7 +392,7 @@ export function SiteNav() {
             </div>
           )}
 
-          <Link href="/client-portal" className="hover:opacity-80" style={navLink}>
+          <Link href="/client-portal" className="hover:opacity-80" style={{ ...navLink, whiteSpace: "nowrap", flexShrink: 0 }}>
             Log in
           </Link>
           <Link
@@ -406,6 +406,8 @@ export function SiteNav() {
               fontFamily: "var(--font-sans)",
               fontSize: "var(--text-body)",
               fontWeight: 500,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
               transitionDuration: "var(--duration-dur-1)",
               transitionTimingFunction: "var(--ease-standard)",
             }}

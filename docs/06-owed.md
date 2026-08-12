@@ -6,16 +6,22 @@ Known-broken or unfinished things visible in the codebase today. For prioritizin
 
 Four product sections (Audit Vision, Dimension Vision, Secure Vision, Production Vision) show a static SVG diagram where a 3D scene like the other 8 would go. See `02-products-and-scenes.md`. This is the single biggest visible gap between "what the site implies" and "what's actually built."
 
-## Work Vision — COMPLETE (2026-08-08)
+## Work Vision — structurally complete; visual sign-off remains open
 
 All three acts now meet the act standard in `11-work-vision-plan.md`: a real
 camera in the world (all three from ONE `makeActCam` factory — the same
 housing, bolted to a rack arm, a dock wall, and a low ceiling), a sight cone
 tracking the walker in every act, the bracket, dressing with real identifying
 features (lattice racking / part-raised shutter + leveller / bench frames +
-lipped totes + roller deck), and motivated light from the shared pendant
-builder in every act. The re-identification story runs end to end: register
-rows accumulate per act and the resolve line lands in act 3.
+lipped totes + roller deck). The re-identification story runs end to end:
+register rows accumulate per act and the resolve line lands in act 3.
+
+The later warehouse-look pass replaced the placeholder visual language with
+painted racking, enclosure, roof/skylight structure, lane markings, purpose-
+built camera bodies and a less cylindrical figure. Act 1 deliberately uses a
+daylight-motivated point light under the roof; acts 2 and 3 use the shared
+pendant builder. This is implemented, but it has **not** received final owner
+sign-off in the deployed page slot.
 
 The act-3 build recorded one structural lesson worth keeping: **a low ceiling
 and a pendant over the walk line are in geometric tension** — the ceiling is
@@ -35,7 +41,7 @@ material, and letting the visible-band geometry do the real work.
 
 The homepage "Statement" section is built to show real annotated inspection footage as a background video, but the footage hasn't been produced yet. Today it shows a static poster image instead — the code is fully wired (lazy-loads on scroll, respects reduced-motion, falls back cleanly) and needs only the actual video files dropped in, no code change, once footage exists.
 
-## Client portal — BUILT (2026-08-08), not yet deployed
+## Client portal — BUILT (2026-08-08)
 
 *Entry was "UI with nothing behind it". That is no longer true.* The portal has
 real Supabase auth, a Postgres database with row-level security, an approval
@@ -45,22 +51,19 @@ end against the live Supabase project. Full reference in `10-partner-portal.md`.
 
 What is still owed on it:
 
-- **Netlify environment variables are unset** — production renders "not
-  configured". Nothing works publicly until these are added. *Blocking.*
-- **Custom SMTP in Supabase, pointed at Resend.** Supabase's built-in sender
-  allows roughly two emails an hour and only to team addresses, so real
-  registration cannot complete without this. *Blocking.*
+- **Deployment verification.** Confirm the current Netlify environment and
+  Supabase SMTP configuration before inviting real partners. The repository
+  cannot prove the values currently deployed. *Blocking for launch.*
 - **The NDA text is a placeholder.** `lib/nda.ts` and
   `public/legal/visotonics-partner-nda.pdf` are scaffolding written to build
   the flow, explicitly not lawyer-reviewed. Must be replaced before any real
   partner signs, and `NDA_VERSION` bumped when it is. *Blocking for real use.*
-- **Dashboard content doesn't exist.** All three actions — Register a deal,
-  Partner resources, Request support — are "Coming soon" cards.
+- **Only deal registration is live.** Partner resources and support remain
+  placeholder actions; deals can be submitted and decided by an admin.
 - **Zoho is still a stub.** Interface and no-op implementation only; still
   waiting on credentials. Registrations are recorded in Postgres with
   `crm_synced_at` null so they can be backfilled later.
-- **Design pass outstanding** on the seven new screens, and none of them have
-  ever been rendered below desktop width.
+- **Mobile production-device pass outstanding.**
 - **Six demo accounts exist** sharing one password, several carrying NDA
   signature records against the placeholder text. Delete before launch.
 
@@ -126,10 +129,60 @@ lines at the 1.5px/45% value already established as invisible on dark ground,
 and a dispose that traversed and killed every geometry it reached with no
 `userData.shared` guard. Migrated 2026-08-08; the file went 869 → 648 lines.
 
-## No deploy pipeline visible in the repo
+## Deployment cutover is not yet verified
 
-Nothing in the codebase shows where or how the site is actually hosted/deployed — no config for any hosting provider, no CI/CD file. Either it lives outside this repo or it isn't set up yet; worth confirming with whoever owns infrastructure.
+Netlify is the known host and uses its automatic Next.js integration, so the
+absence of a `netlify.toml` or CI file is intentional. The outstanding issue is
+operational: confirm that the Netlify production site is connected to this
+repository/branch and that `visotonics.com` is attached to that site rather
+than the interim site. The public domain was reported to still show the
+interim site on 2026-08-11; see `05-run-and-ship.md` for the checklist.
 
 ## Legal pages haven't been re-reviewed here
 
 Privacy policy and Terms & Conditions are live and presumably functional, but any wording change to either is flagged as a legal-review item in this repo's own conventions — check `DECISIONS.md` (repo root) for any noted deferred legal work before assuming they're final.
+
+## Migration gaps vs the live visotonics.com (found 2026-08-10)
+
+The live site is a **client-rendered CRA SPA on Netlify** with **no SPA
+catch-all rewrite** — every non-root URL 404s on a direct load or refresh and
+works only via in-app link clicks, despite all 26 being listed in its
+sitemap.xml. The rebuild (Next.js, server-rendered) fixes that by construction.
+But the rebuild must not lose what the live site publishes:
+
+**Live pages with no rebuild equivalent — these will 404 on cutover:**
+- **`/services`** — a top-level nav item and a real 8-stage page (Assess →
+  Transform, anchors `#stage-0N`). Nothing in the rebuild. Highest-risk gap.
+- **`/partners`** — top-level nav item with a real page. The rebuild has an
+  unlinked `/company/partners` stub at a *different URL* and no redirect.
+- **`/legal/security`** — third legal document, in the live footer. No rebuild
+  page, no redirect.
+- **`/company/careers`** — real page live; a "coming soon" stub in the rebuild.
+
+**Missing redirects in `next.config.mjs`** (the live URL is indexed, the
+rebuild's path differs, and nothing bridges them):
+- `/login` → `/client-portal`
+- `/legal/privacy` → `/legal/privacy-policy`  *(only `/privacy_policy` is covered)*
+- `/legal/terms` → `/legal/terms-and-conditions`  *(only `/terms_and_conditions` is covered)*
+- `/partners` → wherever partners content lands
+- `/services` → wherever services content lands (or build the page)
+
+**IA differences:** live has **6** top-level nav items (Platform, Industries,
+Resources, Services, Partners, Company); the rebuild has **4** — Services and
+Partners do not exist in its IA. Live also carries a separate "Book a demo" CTA
+alongside Contact, and its mega-menu children each have an icon + one-line
+description; the rebuild's are name-only.
+
+**Team page divergence** — the live About page lists **four** leaders
+(Pranav, Pramod, Ritu, Mohini) and gives them C-suite titles: **CBO / CRO /
+CPO / CTO & Co-Founder**. The rebuild lists **seven** and uses
+`COFOUNDER (BUSINESS/PRODUCT/TECH)` for three of them. Ravish Sangani, Gurudev
+Singh and Shreyan Awasthi appear **nowhere** on the live site. Decide which
+list and which titles are canonical before launch. Also: the live bio for
+Pramod reads "…Ericsson, **IIFTD**" where the rebuild has "IIFT" — one is a
+typo, confirm which.
+
+**LinkedIn:** URLs for the four live-site leaders are now wired on the rebuild's
+about page (taken from the live page's own anchors, not from a name search).
+The other three team members have no verified profile URL, so their cards
+render no link — see the note on `TEAM` in `app/company/about/page.tsx`.

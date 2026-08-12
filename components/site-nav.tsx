@@ -111,6 +111,21 @@ const caption: CSSProperties = {
   color: "var(--text-dark-secondary)",
 };
 
+/* ONE SIZE FOR EVERY DROPDOWN OPTION, and larger than the old caption.
+
+   The mega-menu lists ran at --text-caption (15px) while the language
+   dropdown's rows ran at 15px sans of their own — two ladders that happened
+   to nearly agree, so a change to either drifted them apart. Both now come
+   from here: 17px, up from 15, which is the "a tad bigger" the options were
+   asked for without pushing the four-column platform panel into a second
+   line on any name. */
+const menuOption: CSSProperties = {
+  fontFamily: "var(--font-sans)",
+  fontSize: 17,
+  lineHeight: 1.5,
+  color: "var(--text-dark-secondary)",
+};
+
 const menuTitle: CSSProperties = {
   fontFamily: "var(--font-sans)",
   fontSize: "var(--text-title)",
@@ -292,6 +307,11 @@ export function SiteNav() {
             style={{ gap: "var(--spacing-s2)", ...monoLabel, letterSpacing: "0.06em", fontSize: 14, color: openMenu === "language" ? "var(--text-dark-primary)" : "var(--text-dark-secondary)" }}
           >
             {language.code}
+            {/* Dropdown caret hidden for now, on request. Left in place rather
+                than deleted so it can come back with one uncomment — the
+                rotate-on-open transition is the only state cue this control
+                has, so if the language switcher ever stops reading as
+                clickable, this is the thing to restore.
             <span
               style={{
                 fontSize: 11,
@@ -302,6 +322,7 @@ export function SiteNav() {
             >
               ▾
             </span>
+            */}
           </button>
 
           {/* language dropdown — variant B: mono code + hairline rows */}
@@ -339,7 +360,7 @@ export function SiteNav() {
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, flex: "0 0 auto", color: language.code === l.code ? "#ED510C" : "#6B7078" }}>
                     {l.code}
                   </span>
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: 15, fontWeight: 500, color: language.code === l.code ? "var(--text-dark-primary)" : "var(--text-dark-secondary)" }}>
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: 17, fontWeight: 500, color: language.code === l.code ? "var(--text-dark-primary)" : "var(--text-dark-secondary)" }}>
                     {l.name}
                   </span>
                 </button>
@@ -388,12 +409,12 @@ export function SiteNav() {
                     <span style={menuTitle}>Industries</span>
                     <span style={caption}>AI vision tuned to four industries.</span>
                   </div>
-                  <div className="flex flex-col border-t" style={{ borderColor: "var(--border-dark-strong)", paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
-                    <Link href="/industries" className="dt-underline-draw" style={{ ...caption, alignSelf: "flex-start" }}>
+                  <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
+                    <Link href="/industries" className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                       Home
                     </Link>
                     {INDUSTRIES_LINKS.map((l) => (
-                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...caption, alignSelf: "flex-start" }}>
+                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                         {l.name}
                       </Link>
                     ))}
@@ -413,18 +434,18 @@ export function SiteNav() {
                   {PLATFORM_ENVIRONMENTS.map((env) => (
                     <div
                       key={env.name}
-                      className="flex flex-col border-t"
-                      style={{ borderColor: "var(--border-dark-strong)", paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s4)" }}
+                      className="flex flex-col"
+                      style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s4)" }}
                     >
-                      <div className="flex items-baseline justify-between">
-                        <Link href={env.href} className="dt-underline-draw" style={{ ...columnHeading, alignSelf: "flex-start" }}>
-                          {env.name}
-                        </Link>
-                        <span style={monoLabel}>{env.num}</span>
-                      </div>
+                      {/* The 01-04 numerals were removed on request. `num` stays on
+                          PLATFORM_ENVIRONMENTS because the mobile panel and other
+                          consumers may still want it — nothing here reads it now. */}
+                      <Link href={env.href} className="dt-underline-draw" style={{ ...columnHeading, alignSelf: "flex-start" }}>
+                        {env.name}
+                      </Link>
                       <div className="flex flex-col" style={{ gap: "var(--spacing-s3)" }}>
                         {env.products.map((p) => (
-                          <a key={p} href={productHref(env.href, p)} className="dt-underline-draw" style={{ ...caption, alignSelf: "flex-start" }}>
+                          <a key={p} href={productHref(env.href, p)} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                             {p}
                           </a>
                         ))}
@@ -444,9 +465,9 @@ export function SiteNav() {
                     <span style={menuTitle}>Resources</span>
                     <span style={caption}>Guides, tools and proof for evaluating the platform.</span>
                   </div>
-                  <div className="flex flex-col border-t" style={{ borderColor: "var(--border-dark-strong)", paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
+                  <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
                     {[...RESOURCES_COL_1, ...RESOURCES_COL_2].map((l) => (
-                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...caption, alignSelf: "flex-start" }}>
+                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                         {l.name}
                       </Link>
                     ))}
@@ -464,9 +485,9 @@ export function SiteNav() {
                     <span style={menuTitle}>Company</span>
                     <span style={caption}>Who&apos;s building the platform, and where.</span>
                   </div>
-                  <div className="flex flex-col border-t" style={{ borderColor: "var(--border-dark-strong)", paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
+                  <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
                     {[...COMPANY_COL_1, ...COMPANY_COL_2].map((l) => (
-                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...caption, alignSelf: "flex-start" }}>
+                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                         {l.name}
                       </Link>
                     ))}
@@ -531,7 +552,8 @@ export function SiteNav() {
                 >
                   <span style={columnHeading}>{env.name}</span>
                   <span className="flex items-center" style={{ gap: "var(--spacing-s3)" }}>
-                    <span style={monoLabel}>{env.num}</span>
+                    {/* numeral removed here too — the desktop panel dropped it
+                        and a number on one breakpoint only is worse than either */}
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",

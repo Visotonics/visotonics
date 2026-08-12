@@ -44,12 +44,18 @@ const BRANDS = [
 ];
 
 const TEAM = [
-  { name: "Pranav Asthana", role: "COFOUNDER (BUSINESS)", founder: true, bio: "Cofounded Checko, Upjao. 20+ research papers, 10+ patents. Ex-Intel, IIT Kanpur.", image: "/images/team/pranav-asthana.png" },
-  { name: "Ritu Mishra", role: "COFOUNDER (PRODUCT)", founder: true, bio: "Cofounded Upjao. 7 years building deep tech products. Ex-researcher at NCFlexe, IIT Kanpur.", image: "/images/team/ritu-mishra.png" },
-  { name: "Mohini Behera", role: "COFOUNDER (TECH)", founder: true, bio: "Cofounded Upjao. Developed 10+ AI products for large enterprises. IIT Jodhpur, NIT Rourkela.", image: "/images/team/mohini-behera.png" },
-  { name: "Ravish Sangani", role: "SVP (MARKETING)", founder: false, bio: "Founded multiple rubber manufacturing units, ran pan-India sales. 20+ years of experience.", image: "/images/team/ravish-sangani.png" },
-  { name: "Gurudev Singh", role: "SVP (CONTAINER BUSINESS)", founder: false, bio: "15+ years in shipping. Ex-Econship Marine. MBA in Port & Logistics.", image: "/images/team/gurudev-singh.png" },
-  { name: "Shreyan Awasthi", role: "PARTNERSHIP MANAGER", founder: false, bio: "Cofounded Externship. 4 years in B2B sales & marketing. Ex-researcher at IIT Hyderabad.", image: "/images/team/shreyan.webp" },
+  /* `linkedin` is optional on purpose. A card renders the link only when a URL
+     is present, so an unverified member simply shows no link rather than a
+     dead or — far worse — a WRONG profile. Never populate these from a name
+     search; take them from the person or from a page visotonics.com itself
+     links. Missing URLs are tracked in docs/06-owed.md. */
+  { name: "Pranav Asthana", role: "COFOUNDER (BUSINESS)", founder: true, bio: "Cofounded Checko, Upjao. 20+ research papers, 10+ patents. Ex-Intel, IIT Kanpur.", image: "/images/team/pranav-asthana.png", linkedin: "https://www.linkedin.com/in/asthanapranav/" },
+  { name: "Pramod Prasad", role: "CRO & COFOUNDER", founder: true, bio: "25+ years driving $150M+ sales motion at Cisco, Motorola, Ericsson, IIFT.", image: "/images/team/pramod-prasad.png", linkedin: "https://www.linkedin.com/in/pramodprasad/" },
+  { name: "Ritu Mishra", role: "COFOUNDER (PRODUCT)", founder: true, bio: "Cofounded Upjao. 7 years building deep tech products. Ex-researcher at NCFlexe, IIT Kanpur.", image: "/images/team/ritu-mishra.png", linkedin: "https://www.linkedin.com/in/ritu-raman-mishra/" },
+  { name: "Mohini Behera", role: "COFOUNDER (TECH)", founder: true, bio: "Cofounded Upjao. Developed 10+ AI products for large enterprises. IIT Jodhpur, NIT Rourkela.", image: "/images/team/mohini-behera.png", linkedin: "https://www.linkedin.com/in/mohini-mohan-behera/" },
+  { name: "Ravish Sangani", role: "SVP (MARKETING)", founder: false, bio: "Founded multiple rubber manufacturing units, ran pan-India sales. 20+ years of experience.", image: "/images/team/ravish-sangani.png", linkedin: "" },
+  { name: "Gurudev Singh", role: "SVP (CONTAINER BUSINESS)", founder: false, bio: "15+ years in shipping. Ex-Econship Marine. MBA in Port & Logistics.", image: "/images/team/gurudev-singh.png", linkedin: "" },
+  { name: "Shreyan Awasthi", role: "PARTNERSHIP MANAGER", founder: false, bio: "Cofounded Externship. 4 years in B2B sales & marketing. Ex-researcher at IIT Hyderabad.", image: "/images/team/shreyan.webp", linkedin: "" },
 ];
 
 function AboutSection() {
@@ -119,12 +125,30 @@ function TeamSection() {
         {TEAM.map((m) => (
           <div key={m.name} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={m.image}
-              alt={m.name}
-              className="mx-auto md:mx-0"
-              style={{ display: "block", width: 260, maxWidth: "100%", aspectRatio: "4 / 5", objectFit: "cover", borderRadius: 2, background: "#cccccc" }}
-            />
+            <div className="mx-auto md:mx-0" style={{ width: 260, maxWidth: "100%" }}>
+              <img
+                src={m.image}
+                alt={m.name}
+                style={{ display: "block", width: "100%", aspectRatio: "4 / 5", objectFit: "cover", borderRadius: 2, background: "#cccccc" }}
+              />
+              {/* Directly under the photo, and only when a URL exists — see the
+                  note on TEAM. `rel="noopener noreferrer"` because this leaves
+                  the site in a new tab. */}
+              {m.linkedin ? (
+                <a
+                  href={m.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="dt-underline-draw"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, fontFamily: mono, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: TXT_D2, textDecoration: "none" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z" />
+                  </svg>
+                  LinkedIn
+                </a>
+              ) : null}
+            </div>
             <div>
               <span style={{ fontFamily: sans, fontSize: 24, fontWeight: 600, color: TXT_D1 }}>{m.name}</span>
               <span style={{ display: "block", marginTop: 6, fontFamily: mono, fontSize: 12, letterSpacing: "0.06em", color: m.founder ? SIGNAL : TXT_D2 }}>{m.role}</span>

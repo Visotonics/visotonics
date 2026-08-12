@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Brand } from "@/components/brand";
+import { ChevronDown, Menu, X } from "lucide-react";
 
 type LinkItem = { name: string; href: string };
 
@@ -236,18 +237,15 @@ export function SiteNav() {
               style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "platform" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
             >
               Platform
-              <span
+              <ChevronDown
+                size={14}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
                   color: "var(--text-dark-secondary)",
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "platform" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
-              >
-                ▾
-              </span>
+              />
             </button>
 
             <Link
@@ -257,18 +255,15 @@ export function SiteNav() {
               style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "industries" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
             >
               Industries
-              <span
+              <ChevronDown
+                size={14}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
                   color: "var(--text-dark-secondary)",
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "industries" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
-              >
-                ▾
-              </span>
+              />
             </Link>
 
             <button
@@ -279,18 +274,15 @@ export function SiteNav() {
               style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "resources" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
             >
               Resources
-              <span
+              <ChevronDown
+                size={14}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
                   color: "var(--text-dark-secondary)",
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "resources" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
-              >
-                ▾
-              </span>
+              />
             </button>
 
             <button
@@ -301,18 +293,15 @@ export function SiteNav() {
               style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "partners" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
             >
               Partners
-              <span
+              <ChevronDown
+                size={14}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
                   color: "var(--text-dark-secondary)",
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "partners" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
-              >
-                ▾
-              </span>
+              />
             </button>
 
             <button
@@ -323,18 +312,15 @@ export function SiteNav() {
               style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "company" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
             >
               Company
-              <span
+              <ChevronDown
+                size={14}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
                   color: "var(--text-dark-secondary)",
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "company" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
-              >
-                ▾
-              </span>
+              />
             </button>
           </nav>
 
@@ -351,16 +337,15 @@ export function SiteNav() {
                 rotate-on-open transition is the only state cue this control
                 has, so if the language switcher ever stops reading as
                 clickable, this is the thing to restore.
-            <span
+            <ChevronDown
+              size={14}
               style={{
-                fontSize: 11,
+                color: "var(--text-dark-secondary)",
                 display: "inline-block",
                 transition: "transform var(--duration-dur-2) var(--ease-standard)",
                 transform: openMenu === "language" ? "rotate(180deg)" : "rotate(0deg)",
               }}
-            >
-              ▾
-            </span>
+            />
             */}
           </button>
 
@@ -572,7 +557,10 @@ export function SiteNav() {
           className="cursor-pointer bg-transparent p-2"
           style={monoLabel}
         >
-          Menu ≡
+          <span className="inline-flex items-center" style={{ gap: 6 }}>
+            Menu
+            <Menu size={16} />
+          </span>
         </button>
       </div>
 
@@ -593,7 +581,10 @@ export function SiteNav() {
               className="cursor-pointer bg-transparent p-2"
               style={monoLabel}
             >
-              Close ×
+              <span className="inline-flex items-center" style={{ gap: 6 }}>
+                Close
+                <X size={16} />
+              </span>
             </button>
           </div>
 
@@ -613,18 +604,15 @@ export function SiteNav() {
                   <span className="flex items-center" style={{ gap: "var(--spacing-s3)" }}>
                     {/* numeral removed here too — the desktop panel dropped it
                         and a number on one breakpoint only is worse than either */}
-                    <span
+                    <ChevronDown
+                      size={16}
                       style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 12,
                         color: "var(--text-dark-secondary)",
                         display: "inline-block",
                         transition: "transform var(--duration-dur-2) var(--ease-standard)",
                         transform: accordions[i] ? "rotate(180deg)" : "rotate(0deg)",
                       }}
-                    >
-                      ▾
-                    </span>
+                    />
                   </span>
                 </button>
                 {accordions[i] && (
@@ -655,18 +643,15 @@ export function SiteNav() {
                 style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
               >
                 <span style={columnHeading}>Industries</span>
-                <span
+                <ChevronDown
+                  size={16}
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
                     color: "var(--text-dark-secondary)",
                     display: "inline-block",
                     transition: "transform var(--duration-dur-2) var(--ease-standard)",
                     transform: mobileIndustriesOpen ? "rotate(180deg)" : "rotate(0deg)",
                   }}
-                >
-                  ▾
-                </span>
+                />
               </button>
               {mobileIndustriesOpen && (
                 <div className="flex flex-col" style={{ padding: "0 var(--spacing-s4) var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
@@ -690,18 +675,15 @@ export function SiteNav() {
                 style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
               >
                 <span style={columnHeading}>Resources</span>
-                <span
+                <ChevronDown
+                  size={16}
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
                     color: "var(--text-dark-secondary)",
                     display: "inline-block",
                     transition: "transform var(--duration-dur-2) var(--ease-standard)",
                     transform: mobileResourcesOpen ? "rotate(180deg)" : "rotate(0deg)",
                   }}
-                >
-                  ▾
-                </span>
+                />
               </button>
               {mobileResourcesOpen && (
                 <div className="flex flex-col" style={{ padding: "0 var(--spacing-s4) var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
@@ -722,18 +704,15 @@ export function SiteNav() {
                 style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
               >
                 <span style={columnHeading}>Partners</span>
-                <span
+                <ChevronDown
+                  size={16}
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
                     color: "var(--text-dark-secondary)",
                     display: "inline-block",
                     transition: "transform var(--duration-dur-2) var(--ease-standard)",
                     transform: mobilePartnersOpen ? "rotate(180deg)" : "rotate(0deg)",
                   }}
-                >
-                  ▾
-                </span>
+                />
               </button>
               {mobilePartnersOpen && (
                 <div className="flex flex-col" style={{ padding: "0 var(--spacing-s4) var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
@@ -754,18 +733,15 @@ export function SiteNav() {
                 style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
               >
                 <span style={columnHeading}>Company</span>
-                <span
+                <ChevronDown
+                  size={16}
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
                     color: "var(--text-dark-secondary)",
                     display: "inline-block",
                     transition: "transform var(--duration-dur-2) var(--ease-standard)",
                     transform: mobileCompanyOpen ? "rotate(180deg)" : "rotate(0deg)",
                   }}
-                >
-                  ▾
-                </span>
+                />
               </button>
               {mobileCompanyOpen && (
                 <div className="flex flex-col" style={{ padding: "0 var(--spacing-s4) var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
@@ -788,18 +764,15 @@ export function SiteNav() {
                 <span style={columnHeading}>Language</span>
                 <span className="flex items-center" style={{ gap: "var(--spacing-s3)" }}>
                   <span style={monoLabel}>{language.code}</span>
-                  <span
+                  <ChevronDown
+                    size={16}
                     style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
                       color: "var(--text-dark-secondary)",
                       display: "inline-block",
                       transition: "transform var(--duration-dur-2) var(--ease-standard)",
                       transform: mobileLanguageOpen ? "rotate(180deg)" : "rotate(0deg)",
                     }}
-                  >
-                    ▾
-                  </span>
+                  />
                 </span>
               </button>
               {mobileLanguageOpen && (

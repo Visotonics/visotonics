@@ -1,17 +1,21 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { pageMeta } from "@/lib/seo";
 
 /* ---------------------------------------------------------------------------
-   /company/partners — "Grow with us"
+   /company/partners — "Grow with Visotonics." (Design direction 1c —
+   "The Manifest": dense instrument strip, index-heavy.)
 
    Was a ComingSoon stub. Built out because the nav's Partners menu now links
    here by name, and a menu item pointing at a placeholder is worse than the
-   menu item not existing. Styled to match the other /company/* pages
-   (offices, about) rather than introducing a new layout.
+   menu item not existing.
 
-   The ONE call to action is "Login and Register", to /client-portal — that
-   page already offers both (sign-in form + a Register link, see
+   1c's signature move is the right-aligned intro paragraph against a
+   left-aligned H1 (deliberate asymmetry — do not "fix" it into symmetry),
+   no eyebrow label, and a 4-up instrument strip with vertical rules instead
+   of the 2x2 grid used elsewhere on the site.
+
+   The ONE call to action is "Register as our partner!", to /client-portal —
+   that page already offers both sign-in and register (see
    client-portal/sign-in-form.tsx), so one destination covers both verbs
    rather than building a second landing choice here.
 --------------------------------------------------------------------------- */
@@ -21,57 +25,18 @@ const TXT_D1 = "#F4F5F7";
 const TXT_D2 = "#A6ADB8";
 const TXT_D3 = "#6B7078";
 const BORDER_D = "rgba(244,245,247,0.10)";
+const BORDER_D_18 = "rgba(244,245,247,0.18)";
 const SIGNAL = "#ED510C";
 
 const mono = "var(--font-plex-mono)";
 const sans = "var(--font-archivo)";
 
-const eyebrow: CSSProperties = {
-  fontFamily: mono,
-  fontSize: 13,
-  fontWeight: 500,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: TXT_D2,
-};
-
-const BENEFITS = [
-  {
-    n: "01",
-    title: "Deal registration",
-    body: "Register an opportunity and it is protected — no channel conflict, clear ownership, a status you can see.",
-  },
-  {
-    n: "02",
-    title: "Margin on hardware you already sell",
-    body: "Visotonics runs on the cameras your customers already own. You are not adding a line item, you are adding software margin to a sale you were already making.",
-  },
-  {
-    n: "03",
-    title: "Certified onboarding",
-    body: "A short technical onboarding gets your team to first deployment without leaning on us for every install.",
-  },
-  {
-    n: "04",
-    title: "Direct line to the product team",
-    body: "Partner feedback reaches the people building the platform, not a queue.",
-  },
+const STRIP = [
+  { n: "01", title: "Deal registration", body: "Protected the moment you register — no channel conflict." },
+  { n: "02", title: "Margin on hardware you sell", body: "Software margin on a sale you were already making." },
+  { n: "03", title: "Certified onboarding", body: "Straight to first deployment, no hand-holding." },
+  { n: "04", title: "Direct line to product", body: "Feedback reaches builders, not a queue." },
 ];
-
-const primaryCta: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 48,
-  padding: "0 28px",
-  borderRadius: "var(--radius-r-pill)",
-  background: "var(--interactive-dark-primary-bg)",
-  color: "var(--interactive-dark-primary-fg)",
-  fontFamily: sans,
-  fontSize: 16,
-  fontWeight: 500,
-  textDecoration: "none",
-};
 
 export const metadata = pageMeta({
   title: "Partners",
@@ -82,65 +47,115 @@ export const metadata = pageMeta({
 export default function PartnersPage() {
   return (
     <section style={{ background: CANVAS_DARK }}>
-      {/* DESKTOP */}
-      <div className="hidden md:block" style={{ maxWidth: 1440, margin: "0 auto", boxSizing: "border-box", padding: "96px" }}>
-        <span style={eyebrow}>Partners</span>
-        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 64, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1, maxWidth: "16ch" }}>
-          Grow with Visotonics.
-        </h1>
-        <p style={{ margin: "24px 0 0", fontSize: 20, lineHeight: 1.6, color: TXT_D2, maxWidth: "56ch" }}>
-          Sell physical AI into the yards, warehouses and plants you already work in. Register deals, protect your
-          pipeline, and get certified to deploy.
-        </p>
-        <Link href="/client-portal" className="dt-underline-draw" style={{ ...primaryCta, marginTop: 40 }}>
-          Login and Register
-        </Link>
-
-        <div className="grid grid-cols-2" style={{ marginTop: 96, borderTop: `1px solid ${BORDER_D}`, gap: 0 }}>
-          {BENEFITS.map((b, i) => (
-            <div
-              key={b.n}
+      {/* DESKTOP — 1c "The Manifest". Design's own canvas is 1040px, but the
+          house pages wrap at 1440 with generous padding, so this wraps the
+          1040px content column inside the same 1440 shell (padding echoes
+          the 56px the spec gives the content itself) rather than shipping a
+          visibly narrower page than every sibling under /company. */}
+      <div className="hidden md:block" style={{ maxWidth: 1440, margin: "0 auto", boxSizing: "border-box", padding: "96px 96px 0" }}>
+        <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+          <h1 style={{ margin: 0, fontFamily: sans, fontSize: 64, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color: TXT_D1, textAlign: "left" }}>
+            Grow with
+            <br />
+            Visotonics.
+          </h1>
+          <p style={{ margin: "24px 0 0 auto", textAlign: "right", fontSize: 16, lineHeight: 1.6, color: TXT_D2, maxWidth: "46ch" }}>
+            Sell physical AI into the yards, warehouses and plants you already work in. Register deals, protect your
+            pipeline, and get certified to deploy.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 28 }}>
+            <Link
+              href="/client-portal"
+              className="dt-underline-draw"
               style={{
-                padding: "48px 48px 48px 0",
-                borderRight: i % 2 === 0 ? `1px solid ${BORDER_D}` : "none",
-                borderBottom: i < 2 ? `1px solid ${BORDER_D}` : "none",
+                height: 44,
+                padding: "0 26px",
+                borderRadius: 999,
+                background: TXT_D1,
+                color: CANVAS_DARK,
+                fontFamily: sans,
+                fontSize: 14,
+                fontWeight: 600,
+                width: 188,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
               }}
             >
-              <span style={{ fontFamily: mono, fontSize: 13, letterSpacing: "0.06em", color: SIGNAL }}>{b.n}</span>
-              <h2 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>{b.title}</h2>
-              <p style={{ margin: "12px 0 0", fontSize: 16, lineHeight: 1.6, color: TXT_D3, maxWidth: "42ch" }}>{b.body}</p>
-            </div>
-          ))}
+              Register as our partner!
+            </Link>
+          </div>
+
+          <div style={{ marginTop: 56, borderTop: `1px solid ${BORDER_D_18}`, display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+            {STRIP.map((c, i) => (
+              <div
+                key={c.n}
+                style={{
+                  borderRight: i < STRIP.length - 1 ? `1px solid ${BORDER_D}` : "none",
+                  padding: i === 0 ? "22px 20px 40px 0" : i === STRIP.length - 1 ? "22px 0 40px 20px" : "22px 20px 40px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontFamily: mono, fontSize: 11, color: SIGNAL }}>{c.n}</span>
+                  <span style={{ width: 5, height: 5, background: SIGNAL, borderRadius: 999 }} />
+                </div>
+                <h2 style={{ margin: "14px 0 0", fontFamily: sans, fontSize: 15, fontWeight: 600, color: TXT_D1 }}>{c.title}</h2>
+                <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.55, color: TXT_D3 }}>{c.body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* MOBILE */}
+      {/* MOBILE — 1c is desktop-only in the design file (its own "try next"
+          note asks for a mobile pass). Adaptation decisions: single column;
+          headline drops to 40px; the intro paragraph is LEFT-aligned here
+          because the right-alignment that reads as a deliberate signature
+          at 1040px reads as a mistake on a narrow column; CTA goes
+          full-width instead of the fixed 188px; the 4 cells stack with
+          border-top separators instead of border-right verticals. */}
       <div className="md:hidden" style={{ padding: "48px 24px 64px" }}>
-        <span style={{ ...eyebrow, fontSize: 11 }}>Partners</span>
-        <h1 style={{ margin: "16px 0 0", fontFamily: sans, fontSize: 40, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>
-          Grow with Visotonics.
+        <h1 style={{ margin: 0, fontFamily: sans, fontSize: 40, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.05, color: TXT_D1 }}>
+          Grow with
+          <br />
+          Visotonics.
         </h1>
-        <p style={{ margin: "16px 0 0", fontSize: 17, lineHeight: 1.6, color: TXT_D2 }}>
+        <p style={{ margin: "16px 0 0", textAlign: "left", fontSize: 16, lineHeight: 1.6, color: TXT_D2 }}>
           Sell physical AI into the yards, warehouses and plants you already work in. Register deals, protect your
           pipeline, and get certified to deploy.
         </p>
-        <Link href="/client-portal" style={{ ...primaryCta, marginTop: 28, width: "100%" }}>
-          Login and Register
+        <Link
+          href="/client-portal"
+          style={{
+            marginTop: 28,
+            height: 48,
+            padding: "0 26px",
+            borderRadius: 999,
+            background: TXT_D1,
+            color: CANVAS_DARK,
+            fontFamily: sans,
+            fontSize: 15,
+            fontWeight: 600,
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+          }}
+        >
+          Register as our partner!
         </Link>
 
-        <div style={{ marginTop: 56 }}>
-          {BENEFITS.map((b, i) => (
-            <div
-              key={b.n}
-              style={{
-                borderTop: `1px solid ${BORDER_D}`,
-                borderBottom: i === BENEFITS.length - 1 ? `1px solid ${BORDER_D}` : "none",
-                padding: "28px 0",
-              }}
-            >
-              <span style={{ fontFamily: mono, fontSize: 12, letterSpacing: "0.06em", color: SIGNAL }}>{b.n}</span>
-              <h2 style={{ margin: "10px 0 0", fontFamily: sans, fontSize: 20, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>{b.title}</h2>
-              <p style={{ margin: "8px 0 0", fontSize: 15, lineHeight: 1.6, color: TXT_D3 }}>{b.body}</p>
+        <div style={{ marginTop: 48, borderTop: `1px solid ${BORDER_D_18}` }}>
+          {STRIP.map((c) => (
+            <div key={c.n} style={{ borderTop: `1px solid ${BORDER_D}`, padding: "22px 0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: mono, fontSize: 11, color: SIGNAL }}>{c.n}</span>
+                <span style={{ width: 5, height: 5, background: SIGNAL, borderRadius: 999 }} />
+              </div>
+              <h2 style={{ margin: "14px 0 0", fontFamily: sans, fontSize: 17, fontWeight: 600, color: TXT_D1 }}>{c.title}</h2>
+              <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.55, color: TXT_D3 }}>{c.body}</p>
             </div>
           ))}
         </div>

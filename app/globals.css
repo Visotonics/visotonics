@@ -574,6 +574,35 @@
 /* DecryptedText — encrypted (unresolved) characters read as dimmed. */
 .v-enc { opacity: 0.55; }
 
+/* ---------------------------------------------------------------------------
+   Hero scan line (app/page.tsx Hero()) — a single soft-edged bar travelling
+   the length of the callout rule, once every 9s, holding at each end rather
+   than pulsing. "The grid coming alive" per docs/15-hero-visual-critique.md,
+   without violating the codebase's calm-motion rule. Reduced-motion turns it
+   into the plain static rule it sits on top of.
+--------------------------------------------------------------------------- */
+.hero-scanline-bar {
+  position: absolute;
+  top: 0;
+  left: -10%;
+  width: 10%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(92, 200, 255, 0.9), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-scanline-bar {
+    animation: heroScan 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+@keyframes heroScan {
+  0% { left: -10%; }
+  40% { left: 100%; }
+  100% { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-scanline-bar { display: none; }
+}
+
 /* Nav mega-menu — crossfade when switching between hovered menus. */
 @keyframes navMegaFade {
   from { opacity: 0; transform: translateY(-4px); }

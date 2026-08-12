@@ -32,6 +32,13 @@ const GRID_D = "rgba(92,200,255,0.08)";
 const GRID_L = "rgba(27,127,196,0.06)";
 const CROSS_D = "rgba(92,200,255,0.4)";
 const CROSS_L = "rgba(27,127,196,0.30)";
+// hero-only, higher-weight variants of the two lines above — see the
+// "raise the alpha of the existing blue" item in docs/15-hero-visual-critique.md.
+// Kept local to Hero() rather than raising GRID_D/CROSS_D globally: those two
+// drive drafting furniture on every other section of the page, and this pass
+// is scoped to the hero band only.
+const HERO_GRID_D = "rgba(92,200,255,0.16)";
+const HERO_CROSS_D = "rgba(92,200,255,0.7)";
 const BORDER_D = "rgba(244,245,247,0.10)";
 const RULE_L = "#D4D6DB";
 const SIGNAL = "#ED510C";
@@ -86,21 +93,25 @@ function SignalCross({ style, color = SIGNAL }: { style: CSSProperties; color?: 
    neither type nor a 3px dot. Extension ticks at each end, a rule between, and
    a mono label sitting on the rule with the background knocked out behind it. */
 function DimensionSpan({
-  label, left, right, top, background, color = SIGNAL,
-}: { label: string; left: number | string; right: number | string; top: number | string; background: string; color?: string }) {
+  label, left, right, top, background, color = SIGNAL, strong = false,
+}: { label: string; left: number | string; right: number | string; top: number | string; background: string; color?: string; strong?: boolean }) {
+  // `strong` is the hero-only weight bump called for in
+  // docs/15-hero-visual-critique.md ("give DimensionSpan more visual
+  // weight") — every other caller keeps the original quiet instrument-label
+  // size so nothing outside the hero shifts.
   return (
-    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: 9 }}>
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: strong ? 11 : 9 }}>
       {/* the measured rule */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: color, opacity: 0.55 }} />
+      <div style={{ position: "absolute", left: 0, right: 0, top: strong ? 5 : 4, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
       {/* extension ticks, one at each end */}
-      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: 9, background: color }} />
-      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: 9, background: color }} />
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: strong ? 11 : 9, background: color }} />
+      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: strong ? 11 : 9, background: color }} />
       {/* the label, knocking a hole in the rule the way a real callout does */}
       <span
         style={{
-          position: "absolute", left: "50%", top: -3, transform: "translateX(-50%)",
-          padding: "0 8px", background,
-          fontFamily: mono, fontSize: 10, letterSpacing: "0.14em", lineHeight: "15px",
+          position: "absolute", left: "50%", top: strong ? -4 : -3, transform: "translateX(-50%)",
+          padding: strong ? "0 10px" : "0 8px", background,
+          fontFamily: mono, fontSize: strong ? 12 : 10, fontWeight: strong ? 600 : 400, letterSpacing: "0.14em", lineHeight: strong ? "17px" : "15px",
           color, whiteSpace: "nowrap",
         }}
       >
@@ -231,15 +242,35 @@ function Hero() {
           cards where they always used to start. Nothing else about the cards,
           their full-bleed treatment or the page's colour system changes. */}
       <div className="hidden md:flex" style={{ ...SHEET, minHeight: 384, flexDirection: "column" }}>
+        {/* DEPTH — a stationary radial glow centred behind the headline. Pure
+            CSS, no JS, no motion. Reads as "light coming from the system"
+            rather than a flat #0A0B0E slab; kept in the sanctioned accent
+            blue (ACCENT_D) at low alpha so it stays atmosphere, not a wash —
+            see the hero's one hard rule against orange as decoration. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
+            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.10), rgba(92,200,255,0.03) 45%, transparent 72%)`,
+          }}
+        />
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} />
+          <Verticals color={HERO_GRID_D} />
           {/* One rule, 48px off the bottom of the screen, carrying the callout.
               Percentages rather than the old hard-coded 336/384: the band's
               height is now viewport-derived, so anything positioned in px from
               the top detaches from it the moment the window resizes. */}
-          <HRule top="calc(100% - 48px)" color={GRID_D} cross={CROSS_D} />
-          <Cross color={CROSS_D} style={{ left: 60, top: 4 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
+          <HRule top="calc(100% - 48px)" color={HERO_GRID_D} cross={HERO_CROSS_D} />
+          <Cross color={HERO_CROSS_D} style={{ left: 60, top: 4 }} />
+          <Cross color={HERO_CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
+          {/* THE GRID COMING ALIVE — one calm, slow scan travelling the length
+              of the callout rule, once every 9s. Not a pulse: a single
+              soft-edged bar crossing left to right and holding briefly at each
+              end. Respects prefers-reduced-motion (see .hero-scanline in
+              globals.css, which zeroes the animation there). */}
+          <div className="hero-scanline" style={{ position: "absolute", top: "calc(100% - 49px)", left: 60, right: 68, height: 2, overflow: "hidden" }}>
+            <div className="hero-scanline-bar" />
+          </div>
           {/* SILENT CHROME — the hero's drafting furniture is drawn in neutral,
               not in the accent.
 
@@ -286,16 +317,25 @@ function Hero() {
           label="OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS"
           left="calc(64px + (100% - 128px) * 0.25)"
           right="calc(64px + (100% - 128px) * 0.25)"
-          top="calc(100% - 52px)"
+          top="calc(100% - 53px)"
           background={DARK}
-          color={CROSS_D}
+          color={HERO_CROSS_D}
+          strong
         />
 
         {/* The headline takes the whole band and centres in it. flex:1 rather
             than a fixed height so it stays optically centred at any viewport
             height; the 48px bottom padding is the callout strip it must not
             sit on top of. */}
-        <div style={{ position: "relative", zIndex: 1, flex: 1, padding: "0 64px 48px", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "relative", zIndex: 1, flex: 1, padding: "0 64px 48px", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          {/* SUPPORTING LINE — a second, distinct type voice above the slab.
+              Mono, uppercase, wide tracking, in the accent: reads as an
+              instrument readout introducing the headline rather than
+              competing with it. Fixes "one size doing all the work"
+              (docs/15-hero-visual-critique.md, finding 2). */}
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 13, marginBottom: 20, opacity: 0.85 }}>
+            REAL-TIME COMPUTER VISION FOR THE PHYSICAL SUPPLY CHAIN
+          </span>
           <h1
             style={{
               margin: 0,
@@ -347,6 +387,10 @@ function Hero() {
                  marginLeft:-1 was there to collapse. Butted cells with one
                  shared hairline need neither. */
               borderRight: i === HERO_CARDS.length - 1 ? undefined : `1px solid ${GRID_D}`,
+              borderTop: `2px solid transparent`,
+              backgroundImage: `linear-gradient(${DARK_SURFACE}, ${DARK_SURFACE}), linear-gradient(90deg, rgba(92,200,255,0), rgba(92,200,255,0.55) 50%, rgba(92,200,255,0))`,
+              backgroundOrigin: "border-box",
+              backgroundClip: "padding-box, border-box",
               display: "flex",
               flexDirection: "column",
               color: TXT_D1,
@@ -372,7 +416,21 @@ function Hero() {
                 its own aspect rather than by flex:1 — at full-bleed width the
                 cell is wide enough that 4:3 gives the scenes more height than
                 the old fixed 397px card ever did. */}
-            <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", overflow: "hidden", display: "flex" }}>
+            <div
+              style={{
+                position: "relative", width: "100%", aspectRatio: "4 / 3", overflow: "hidden", display: "flex",
+                /* STATIC CARD TREATMENT — present the instant the card paints,
+                   before the lazy WebGL scene mounts. Fixes the "blank grey
+                   box" cold-load moment (docs/15-hero-visual-critique.md,
+                   finding 5) with a faint accent-blue corner-bracket glow
+                   rather than new imagery. The scene, once mounted, paints
+                   over this — it's a loading-state floor, not competing
+                   decoration. */
+                background: `radial-gradient(ellipse 140% 90% at 50% 0%, rgba(92,200,255,0.08), transparent 60%)`,
+              }}
+            >
+              <span aria-hidden="true" style={{ position: "absolute", left: 10, top: 10, width: 14, height: 14, borderLeft: `1px solid ${HERO_CROSS_D}`, borderTop: `1px solid ${HERO_CROSS_D}`, opacity: 0.5 }} />
+              <span aria-hidden="true" style={{ position: "absolute", right: 10, top: 10, width: 14, height: 14, borderRight: `1px solid ${HERO_CROSS_D}`, borderTop: `1px solid ${HERO_CROSS_D}`, opacity: 0.5 }} />
               {(() => {
                 const S = CARD_SCENES[i];
                 return <S />;

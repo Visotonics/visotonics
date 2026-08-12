@@ -90,6 +90,21 @@ const INDUSTRIES_LINKS: LinkItem[] = [
   { name: "Logistics & Supply Chain", href: "/industries#logistics-supply-chain" },
 ];
 
+/* Modelled on visotonics.com's own Partners menu, then re-pointed to real
+   destinations rather than left on the live site's own page (which is just
+   one long pitch page there). "Certified delivery" — the live site's fourth
+   item — was dropped on request; it had no obvious destination among the
+   pages this rebuild actually has. */
+const PARTNERS_LINKS: LinkItem[] = [
+  // Existing partners logging a deal go straight to sign-in — routeFor()
+  // there sends an already-registered partner on to their real dashboard.
+  { name: "Register deals", href: "/client-portal" },
+  // The benefits page this menu is named for — /company/partners itself.
+  { name: "Grow with us", href: "/company/partners" },
+  // A prospective partner starts the real onboarding flow, not the pitch page.
+  { name: "Become a partner", href: "/client-portal/register" },
+];
+
 const LANGUAGES = [
   { code: "EN", name: "English" },
   { code: "HI", name: "हिन्दी" },
@@ -151,17 +166,18 @@ const navLink: CSSProperties = {
 };
 
 export function SiteNav() {
-  const [openMenu, setOpenMenu] = useState<"platform" | "industries" | "resources" | "company" | "language" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"platform" | "industries" | "resources" | "company" | "partners" | "language" | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accordions, setAccordions] = useState<Record<number, boolean>>({});
   const [mobileIndustriesOpen, setMobileIndustriesOpen] = useState(false);
   const [mobileResourcesOpen, setMobileResourcesOpen] = useState(false);
   const [mobileCompanyOpen, setMobileCompanyOpen] = useState(false);
+  const [mobilePartnersOpen, setMobilePartnersOpen] = useState(false);
   const [mobileLanguageOpen, setMobileLanguageOpen] = useState(false);
   const [language, setLanguage] = useState<(typeof LANGUAGES)[number]>(LANGUAGES[0]);
   const headerRef = useRef<HTMLElement>(null);
 
-  function toggleMenu(name: "platform" | "industries" | "resources" | "company" | "language") {
+  function toggleMenu(name: "platform" | "industries" | "resources" | "company" | "partners" | "language") {
     setOpenMenu((current) => (current === name ? null : name));
   }
 
@@ -185,6 +201,7 @@ export function SiteNav() {
       setMobileIndustriesOpen(false);
       setMobileResourcesOpen(false);
       setMobileCompanyOpen(false);
+      setMobilePartnersOpen(false);
       setMobileLanguageOpen(false);
       setAccordions({});
     }
@@ -270,6 +287,28 @@ export function SiteNav() {
                   display: "inline-block",
                   transition: "transform var(--duration-dur-2) var(--ease-standard)",
                   transform: openMenu === "resources" ? "rotate(180deg)" : "rotate(0deg)",
+                }}
+              >
+                ▾
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => toggleMenu("partners")}
+              onMouseEnter={() => setOpenMenu("partners")}
+              className="flex cursor-pointer items-center bg-transparent p-0"
+              style={{ gap: "var(--spacing-s2)", ...navLink, color: openMenu === "partners" ? "var(--text-dark-secondary)" : "var(--text-dark-primary)" }}
+            >
+              Partners
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  color: "var(--text-dark-secondary)",
+                  display: "inline-block",
+                  transition: "transform var(--duration-dur-2) var(--ease-standard)",
+                  transform: openMenu === "partners" ? "rotate(180deg)" : "rotate(0deg)",
                 }}
               >
                 ▾
@@ -386,7 +425,7 @@ export function SiteNav() {
               transitionTimingFunction: "var(--ease-standard)",
             }}
           >
-            Contact
+            Book a Demo
           </Link>
         </div>
         </div>
@@ -396,7 +435,7 @@ export function SiteNav() {
             openMenu goes to null/"language") means moving the hover from one
             trigger to another swaps content in place instead of closing and
             reopening; the fade key={openMenu} still animates each swap. */}
-        {(openMenu === "platform" || openMenu === "industries" || openMenu === "resources" || openMenu === "company") && (
+        {(openMenu === "platform" || openMenu === "industries" || openMenu === "resources" || openMenu === "partners" || openMenu === "company") && (
           <div className="hidden border-t md:block" style={{ borderColor: "var(--border-dark)", background: "var(--canvas-dark)" }}>
             <div key={openMenu} className="nav-mega-fade">
               {openMenu === "industries" && (
@@ -467,6 +506,26 @@ export function SiteNav() {
                   </div>
                   <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
                     {[...RESOURCES_COL_1, ...RESOURCES_COL_2].map((l) => (
+                      <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
+                        {l.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {openMenu === "partners" && (
+                <div
+                  className="mx-auto grid max-w-[1360px] px-16"
+                  style={{ gridTemplateColumns: "1.1fr 1fr", gap: "var(--spacing-s6)", padding: "var(--spacing-s8) var(--spacing-s16) var(--spacing-s12)" }}
+                >
+                  <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", paddingRight: "var(--spacing-s6)", gap: "var(--spacing-s3)" }}>
+                    <span style={monoLabel}>Menu</span>
+                    <span style={menuTitle}>Partners</span>
+                    <span style={caption}>Build and grow with Visotonics.</span>
+                  </div>
+                  <div className="flex flex-col" style={{ paddingTop: "var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
+                    {PARTNERS_LINKS.map((l) => (
                       <Link key={l.name} href={l.href} className="dt-underline-draw" style={{ ...menuOption, alignSelf: "flex-start" }}>
                         {l.name}
                       </Link>
@@ -658,6 +717,38 @@ export function SiteNav() {
             <div className="border-t" style={{ borderColor: "var(--border-dark)" }}>
               <button
                 type="button"
+                onClick={() => setMobilePartnersOpen((v) => !v)}
+                className="flex w-full cursor-pointer items-center justify-between bg-transparent text-left"
+                style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
+              >
+                <span style={columnHeading}>Partners</span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 12,
+                    color: "var(--text-dark-secondary)",
+                    display: "inline-block",
+                    transition: "transform var(--duration-dur-2) var(--ease-standard)",
+                    transform: mobilePartnersOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  }}
+                >
+                  ▾
+                </span>
+              </button>
+              {mobilePartnersOpen && (
+                <div className="flex flex-col" style={{ padding: "0 var(--spacing-s4) var(--spacing-s4)", gap: "var(--spacing-s3)" }}>
+                  {PARTNERS_LINKS.map((l) => (
+                    <Link key={l.name} href={l.href} style={caption}>
+                      {l.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t" style={{ borderColor: "var(--border-dark)" }}>
+              <button
+                type="button"
                 onClick={() => setMobileCompanyOpen((v) => !v)}
                 className="flex w-full cursor-pointer items-center justify-between bg-transparent text-left"
                 style={{ minHeight: 56, padding: "var(--spacing-s3) var(--spacing-s4)" }}
@@ -763,7 +854,7 @@ export function SiteNav() {
                   fontWeight: 500,
                 }}
               >
-                Contact
+                Book a Demo
               </Link>
             </div>
           </div>

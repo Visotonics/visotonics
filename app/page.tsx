@@ -197,9 +197,9 @@ const HERO_CARD_CSS = `
 /* the part number's leader rule DRAWS toward the panel on hover: short and
    faint at rest, running the full width and bright on interaction */
 .lab-hc .lab-lead {
-  transform: scaleX(0.42);
+  transform: scaleX(0.55);
   transform-origin: left center;
-  opacity: 0.22;
+  opacity: 0.45;
   transition: transform 340ms cubic-bezier(0.2, 0.75, 0.2, 1), opacity 260ms ease;
 }
 .lab-hc:hover .lab-lead,
@@ -251,7 +251,7 @@ function Hero() {
           aria-hidden="true"
           style={{
             position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
-            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.10), rgba(92,200,255,0.03) 45%, transparent 72%)`,
+            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.20), rgba(92,200,255,0.07) 45%, transparent 72%)`,
           }}
         />
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
@@ -333,7 +333,7 @@ function Hero() {
               instrument readout introducing the headline rather than
               competing with it. Fixes "one size doing all the work"
               (docs/15-hero-visual-critique.md, finding 2). */}
-          <span style={{ ...eyebrow(ACCENT_D), fontSize: 13, marginBottom: 20, opacity: 0.85 }}>
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 10, letterSpacing: "0.14em", marginBottom: 16, opacity: 0.55 }}>
             REAL-TIME COMPUTER VISION FOR THE PHYSICAL SUPPLY CHAIN
           </span>
           <h1
@@ -381,14 +381,21 @@ function Hero() {
             style={{
               position: "relative",
               boxSizing: "border-box",
-              background: DARK_SURFACE,
+              background: DARK,
               /* Right edge only, and none on the last card. A border on every
                  side doubled every internal edge, which is what the old
                  marginLeft:-1 was there to collapse. Butted cells with one
                  shared hairline need neither. */
               borderRight: i === HERO_CARDS.length - 1 ? undefined : `1px solid ${GRID_D}`,
               borderTop: `2px solid transparent`,
-              backgroundImage: `linear-gradient(${DARK_SURFACE}, ${DARK_SURFACE}), linear-gradient(90deg, rgba(92,200,255,0), rgba(92,200,255,0.55) 50%, rgba(92,200,255,0))`,
+              /* Card fill now matches DARK exactly (was DARK_SURFACE — the card
+                 read as a visibly different panel from the page). With the
+                 fill no longer providing an edge of its own, the top-border
+                 gradient carries the whole "this is a card" signal, so it's
+                 raised to read at rest, not just on hover: a faint full-width
+                 base line (0.14) with a brighter blue crown centred over the
+                 card (0.85). */
+              backgroundImage: `linear-gradient(${DARK}, ${DARK}), linear-gradient(90deg, rgba(92,200,255,0.14), rgba(92,200,255,0.85) 50%, rgba(92,200,255,0.14))`,
               backgroundOrigin: "border-box",
               backgroundClip: "padding-box, border-box",
               display: "flex",
@@ -429,8 +436,8 @@ function Hero() {
                 background: `radial-gradient(ellipse 140% 90% at 50% 0%, rgba(92,200,255,0.08), transparent 60%)`,
               }}
             >
-              <span aria-hidden="true" style={{ position: "absolute", left: 10, top: 10, width: 14, height: 14, borderLeft: `1px solid ${HERO_CROSS_D}`, borderTop: `1px solid ${HERO_CROSS_D}`, opacity: 0.5 }} />
-              <span aria-hidden="true" style={{ position: "absolute", right: 10, top: 10, width: 14, height: 14, borderRight: `1px solid ${HERO_CROSS_D}`, borderTop: `1px solid ${HERO_CROSS_D}`, opacity: 0.5 }} />
+              <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, left: 10, top: 10, width: 18, height: 18, borderLeft: `1.5px solid ${HERO_CROSS_D}`, borderTop: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
+              <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, right: 10, top: 10, width: 18, height: 18, borderRight: `1.5px solid ${HERO_CROSS_D}`, borderTop: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
               {(() => {
                 const S = CARD_SCENES[i];
                 return <S />;
@@ -445,16 +452,25 @@ function Hero() {
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
           <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
         </div>
-        <div style={{ position: "relative", zIndex: 1, padding: "40px 20px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
-          <h1 style={{ margin: 0, fontFamily: sans, fontSize: 44, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
-            <DecryptedText text="Vision-AI Platform" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+        <div style={{ position: "relative", zIndex: 1, padding: "40px 20px 0", textAlign: "center" }}>
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 9, letterSpacing: "0.1em", opacity: 0.55, display: "block", marginBottom: 14 }}>
+            REAL-TIME COMPUTER VISION FOR THE PHYSICAL SUPPLY CHAIN
+          </span>
+        </div>
+        <div style={{ position: "relative", zIndex: 1, padding: "0 16px 40px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
+          <h1 style={{ margin: 0, fontFamily: sans, fontSize: 34, lineHeight: 1.12, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
+            <DecryptedText text="Vision-AI" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
             <br />
-            <DecryptedText text="for Industrial Operations" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+            <DecryptedText text="Platform for" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
+            <br />
+            <DecryptedText text="Industrial Operations" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
           </h1>
         </div>
         {/* one line, matching the desktop callout's consolidated copy */}
-        <div style={{ position: "relative", zIndex: 1, padding: "14px 20px", borderBottom: `1px solid ${GRID_D}` }}>
-          <span style={{ ...eyebrow(ACCENT_D), fontSize: 11, letterSpacing: "0.06em" }}>OUR PLATFORM · OUR PATENTED TECHNOLOGY · YOUR CAMERAS</span>
+        <div style={{ position: "relative", zIndex: 1, padding: "14px 20px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 11, letterSpacing: "0.06em" }}>OUR PLATFORM · OUR PATENTED TECHNOLOGY</span>
+          <br />
+          <span style={{ ...eyebrow(ACCENT_D), fontSize: 11, letterSpacing: "0.06em" }}>· YOUR CAMERAS</span>
         </div>
         <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr" }}>
           {HERO_CARDS.map((c, i) => (
@@ -466,7 +482,8 @@ function Hero() {
                 boxSizing: "border-box",
                 borderRight: i % 2 === 0 ? `1px solid ${GRID_D}` : undefined,
                 borderBottom: i < 2 ? `1px solid ${GRID_D}` : undefined,
-                background: DARK_SURFACE,
+                borderTop: `2px solid rgba(92,200,255,0.45)`,
+                background: DARK,
                 padding: 18,
                 display: "flex",
                 flexDirection: "column",
@@ -479,7 +496,7 @@ function Hero() {
               <span style={{ display: "flex", justifyContent: "flex-end" }}>
                 <span style={{ ...eyebrow(TXT_D2), fontSize: 13 }}>{c.num}</span>
               </span>
-              <div style={{ flex: 1, minHeight: 160, borderRadius: 6, overflow: "hidden", background: "#101216", display: "flex", position: "relative" }}>
+              <div style={{ flex: 1, minHeight: 160, borderRadius: 6, overflow: "hidden", background: DARK, display: "flex", position: "relative" }}>
                 {(() => {
                   const S = CARD_SCENES[i];
                   return <S />;

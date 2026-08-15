@@ -603,6 +603,34 @@
   .hero-scanline-bar { display: none; }
 }
 
+/* ---------------------------------------------------------------------------
+   Wireframe grid pulse (Option C) — the recurring drafting-table grid
+   (Verticals / HRule / Cross in app/page.tsx) "activates" once as each
+   section scrolls into view: invisible until then, a brief brighter flash,
+   then settles to a calm permanent 0.55 opacity. Reuses the exact mechanism
+   Reveal already sets up (data-revealed="true", once, never re-fires) — the
+   selector below just keys off the same attribute on whatever ancestor
+   Reveal is wrapping. Hero is excluded on purpose: it has its own distinct
+   glow/scanline treatment, not this one.
+--------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .wire-activate {
+    opacity: 0;
+  }
+  [data-revealed="true"] .wire-activate {
+    opacity: 0.55;
+    animation: wireGridFlash 1200ms ease-out;
+  }
+}
+@keyframes wireGridFlash {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire-activate { opacity: 0.55; }
+}
+
 /* Nav mega-menu — crossfade when switching between hovered menus. */
 @keyframes navMegaFade {
   from { opacity: 0; transform: translateY(-4px); }

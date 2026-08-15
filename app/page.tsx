@@ -93,30 +93,48 @@ function SignalCross({ style, color = SIGNAL }: { style: CSSProperties; color?: 
    neither type nor a 3px dot. Extension ticks at each end, a rule between, and
    a mono label sitting on the rule with the background knocked out behind it. */
 function DimensionSpan({
-  label, left, right, top, background, color = SIGNAL, strong = false,
-}: { label: string; left: number | string; right: number | string; top: number | string; background: string; color?: string; strong?: boolean }) {
+  label, left, right, top, color = SIGNAL, strong = false,
+}: { label: string; left: number | string; right: number | string; top: number | string; color?: string; strong?: boolean }) {
   // `strong` is the hero-only weight bump called for in
   // docs/15-hero-visual-critique.md ("give DimensionSpan more visual
   // weight") — every other caller keeps the original quiet instrument-label
   // size so nothing outside the hero shifts.
+  const tickHeight = strong ? 11 : 9;
+  const ruleTop = strong ? 5 : 4;
+  const labelLineHeight = strong ? 17 : 15;
   return (
-    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: strong ? 11 : 9 }}>
-      {/* the measured rule */}
-      <div style={{ position: "absolute", left: 0, right: 0, top: strong ? 5 : 4, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: tickHeight }}>
       {/* extension ticks, one at each end */}
-      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: strong ? 11 : 9, background: color }} />
-      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: strong ? 11 : 9, background: color }} />
-      {/* the label, knocking a hole in the rule the way a real callout does */}
-      <span
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: tickHeight, background: color }} />
+      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: tickHeight, background: color }} />
+      {/* the rule, split into two REAL segments around the label instead of
+          one continuous rule with an opaque background patch painted over
+          it. The old approach hard-coded the patch to the page background
+          colour, which broke the moment anything (e.g. the headline glow)
+          lightened the real background under it — a colour-matched patch
+          would just re-break on the next background change. A genuine DOM
+          gap has no colour to match: there is nothing under the label at
+          all, so it blends with whatever sits behind it by construction. */}
+      <div
         style={{
-          position: "absolute", left: "50%", top: strong ? -4 : -3, transform: "translateX(-50%)",
-          padding: strong ? "0 10px" : "0 8px", background,
-          fontFamily: mono, fontSize: strong ? 12 : 10, fontWeight: strong ? 600 : 400, letterSpacing: "0.14em", lineHeight: strong ? "17px" : "15px",
-          color, whiteSpace: "nowrap",
+          position: "absolute", left: 0, right: 0, top: ruleTop, height: labelLineHeight,
+          transform: "translateY(-50%)",
+          display: "flex", alignItems: "center",
         }}
       >
-        {label}
-      </span>
+        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
+        <span
+          style={{
+            flexShrink: 0,
+            padding: strong ? "0 10px" : "0 8px",
+            fontFamily: mono, fontSize: strong ? 12 : 10, fontWeight: strong ? 600 : 400, letterSpacing: "0.14em", lineHeight: `${labelLineHeight}px`,
+            color, whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </span>
+        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
+      </div>
     </div>
   );
 }
@@ -210,7 +228,7 @@ const HERO_CARD_CSS = `
   content: "";
   position: absolute;
   inset: 0;
-  padding: 1.5px;
+  padding: 2px;
   box-sizing: border-box;
   pointer-events: none;
   border-radius: inherit;
@@ -222,7 +240,7 @@ const HERO_CARD_CSS = `
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  opacity: 0.4;
+  opacity: 0.75;
 }
 @media (prefers-reduced-motion: no-preference) {
   .lab-hc::after {
@@ -306,7 +324,7 @@ function Hero() {
           aria-hidden="true"
           style={{
             position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
-            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.13), rgba(92,200,255,0.045) 45%, transparent 72%)`,
+            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.07), rgba(92,200,255,0.02) 45%, transparent 72%)`,
           }}
         />
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
@@ -373,7 +391,6 @@ function Hero() {
           left="calc(64px + (100% - 128px) * 0.25)"
           right="calc(64px + (100% - 128px) * 0.25)"
           top="calc(100% - 53px)"
-          background={DARK}
           color={HERO_CROSS_D}
           strong
         />

@@ -20,6 +20,26 @@ This mirrors what every schematic SVG on the site already did before it was writ
 - **Two stops, because grounds differ** — `#5CC8FF` on dark, `#1B7FC4` on light. Not a duplicate: the same hue at the value each ground needs.
 - **Orange stays a conclusion** — the Proof & Partners registration dots are deliberately still orange, and the scenes' finding/severity marks are unchanged.
 
+### The hero band is blue-only — no exception, the strongest instance of the rule
+
+The homepage hero (`app/page.tsx`, `Hero()`) carries none of the site's
+orange, by design, not oversight. Its drafting furniture — grid lines,
+corner crosses, the callout rule, the eyebrow line, `DimensionSpan`, the
+per-card accent borders — is blue (`ACCENT_D`/`CROSS_D`/`HERO_CROSS_D`
+family) at every alpha. An earlier version of the hero carried roughly
+fourteen separate orange marks (crosses, dots, the callout, four card
+numerals and leader rules); they were removed because not one of them
+marked a RESULT — they were the page's own styling conceit wearing the
+colour that, everywhere else on the site, means "the system concluded
+something." A hero with no detection event yet has nothing to conclude, so
+orange has no job to do there. The reasoning and the removal are recorded
+inline at the `SILENT CHROME` comment in `app/page.tsx` (hero band), and in
+`docs/15-hero-visual-critique.md`. **Do not reintroduce orange to the hero
+band to fix "flat" or "dull" complaints** — raise blue's alpha/weight
+instead; that is the sanctioned lever (see `docs/15-hero-visual-critique.md`'s
+colour plan). Orange belongs inside the card scenes themselves, where each
+one still runs its own blue-observing-to-orange-concluding beat.
+
 **One inconsistency to be aware of.** `app/globals.css` still carries the older rule in its header comment and tokens — *"`SIGNAL #ED510C` is the only colour in the system… NEVER on buttons, NEVER as link colour"*. That comment predates the blue work and now describes the site as it was, not as it is. The blue accent lives in `app/page.tsx`, not in the CSS tokens. Trust the page over the comment until the two are reconciled.
 
 ### Blue has two stops, because the ground changed

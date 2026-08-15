@@ -53,9 +53,9 @@ const sans = "var(--font-archivo)";
 /* ---- drafting-sheet primitives -------------------------------------------- */
 
 // 9px registration cross, anchored to a corner / rule endpoint.
-function Cross({ color, style }: { color: string; style: CSSProperties }) {
+function Cross({ color, style, className }: { color: string; style: CSSProperties; className?: string }) {
   return (
-    <div aria-hidden="true" style={{ position: "absolute", width: 9, height: 9, ...style }}>
+    <div aria-hidden="true" className={className} style={{ position: "absolute", width: 9, height: 9, ...style }}>
       <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: color }} />
       <div style={{ position: "absolute", top: 0, bottom: 0, left: 4, width: 1, background: color }} />
     </div>
@@ -125,23 +125,23 @@ function DimensionSpan({
 // inset content into 4 equal columns. Same coordinates in every section so the
 // sheet reads continuous.
 const V_X = ["64px", "calc(64px + (100% - 128px) * 0.25)", "50%", "calc(64px + (100% - 128px) * 0.75)", "calc(100% - 64px)"];
-function Verticals({ color }: { color: string }) {
+function Verticals({ color, className }: { color: string; className?: string }) {
   return (
     <>
       {V_X.map((x, i) => (
-        <div key={i} aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
+        <div key={i} aria-hidden="true" className={className} style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
       ))}
     </>
   );
 }
 
 // full-width horizontal rule + a registration cross at each endpoint (on the margins)
-function HRule({ top, color, cross }: { top: number | string; color: string; cross: string }) {
+function HRule({ top, color, cross, className }: { top: number | string; color: string; cross: string; className?: string }) {
   return (
     <>
-      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top, height: 1, background: color }} />
-      <Cross color={cross} style={{ left: 60, top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
-      <Cross color={cross} style={{ left: "calc(100% - 68px)", top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
+      <div aria-hidden="true" className={className} style={{ position: "absolute", left: 0, right: 0, top, height: 1, background: color }} />
+      <Cross color={cross} className={className} style={{ left: 60, top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
+      <Cross color={cross} className={className} style={{ left: "calc(100% - 68px)", top: `calc(${typeof top === "number" ? `${top}px` : top} - 4px)` }} />
     </>
   );
 }
@@ -182,17 +182,72 @@ const HERO_CARD_CSS = `
    listens to focusin — these are anchors, and a keyboard user must get the same
    response. */
 .lab-hc {
-  transition: border-color 280ms ease, background-color 280ms ease;
+  transition: background-color 280ms ease;
 }
-/* !important is load-bearing here, not laziness. Both cards set border and
-   background as INLINE styles, and an inline declaration beats any class
-   selector — without this the rule silently loses and the border never changes.
-   Caught by reading back getComputedStyle rather than trusting the screenshot,
-   where the leader line drawing was masking the fact that nothing else moved. */
 .lab-hc:hover,
 .lab-hc:focus-visible {
-  border-color: rgba(92, 200, 255, 0.55) !important;
   background-color: #13161C !important;
+}
+/* PERIMETER PULSE — replaces the old top-border-only gradient trick. A
+   conic-gradient sweep, masked down to a 1.5px ring around the card so only
+   the ring itself is visible (the fill is knocked out with a mask-composite
+   exclude between a content-box layer and a border-box layer), rotated by an
+   animated custom property. Blue accent family only, per the standing rule
+   against orange as page decoration.
+
+   Two speeds, one mechanism: REST runs slow and dim (a "the system is alive"
+   idle heartbeat), HOVER runs faster and brighter (the card acknowledging
+   attention). Both are the same @keyframes — only duration and opacity
+   change — so hover never looks like a different effect switching on, just
+   the same one turning its volume up. */
+@property --wire-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.lab-hc { position: relative; }
+.lab-hc::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-radius: inherit;
+  background: conic-gradient(from var(--wire-angle, 0deg),
+    rgba(92,200,255,0) 0deg,
+    rgba(92,200,255,0.9) 28deg,
+    rgba(92,200,255,0) 70deg,
+    rgba(92,200,255,0) 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lab-hc::after {
+    animation: wireCardPulse 7s linear infinite;
+  }
+  .lab-hc:hover::after,
+  .lab-hc:focus-visible::after {
+    opacity: 1;
+    animation-duration: 2.4s;
+  }
+}
+@keyframes wireCardPulse {
+  to { --wire-angle: 360deg; }
+}
+/* Reduced motion: no rotation, just a calm static ring — the accent stays
+   present rather than disappearing outright. */
+@media (prefers-reduced-motion: reduce) {
+  .lab-hc::after {
+    background: rgba(92, 200, 255, 0.4);
+    opacity: 1;
+  }
+  .lab-hc:hover::after,
+  .lab-hc:focus-visible::after {
+    background: rgba(92, 200, 255, 0.75);
+  }
 }
 /* the part number's leader rule DRAWS toward the panel on hover: short and
    faint at rest, running the full width and bright on interaction */
@@ -251,7 +306,7 @@ function Hero() {
           aria-hidden="true"
           style={{
             position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
-            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.20), rgba(92,200,255,0.07) 45%, transparent 72%)`,
+            background: `radial-gradient(ellipse 900px 420px at 50% 46%, rgba(92,200,255,0.13), rgba(92,200,255,0.045) 45%, transparent 72%)`,
           }}
         />
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
@@ -328,14 +383,10 @@ function Hero() {
             height; the 48px bottom padding is the callout strip it must not
             sit on top of. */}
         <div style={{ position: "relative", zIndex: 1, flex: 1, padding: "0 64px 48px", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-          {/* SUPPORTING LINE — a second, distinct type voice above the slab.
-              Mono, uppercase, wide tracking, in the accent: reads as an
-              instrument readout introducing the headline rather than
-              competing with it. Fixes "one size doing all the work"
-              (docs/15-hero-visual-critique.md, finding 2). */}
-          <span style={{ ...eyebrow(ACCENT_D), fontSize: 10, letterSpacing: "0.14em", marginBottom: 16, opacity: 0.55 }}>
-            REAL-TIME COMPUTER VISION FOR THE PHYSICAL SUPPLY CHAIN
-          </span>
+          {/* EYEBROW REMOVED 2026-08-12, by request — not further shrunk, gone
+              entirely. The headline now centres alone in the band; no
+              replacement spacing needed since flex centring already absorbs
+              the change in content height. */}
           <h1
             style={{
               margin: 0,
@@ -387,17 +438,11 @@ function Hero() {
                  marginLeft:-1 was there to collapse. Butted cells with one
                  shared hairline need neither. */
               borderRight: i === HERO_CARDS.length - 1 ? undefined : `1px solid ${GRID_D}`,
-              borderTop: `2px solid transparent`,
-              /* Card fill now matches DARK exactly (was DARK_SURFACE — the card
-                 read as a visibly different panel from the page). With the
-                 fill no longer providing an edge of its own, the top-border
-                 gradient carries the whole "this is a card" signal, so it's
-                 raised to read at rest, not just on hover: a faint full-width
-                 base line (0.14) with a brighter blue crown centred over the
-                 card (0.85). */
-              backgroundImage: `linear-gradient(${DARK}, ${DARK}), linear-gradient(90deg, rgba(92,200,255,0.14), rgba(92,200,255,0.85) 50%, rgba(92,200,255,0.14))`,
-              backgroundOrigin: "border-box",
-              backgroundClip: "padding-box, border-box",
+              /* The old top-border-only gradient trick (a faint full-width
+                 base line with a brighter blue crown) is gone — replaced by
+                 the .lab-hc::after perimeter pulse in HERO_CARD_CSS, which
+                 runs a conic-gradient ring around all four edges instead of
+                 just the top. See that block for rest vs hover behaviour. */
               display: "flex",
               flexDirection: "column",
               color: TXT_D1,
@@ -452,12 +497,10 @@ function Hero() {
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
           <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
         </div>
-        <div style={{ position: "relative", zIndex: 1, padding: "40px 20px 0", textAlign: "center" }}>
-          <span style={{ ...eyebrow(ACCENT_D), fontSize: 9, letterSpacing: "0.1em", opacity: 0.55, display: "block", marginBottom: 14 }}>
-            REAL-TIME COMPUTER VISION FOR THE PHYSICAL SUPPLY CHAIN
-          </span>
-        </div>
-        <div style={{ position: "relative", zIndex: 1, padding: "0 16px 40px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
+        {/* EYEBROW REMOVED 2026-08-12, by request. The 40px top padding it
+            used to sit inside moves onto the headline block below, so the
+            headline keeps the same distance from the nav it always had. */}
+        <div style={{ position: "relative", zIndex: 1, padding: "40px 16px 40px", borderBottom: `1px solid ${GRID_D}`, textAlign: "center" }}>
           <h1 style={{ margin: 0, fontFamily: sans, fontSize: 34, lineHeight: 1.12, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
             <DecryptedText text="Vision-AI" animateOn="view" revealDirection="center" speed={45} maxIterations={14} encryptedClassName="v-enc" />
             <br />
@@ -528,7 +571,7 @@ function Statement() {
             z-index and paint above it. Poster-only until the real loop ships. */}
         <StatementVideo>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_L} />
+          <Verticals color={GRID_L} className="wire-activate" />
           {/* L-corner registration brackets, four section corners only */}
           <div style={{ position: "absolute", left: 16, top: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
           <div style={{ position: "absolute", right: 16, top: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
@@ -849,7 +892,7 @@ function ProofPartners() {
           {/* header band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
             <Dot style={{ left: -2, top: -2 }} />
-            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 16, display: "block" }}>PROVEN WHERE IT&apos;S HARDEST</span>
             <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "22ch" }}>
               Trusted by Industry Leaders
@@ -867,8 +910,8 @@ function ProofPartners() {
 
           {/* deployed band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
-            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>DEPLOYED AT</span>
             <div style={{ marginTop: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 56 }}>
               {DEPLOYED.map((l) => <Logo key={l.src} {...l} />)}
@@ -877,8 +920,8 @@ function ProofPartners() {
 
           {/* recognition band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
-            <Cross color={PP_CROSS_L} style={{ right: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>BACKED &amp; RECOGNISED BY</span>
             <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 28, columnGap: 48 }}>
               {RECOGNISED.map((l) => <Logo key={l.src} {...l} />)}
@@ -887,7 +930,7 @@ function ProofPartners() {
 
           {/* footnote band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "28px 0 0" }}>
-            <Cross color={PP_CROSS_L} style={{ left: -4, top: -5 }} />
+            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
             <Dot style={{ right: -2, top: -2 }} />
             <span style={{ display: "block", fontSize: 16, lineHeight: 1.6, color: TXT_L2 }}>CII Best Industry AI Application 2025&nbsp;·&nbsp;Patented Technology</span>
           </div>
@@ -938,12 +981,12 @@ function Testimonials() {
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 740 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} />
-          <HRule top={72} color={GRID_D} cross={CROSS_D} />
-          <Cross color={CROSS_D} style={{ left: 60, top: 4 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
-          <Cross color={CROSS_D} style={{ left: 60, top: "calc(100% - 13px)" }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: "calc(100% - 13px)" }} />
+          <Verticals color={GRID_D} className="wire-activate" />
+          <HRule top={72} color={GRID_D} cross={CROSS_D} className="wire-activate" />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 60, top: 4 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 68px)", top: 4 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 60, top: "calc(100% - 13px)" }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 68px)", top: "calc(100% - 13px)" }} />
           <Dot color={ACCENT_D} style={{ left: "calc(64px + (100% - 128px) * 0.75)", top: 71 }} />
         </div>
 
@@ -993,20 +1036,20 @@ function Convert() {
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ ...SHEET, height: 720 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} />
+          <Verticals color={GRID_D} className="wire-activate" />
           <div style={{ position: "absolute", left: 0, right: 0, top: 64, height: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 64, height: 1, background: GRID_D }} />
           {/* corner crosses */}
-          <Cross color={CROSS_D} style={{ left: 60, top: 60 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: 60 }} />
-          <Cross color={CROSS_D} style={{ left: 60, bottom: 60 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", bottom: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 60, top: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 68px)", top: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 60, bottom: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 68px)", bottom: 60 }} />
           {/* internal gridline-intersection crosses (checkered) */}
-          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: "calc(50% - 4px)" }} />
-          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", top: "calc(50% - 4px)" }} />
-          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: 60 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", bottom: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: "calc(50% - 4px)" }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", top: "calc(50% - 4px)" }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(64px + (100% - 128px) * 0.25 - 4px)", top: 60 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(64px + (100% - 128px) * 0.75 - 4px)", bottom: 60 }} />
           <Dot color={ACCENT_D} style={{ left: "50%", top: "calc(50% - 1px)" }} />
         </div>
         {/* neutral vignette */}
@@ -1029,10 +1072,10 @@ function Convert() {
           <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, top: 130, height: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, top: 390, height: 1, background: GRID_D }} />
-          <Cross color={CROSS_D} style={{ left: 16, top: 16 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", top: 16 }} />
-          <Cross color={CROSS_D} style={{ left: 16, bottom: 16 }} />
-          <Cross color={CROSS_D} style={{ left: "calc(100% - 25px)", bottom: 16 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 16, top: 16 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 25px)", top: 16 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: 16, bottom: 16 }} />
+          <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 25px)", bottom: 16 }} />
           <div style={{ position: "absolute", left: "50%", top: 389, width: 3, height: 3, background: ACCENT_D }} />
         </div>
         <div style={{ position: "absolute", inset: 0, zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 24px", boxSizing: "border-box" }}>

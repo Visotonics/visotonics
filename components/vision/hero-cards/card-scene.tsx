@@ -143,11 +143,18 @@ export default function CardScene({ build, rig }: Props) {
            subject a lighter ground to stand against near the horizon without
            lightening the frame overall.
 
-           Same values and the same glow arithmetic as lead-card/scene.tsx —
-           #1E2836 x 0.55 = (17,22,30) over mid (14,16,21) peaks at #1F2633 —
-           because the two scenes sit on the same page and any difference
-           between their backdrops would read as one panel being wrong. */
-        backdrop: { top: "#14171C", mid: "#0E1015", bottom: "#0A0B0E", glow: "#1E2836" },
+           Darkened further per direct request (owner: "backgrounds should
+           be black") while keeping the ramp itself — top pulled from
+           #14171C to #101216 (== CARD_SURFACE, so the placeholder/error
+           fallback above still matches the top of the live ramp exactly),
+           mid nudged down to #0B0C10, bottom unchanged at the page's own
+           #0A0B0E. The gradient step from top to bottom is now smaller
+           than before, which is deliberate: enough of a ramp survives to
+           keep the subject-contrast fix this comment block describes, but
+           the whole band reads noticeably closer to black than the
+           previous #14171C top did. If subjects wash out again, widen the
+           ramp back toward the old values rather than flattening it. */
+        backdrop: { top: "#101216", mid: "#0B0C10", bottom: "#0A0B0E", glow: "#1E2836" },
       });
       const { camera, scene, bloom, shadowMat } = studio;
 

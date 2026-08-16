@@ -43,3 +43,6 @@ next-env.d.ts
 #agent files
 CLAUDE.md
 DECISIONS.md
+
+# Internal working docs — kept local, not shared to origin.
+docs/

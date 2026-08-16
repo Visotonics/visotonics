@@ -99,33 +99,47 @@ function DimensionSpan({
   // docs/15-hero-visual-critique.md ("give DimensionSpan more visual
   // weight") — every other caller keeps the original quiet instrument-label
   // size so nothing outside the hero shifts.
+  const tickHeight = strong ? 11 : 9;
   const ruleTop = strong ? 5 : 4;
   const labelLineHeight = strong ? 17 : 15;
-  // RULE REMOVED, by request — no line at all behind/around this label any
-  // more. The two flex rule-segments that used to flank the label are gone.
-  // The extension ticks are gone with them: a tick with no rule to terminate
-  // reads as an orphaned floating dash, not an instrument mark, so removing
-  // the rule without removing the ticks would have made this look broken
-  // rather than intentional. The label centres alone on the same coordinates
-  // (left/right/top) it always occupied.
+  /* THE ACCENT RULE IS THIS COMPONENT'S OWN, and it stays. What was removed
+     from the hero band is the faint GRID rule (HRule) that used to run the
+     full width of the sheet *behind* this callout — two lines stacked on one
+     another at the same y, the grid one continuing out past both ends. That
+     read as clutter behind the text. The bright accent segments either side
+     of the label are the callout itself and are what dimensions the
+     headline, so they are drawn here.
+
+     The segments are two REAL flex children with the label between them,
+     not one continuous rule with an opaque patch painted over the middle.
+     The old patch was hard-coded to the page background colour and broke
+     the moment anything (the headline glow) lightened the real background
+     under it. A genuine DOM gap has no colour to match. */
   return (
-    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: labelLineHeight }}>
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: tickHeight }}>
+      {/* extension ticks, one at each end — they terminate the rule, so they
+          belong with it */}
+      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: tickHeight, background: color }} />
+      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: tickHeight, background: color }} />
       <div
         style={{
           position: "absolute", left: 0, right: 0, top: ruleTop, height: labelLineHeight,
           transform: "translateY(-50%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          display: "flex", alignItems: "center",
         }}
       >
+        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
         <span
           style={{
             flexShrink: 0,
+            padding: strong ? "0 10px" : "0 8px",
             fontFamily: mono, fontSize: strong ? 12 : 10, fontWeight: strong ? 600 : 400, letterSpacing: "0.14em", lineHeight: `${labelLineHeight}px`,
             color, whiteSpace: "nowrap",
           }}
         >
           {label}
         </span>
+        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
       </div>
     </div>
   );
@@ -332,7 +346,16 @@ function Hero() {
               Percentages rather than the old hard-coded 336/384: the band's
               height is now viewport-derived, so anything positioned in px from
               the top detaches from it the moment the window resizes. */}
-          <HRule top="calc(100% - 48px)" color={HERO_GRID_D} cross={HERO_CROSS_D} className="hero-wire-activate" />
+          {/* NO GRID RULE ON THIS BAND — only its two endpoint crosses.
+              The callout (DimensionSpan, below) draws its own bright accent
+              rule either side of the label; the faint full-width grid rule
+              that used to run at this same y sat directly behind that text
+              and continued past both ends of it, so the band carried two
+              stacked lines and the label read as sitting on clutter. The
+              crosses stay: they mark where the rule's endpoints are, which
+              is still true — the callout is measured between them. */}
+          <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: 60, top: "calc(100% - 52px)" }} />
+          <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: "calc(100% - 52px)" }} />
           <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: 60, top: 4 }} />
           <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: 4 }} />
           {/* THE GRID COMING ALIVE — one calm, slow scan travelling the length

@@ -631,6 +631,30 @@
   .wire-activate { opacity: 0.55; }
 }
 
+/* ---------------------------------------------------------------------------
+   Hero wireframe activate — the hero band's own equivalent of .wire-activate
+   above, adapted for the fact that the hero is above the fold: a scroll-into-
+   view trigger never fires on load, so this fires on MOUNT instead, via a
+   flat animation-delay rather than an IntersectionObserver/data-attribute.
+   Same one-shot flash-then-settle shape as wireGridFlash, just resting at
+   full opacity (1) instead of 0.55 — the hero grid was never dimmed at rest
+   to begin with, only now it announces itself once before holding there.
+--------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-wire-activate {
+    opacity: 0;
+    animation: heroWireFlash 1200ms ease-out 300ms both;
+  }
+}
+@keyframes heroWireFlash {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-wire-activate { opacity: 1; }
+}
+
 /* Nav mega-menu — crossfade when switching between hovered menus. */
 @keyframes navMegaFade {
   from { opacity: 0; transform: translateY(-4px); }

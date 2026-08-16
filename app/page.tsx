@@ -99,41 +99,33 @@ function DimensionSpan({
   // docs/15-hero-visual-critique.md ("give DimensionSpan more visual
   // weight") — every other caller keeps the original quiet instrument-label
   // size so nothing outside the hero shifts.
-  const tickHeight = strong ? 11 : 9;
   const ruleTop = strong ? 5 : 4;
   const labelLineHeight = strong ? 17 : 15;
+  // RULE REMOVED, by request — no line at all behind/around this label any
+  // more. The two flex rule-segments that used to flank the label are gone.
+  // The extension ticks are gone with them: a tick with no rule to terminate
+  // reads as an orphaned floating dash, not an instrument mark, so removing
+  // the rule without removing the ticks would have made this look broken
+  // rather than intentional. The label centres alone on the same coordinates
+  // (left/right/top) it always occupied.
   return (
-    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: tickHeight }}>
-      {/* extension ticks, one at each end */}
-      <div style={{ position: "absolute", left: 0, top: 0, width: 1, height: tickHeight, background: color }} />
-      <div style={{ position: "absolute", right: 0, top: 0, width: 1, height: tickHeight, background: color }} />
-      {/* the rule, split into two REAL segments around the label instead of
-          one continuous rule with an opaque background patch painted over
-          it. The old approach hard-coded the patch to the page background
-          colour, which broke the moment anything (e.g. the headline glow)
-          lightened the real background under it — a colour-matched patch
-          would just re-break on the next background change. A genuine DOM
-          gap has no colour to match: there is nothing under the label at
-          all, so it blends with whatever sits behind it by construction. */}
+    <div aria-hidden="true" style={{ position: "absolute", left, right, top, height: labelLineHeight }}>
       <div
         style={{
           position: "absolute", left: 0, right: 0, top: ruleTop, height: labelLineHeight,
           transform: "translateY(-50%)",
-          display: "flex", alignItems: "center",
+          display: "flex", alignItems: "center", justifyContent: "center",
         }}
       >
-        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
         <span
           style={{
             flexShrink: 0,
-            padding: strong ? "0 10px" : "0 8px",
             fontFamily: mono, fontSize: strong ? 12 : 10, fontWeight: strong ? 600 : 400, letterSpacing: "0.14em", lineHeight: `${labelLineHeight}px`,
             color, whiteSpace: "nowrap",
           }}
         >
           {label}
         </span>
-        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
       </div>
     </div>
   );
@@ -328,14 +320,21 @@ function Hero() {
           }}
         />
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={HERO_GRID_D} />
+          {/* ACTIVATE ON MOUNT — the hero is above the fold, so the scroll-
+              into-view trigger the rest of the page's grids use (.wire-
+              activate, keyed off Reveal's data-revealed) never fires here.
+              .hero-wire-activate is the same one-shot flash, just triggered
+              by a flat animation-delay after mount instead of intersection,
+              and resting at full opacity (1) rather than 0.55 since this
+              grid was never dimmed at rest to begin with. */}
+          <Verticals color={HERO_GRID_D} className="hero-wire-activate" />
           {/* One rule, 48px off the bottom of the screen, carrying the callout.
               Percentages rather than the old hard-coded 336/384: the band's
               height is now viewport-derived, so anything positioned in px from
               the top detaches from it the moment the window resizes. */}
-          <HRule top="calc(100% - 48px)" color={HERO_GRID_D} cross={HERO_CROSS_D} />
-          <Cross color={HERO_CROSS_D} style={{ left: 60, top: 4 }} />
-          <Cross color={HERO_CROSS_D} style={{ left: "calc(100% - 68px)", top: 4 }} />
+          <HRule top="calc(100% - 48px)" color={HERO_GRID_D} cross={HERO_CROSS_D} className="hero-wire-activate" />
+          <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: 60, top: 4 }} />
+          <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: 4 }} />
           {/* THE GRID COMING ALIVE — one calm, slow scan travelling the length
               of the callout rule, once every 9s. Not a pulse: a single
               soft-edged bar crossing left to right and holding briefly at each
@@ -500,6 +499,8 @@ function Hero() {
             >
               <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, left: 10, top: 10, width: 18, height: 18, borderLeft: `1.5px solid ${HERO_CROSS_D}`, borderTop: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
               <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, right: 10, top: 10, width: 18, height: 18, borderRight: `1.5px solid ${HERO_CROSS_D}`, borderTop: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
+              <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, left: 10, bottom: 10, width: 18, height: 18, borderLeft: `1.5px solid ${HERO_CROSS_D}`, borderBottom: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
+              <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, right: 10, bottom: 10, width: 18, height: 18, borderRight: `1.5px solid ${HERO_CROSS_D}`, borderBottom: `1.5px solid ${HERO_CROSS_D}`, opacity: 0.8 }} />
               {(() => {
                 const S = CARD_SCENES[i];
                 return <S />;

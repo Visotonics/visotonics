@@ -73,8 +73,13 @@ interface Props {
  *
  *  This value is also the placeholder and error-fallback background, so it must
  *  track the backdrop below: an unbuilt scene should look like an empty panel,
- *  not like a hole. */
-const CARD_SURFACE = "#101216";
+ *  not like a hole.
+ *
+ *  PULLED DARKER AGAIN, to match the page canvas (#0A0B0E) — per owner
+ *  request the card scenes should read as sitting IN the same dark field as
+ *  the hero headline, not as a lighter panel above it. Set to the new ramp's
+ *  top stop (#0C0D11), one step below the previous #101216. */
+const CARD_SURFACE = "#0C0D11";
 
 const LOOP = 14;      // slow — these are ambient, not attention-grabbing
 /* How present the detector's MARKS are with no interaction. Deliberately not 0:
@@ -145,16 +150,24 @@ export default function CardScene({ build, rig }: Props) {
 
            Darkened further per direct request (owner: "backgrounds should
            be black") while keeping the ramp itself — top pulled from
-           #14171C to #101216 (== CARD_SURFACE, so the placeholder/error
-           fallback above still matches the top of the live ramp exactly),
-           mid nudged down to #0B0C10, bottom unchanged at the page's own
-           #0A0B0E. The gradient step from top to bottom is now smaller
-           than before, which is deliberate: enough of a ramp survives to
-           keep the subject-contrast fix this comment block describes, but
-           the whole band reads noticeably closer to black than the
-           previous #14171C top did. If subjects wash out again, widen the
-           ramp back toward the old values rather than flattening it. */
-        backdrop: { top: "#101216", mid: "#0B0C10", bottom: "#0A0B0E", glow: "#1E2836" },
+           #14171C to #101216, mid nudged down to #0B0C10, bottom unchanged
+           at the page's own #0A0B0E. The gradient step from top to bottom
+           is now smaller than before, which is deliberate: enough of a ramp
+           survives to keep the subject-contrast fix this comment block
+           describes, but the whole band reads noticeably closer to black
+           than the previous #14171C top did.
+
+           PULLED DARKER AGAIN, per owner request, to straddle the page
+           canvas colour (#0A0B0E) rather than sit above it — the card
+           scenes should read as part of the same dark field as the hero
+           headline. Ramp is now #0C0D11 → #0A0B0E → #08090B: the whole
+           band sits at-or-below the page canvas value while keeping a real
+           top→bottom gradient (this is still NOT a flat fill — see the
+           note above about why a flat backdrop broke the page last time).
+           CARD_SURFACE tracks the new top stop. If subjects wash out,
+           widen the ramp back toward the old values rather than
+           flattening it. */
+        backdrop: { top: "#0C0D11", mid: "#0A0B0E", bottom: "#08090B", glow: "#1E2836" },
       });
       const { camera, scene, bloom, shadowMat } = studio;
 

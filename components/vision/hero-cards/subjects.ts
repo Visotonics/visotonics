@@ -1260,12 +1260,6 @@ export function factorySubject(): CardSubject {
   const dets = Array.from({ length: DET_N }, () => createTracker(dm.faint));
   dets.forEach((t) => g.add(t.group));
 
-  // a vertical scan bar standing at the zone; its opacity pulses as the
-  // nearest unit crosses it
-  const zoneScan = scanPlane(1.6, dm.scan, 0.05);
-  zoneScan.position.set(ZONE_X, BELT_TOP + 0.5, 0);
-  g.add(zoneScan);
-
   /* THE DIMENSION GAUGE — the schematic's actual callout ("INSPECT · DIMENSION
      CHECK"), which the scene never had. Width across the top, height up the
      side, on whichever unit is inside the zone. This is what makes the station

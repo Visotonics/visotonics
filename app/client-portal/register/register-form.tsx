@@ -14,7 +14,7 @@ import {
   TXT_D1,
   TXT_D2,
 } from "../_shared";
-import { PARTNER_TYPES, PARTNER_TYPE_LABELS } from "@/lib/partner";
+import { PARTNER_TYPE_OPTIONS, PARTNER_TYPE_LABELS } from "@/lib/partner";
 
 /* ---------------------------------------------------------------------------
    Register.
@@ -153,7 +153,9 @@ export default function RegisterForm() {
           <option value="" disabled style={optionStyle}>
             Partner type
           </option>
-          {PARTNER_TYPES.map((t) => (
+          {/* OPTIONS, not PARTNER_TYPES — the latter still carries the legacy
+              `type_c` so old rows validate, but it must never be offered. */}
+          {PARTNER_TYPE_OPTIONS.map((t) => (
             <option key={t} value={t} style={optionStyle}>
               {PARTNER_TYPE_LABELS[t]}
             </option>

@@ -727,6 +727,36 @@ every hit was then verified by hand before being touched.
 - **All other `StudioOpts` / `ReadCameraOpts` / `PendantOpts` / `MetalOpts`
   fields** are read.
 
+## 42 — Container-vision port into the Yard hero card: measured, cheaper, and parked
+
+`components/vision/hero-cards/container-card.ts` (new file, currently on disk
+but **unreferenced — not wired into `index.tsx`, deliberately reverted at
+owner request**) ports `container-vision`'s real folded-corrugation geometry
+into the Viso Yard hero-card slot, in place of the live box-primitive Yard
+card, carrying card-grade textures, painted dent/rust (reusing the
+flagship's `paintDent`/`paintRust`, both newly `export`ed from
+`container-vision/materials.ts` for this), detection brackets, and a
+wireframe-formation intro. Measured on a production build with `?perf`:
+
+| variant | yard card total | yard subject | 4-card row total |
+|---|---|---|---|
+| baseline (live box-primitive Yard card) | 101 ms | — | **499 ms** (yard 101 / warehouse 103 / factory 246 / data 49) |
+| bare container-vision geometry spike | 98–144 ms | subject 54–59 ms | 450–483 ms |
+| full container port (damage + brackets + wireframe intro) | **76 ms** | studio 25 / subject 38 | **421 ms** |
+
+The full port is cheaper than the box-primitive card it would replace, not
+just competitive — because its damage textures `drawImage` from the
+already-cached corrugated-steel canvas instead of repainting from scratch,
+and because it idle-warms through the same `lazy.tsx` chain as everything
+else. Factory is now the most expensive of the four cards by a wide margin
+(218–246 ms, ~173 ms of it in `buildSubject`) and is the next place to look
+if this row's total needs to come down further.
+
+**Status: not shipping.** This is a recorded finding, not a live state — the
+Yard hero card in production is still the box-primitive build. Do not read
+`container-card.ts`'s presence on disk as evidence it is wired in; check
+`hero-cards/index.tsx` before assuming either way.
+
 ### The standing rule this produces
 
 Three of these (`noEnv`, `cached()`, `setFill`/`ticks`) share one signature:

@@ -167,7 +167,19 @@ export default function CardScene({ build, rig }: Props) {
            CARD_SURFACE tracks the new top stop. If subjects wash out,
            widen the ramp back toward the old values rather than
            flattening it. */
-        backdrop: { top: "#0C0D11", mid: "#0A0B0E", bottom: "#08090B", glow: "#1E2836" },
+        /* THE GLOW POOL IS THE THING THAT WAS KEEPING THESE OFF BLACK.
+           The ramp above was already near-black, but studio.ts's cyclorama
+           shader adds `col + cGlow * g * 0.55` — a soft pool behind the
+           subject — and at the flagships' #1E2836 (30,40,54) that lifts the
+           centre of every card by roughly (17,22,30), i.e. into a visible
+           navy. Changing the three ramp stops alone could never fix it,
+           which is why previous passes kept coming back "still not black".
+
+           #10151C (16,21,28) halves that lift: the pool still separates the
+           subject from the frame and keeps the panel reading as a lit 3D
+           space rather than a flat fill, but the card now sits within a few
+           values of the page canvas instead of glowing blue against it. */
+        backdrop: { top: "#0C0D11", mid: "#0A0B0E", bottom: "#08090B", glow: "#10151C" },
       });
       const { camera, scene, bloom, shadowMat } = studio;
 

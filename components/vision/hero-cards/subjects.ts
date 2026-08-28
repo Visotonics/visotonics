@@ -13,7 +13,11 @@
 import * as THREE from "three";
 import { PALETTE } from "../_vision/palette";
 import { makeMetal, metalBox, tintMetal } from "../_vision/metal";
-import { cardboardSide, cardboardTop, containerEnd, containerRoof, containerSide } from "./skins";
+import {
+  beltSurface, cardboardSide, cardboardTop, concreteFloor, containerDoorEnd,
+  containerRoof, containerRust, containerSide, palletDeck, rackUpright, tyre,
+  wrappedPallet,
+} from "./skins";
 import { createSightCone, createTracker, detectMaterials as detectMaterialsRaw, scanPlane } from "./detect";
 import type { DetectMaterials, Tracked } from "./detect";
 import { draftingGround, setGroundOpacity } from "./ground";
@@ -97,6 +101,41 @@ function detectMaterials(): DetectMaterials {
    have to come up as well as the hue changing. */
 const GRID_INK = "#5E7A93";
 
+/* The colour the ground's outer vignette fades TO, i.e. what the floor's far
+   edge is painted with so the finite plane does not end in a visible line.
+
+   It is NOT the backdrop ramp's mid stop, which is what it used to be, and
+   that was the bug: the cyclorama is not the ramp alone. studio.ts composites
+   `col + cGlow*g*0.55` on top of it (see its fragment shader), and the glow
+   direction — normalize(-0.1, 0.16, -1.0) — points straight back behind the
+   subject, so at the horizon g is very near 1 and the pool contributes
+   essentially all of it.
+
+   Arithmetic, in 0-255 sRGB terms:
+     ramp mid   #0A0B0E                    = (10, 11, 14)
+     glow       #10151C x 0.55             = ( 9, 12, 15)
+     cyclorama at the horizon              = (19, 23, 29)
+   The old vignette painted (10, 11, 14) against that (19, 23, 29) — a ~12
+   level step landing exactly where these cameras put the plane's far edge,
+   which is at frame CENTRE (they look down ~6.7deg with a 30deg vfov, so the
+   horizon sits just above the middle of the card). That step is the hard line
+   reported across all four cards.
+
+   #0E1218 (14, 18, 24) sits between the two. It cannot match everywhere by
+   construction — g falls off as pow(...,3.4) toward the frame edges, so the
+   cyclorama there decays back toward the ramp — so a single flat colour is
+   always a compromise between centre and edge. This halves the worst-case
+   step in BOTH directions (~12 -> ~5-6) rather than eliminating it at the
+   centre and inverting it at the edges. Paired with an earlier fade start
+   (0.50, was 0.62) so the dissolve is longer and gentler, a step this small
+   no longer resolves as an edge.
+
+   If this ever needs to be exact rather than close, the real fix is to fade
+   the ground surface's own alpha radially instead of painting a flat plane
+   over it — then there is nothing to colour-match at all. */
+const VIGNETTE_C = "#0E1218";
+
+
 /* The site's own signal orange — the colour every schematic SVG already uses
    for callouts. Kept here rather than reaching for PALETTE.warn (#FFB020) even
    now the panel is dark again: the reason has changed but the answer has not.
@@ -154,18 +193,102 @@ export function yardSubject(): CardSubject {
      warm hue to fight, which is why a plain multiply is correct here and was
      not there. */
   const NEUTRAL = "#9AA0A8";
-  const sideTex = containerSide(NEUTRAL), endTex = containerEnd(NEUTRAL), roofTex = containerRoof(NEUTRAL);
-  const skin = (base: string) => {
-    const mk = (map: THREE.Texture) => {
-      const m = new THREE.MeshStandardMaterial({
-        map, color: base, metalness: 0.18, roughness: 0.82, envMapIntensity: 0.3,
-        transparent: true, opacity: 0,
-      });
-      mats.push(m);
-      return m;
-    };
-    return faces(mk(endTex), mk(roofTex), mk(sideTex));
+  const roofTex = containerRoof(NEUTRAL);
+  /* ROOF stays the old NEUTRAL+tint trick (one shared canvas, three colours by
+     multiply) — nothing about the roof changed in this pass. ENDS and SIDES
+     move to `containerDoorEnd`/`containerRust`, which bake their exact livery
+     hex straight into the canvas (see skins.ts — `x.fillStyle = base` in both
+     raw generators).
+
+     FIRST PASS OF THIS WIRING SET `color: "#ffffff"` HERE, REASONING THAT
+     TINTING AN ALREADY-COLOURED MAP WOULD DOUBLE IT. That was backwards: the
+     white tint didn't double anything, it REMOVED the one multiply the value
+     ladder actually depends on. Every other cargo material in this file
+     (`mkTinted` right above, and the identical pattern in Warehouse/Factory)
+     is `makeMetal`'s neutral #9AA0A8 albedo (~0.60 luminance fraction) times a
+     tint — the tint alone was never the on-screen colour, the multiply
+     against that mid-grey base is what pulls it down out of "bright plastic"
+     territory. `containerRust`/`containerDoorEnd` bake the livery hex
+     straight into the canvas instead of onto a neutral base, so with a white
+     tint the baked hex WAS the on-screen colour: ~1.67x too bright (1/0.60),
+     which is exactly why the containers went visibly white and jumped above
+     the #5CC8FF overlay.
+
+     Fix: tint by NEUTRAL again, not white. `containerSideRaw` (which
+     `containerRustRaw` reopens and paints on top of) draws its corrugation
+     shading as an ADDITIVE rgba overlay on top of whatever base fill it was
+     given — the same overlay delta lands on the livery hex here as landed on
+     NEUTRAL before, it is just not multiplied by the fill colour first. So
+     baked_pixel ~= base_hex + corrugation_delta, and tinting that by
+     NEUTRAL's own fraction (154,160,168)/255 ~= (0.604,0.627,0.659) puts the
+     result back in the neighbourhood of the old NEUTRAL_pixel x base_hex path
+     the ladder was tuned against — same governing multiply, applied to the
+     other factor.
+
+     ARITHMETIC, per-channel multiply then luminance = 0.2126R+0.7152G+0.0722B
+     (the formula the backdrop's documented ~11 and the overlay's ~182 both
+     use), against the RAW baked hex (i.e. before the corrugation delta, which
+     is a wash either side of zero and does not move the average much):
+
+       yardA    #93BEDD (147,190,221) x (.604,.627,.659) -> (89,119,146)
+                L = 114.6  |  /backdrop(11) = 10.4x  |  /overlay(182) = 0.63
+       yardB    #AFD2E9 (175,210,233) x (.604,.627,.659) -> (106,132,154)
+                L = 127.8  |  /backdrop(11) = 11.6x  |  /overlay(182) = 0.70
+       load     #CCE6F6 (204,230,246) x (.604,.627,.659) -> (123,144,162)
+                L = 141.0  |  /backdrop(11) = 12.8x  |  /overlay(182) = 0.78
+
+     All three land back under the overlay (ratio < 1, load closest at 0.78 —
+     it is meant to be the lightest of the three) and well above the backdrop,
+     which is the ladder this file's own header comment states at lines
+     175-195: cargo lighter than ground, darker than the overlay. */
+  const mkTinted = (map: THREE.Texture, base: string) => {
+    const m = new THREE.MeshStandardMaterial({
+      map, color: base, metalness: 0.18, roughness: 0.82, envMapIntensity: 0.3,
+      transparent: true, opacity: 0,
+    });
+    mats.push(m);
+    return m;
   };
+  const mkBaked = (map: THREE.Texture) => {
+    const m = new THREE.MeshStandardMaterial({
+      map, color: NEUTRAL, metalness: 0.18, roughness: 0.82, envMapIntensity: 0.3,
+      transparent: true, opacity: 0,
+    });
+    mats.push(m);
+    return m;
+  };
+  /* ONE texture set, tinted per livery — the pattern `roofTex` already used.
+     Every map is painted on NEUTRAL and gets its livery from the material's
+     `color` multiply, so all four faces run the SAME value arithmetic
+     (albedo ~0.60 x tint) and the ladder at lines 175-195 holds by
+     construction rather than by a per-texture compensation. Four canvases for
+     the whole yard, not one per container per face. */
+  const sideTex = containerSide(NEUTRAL);
+  const doorEndTex = containerDoorEnd(NEUTRAL);
+
+  /* WEATHERING IS ONE CONTAINER, NOT EIGHT.
+
+     An earlier pass rusted all eight at varying amounts. Wrong twice over: the
+     ask was TEXTURE — corrugation, panel seams, door hardware, honest metal —
+     and rust is DAMAGE, not texture. Spread over every box it also stopped
+     reading as one weathered container in a working yard and started reading
+     as a uniformly diseased stack.
+
+     Exactly one box is weathered: front bank, left stack, BOTTOM course.
+     Bottom because rust bleeds downward and belongs at the foot of a stack;
+     front-left because it stays fully in frame across the whole 0.30-0.44
+     azimuth sweep. Never the box in the crane's grasp — that one is the
+     subject of the shot and stays clean to read as the load.
+
+     amount 0.14: `containerRust`'s rail-patch count is `3 + round(amount*4)`,
+     so 0.14 gives 4 patches — a suggestion of weathering at 347px rather than
+     the spotted blotches the earlier 0.18-0.68 spread produced. */
+  const rustTex = containerRust(NEUTRAL, 0.14);
+  const cleanSkin = (base: string) =>
+    faces(mkTinted(doorEndTex, base), mkTinted(roofTex, base), mkTinted(sideTex, base));
+  const rustedSkin = (base: string) =>
+    faces(mkTinted(doorEndTex, base), mkTinted(roofTex, base), mkTinted(rustTex, base));
+
   /* THREE liveries, down from five: two for the yard and one for the load.
      18 materials where there were 30.
 
@@ -189,12 +312,16 @@ export function yardSubject(): CardSubject {
 
        yardA    #7AAFD6 -> #93BEDD
        yardB    #97C4E2 -> #AFD2E9
-       loadSkin #B4D9EF -> #CCE6F6                                          */
-  const yardA = skin("#93BEDD");
-  const yardB = skin("#AFD2E9");
+       loadSkin #B4D9EF -> #CCE6F6
+
+     THE LIVERY FAMILY IS THESE THREE HEXES AND NOTHING ELSE. `cleanSkin` and
+     `rustedSkin` are both only ever asked for one of them, so the three-tint
+     structure this comment documents is unchanged — the single weathered box
+     carries the same tint as its clean neighbours, just a rustier side map. */
+  const YARD_A = "#93BEDD", YARD_B = "#AFD2E9";
   // the load: the lightest of the three, so the box in the crane's grasp still
   // separates from the stacks behind it
-  const loadSkin = skin("#CCE6F6");
+  const LOAD_LIVERY = "#CCE6F6";
 
   /* ONE BoxGeometry, shared by all eight containers. The old version called
      `box()` per container, i.e. sixteen identical BoxGeometry allocations. */
@@ -215,7 +342,9 @@ export function yardSubject(): CardSubject {
   const topOfStack: THREE.Mesh[] = [];
   for (const sx of [-PITCH_X, PITCH_X]) {
     for (let row = 0; row < 2; row++) {
-      const b = con(row === 0 ? yardA : yardB);
+      // the ONE weathered box: front bank, left stack, bottom course
+      const skinFor = sx < 0 && row === 0 ? rustedSkin : cleanSkin;
+      const b = con(skinFor(row === 0 ? YARD_A : YARD_B));
       b.position.set(sx, ROW0 + row * (CH + 0.05), 0.5);
       b.castShadow = true;
       b.receiveShadow = true;
@@ -225,7 +354,7 @@ export function yardSubject(): CardSubject {
   }
   for (const [sx, rows] of [[-PITCH_X, 2], [PITCH_X * 2, 1]] as const) {
     for (let row = 0; row < rows; row++) {
-      const b = con(row === 0 ? yardB : yardA);
+      const b = con(cleanSkin(row === 0 ? YARD_B : YARD_A));
       b.position.set(sx, ROW0 + row * (CH + 0.05), -1.9);
       b.castShadow = true;
       g.add(b);
@@ -246,8 +375,49 @@ export function yardSubject(): CardSubject {
      of the four: at bay pitch the lines are far apart and this camera's shallow
      angle rakes them almost to the horizon, so the shared value read as a net
      competing with the gantry. */
-  const ground = draftingGround({ size: 24, y: FLOOR - 0.01, step: PITCH_X, color: GRID_INK, opacity: 0.11 });
+  /* THE FLOOR. Every subject on this row floated in black void — a grid with
+     nothing under it to measure. `concreteFloor()` is a single 1024 canvas,
+     cached and shared with the other two cards (see skins.ts), so wiring it
+     here costs one extra MeshStandardMaterial and one extra plane, not a new
+     texture. Luminance arithmetic (0.2126R+0.7152G+0.0722B, matching the
+     formula that gives the #0A0B0E backdrop its documented ~11):
+       concrete #20242A (32,36,42)  -> 35.6, ~3.2x the backdrop's 11 — clearly
+         lighter than the void, which is what gives the ShadowMaterial
+         something to darken.
+       lightest cargo tint #CCE6F6 (204,230,246) -> 225.6 as raw hex, well
+         above the floor even before the container corrugation/exposure knock
+         it down a step — the floor stays BELOW the cargo family, as the value
+         ladder requires.
+     The vignette sits just above the concrete and fades to the scene's own
+     backdrop colour (#0A0B0E, hardcoded — draftingGround has no fog to key
+     off), which is what hides the surface plane's hard rectangular edge.
+
+     FIRST PASS LEFT THE EDGE VISIBLE HERE — this is the worst-case camera of
+     the three: the shallowest raking angle in the row, which foreshortens
+     the floor hardest and pushes the plane's far boundary highest up the
+     frame for a given `size`. Two changes, both call-site parameters (no
+     ground.ts edit): the plane itself is bigger (24 -> 40, so its edge sits
+     further out in world space, i.e. higher up an already-foreshortened
+     view, before the vignette has to do any work), and the vignette's own
+     falloff is pulled in (default start/end 0.55/1.0 -> 0.32/0.68) so it
+     reaches fully opaque backdrop colour at 68% of the now-larger half-size
+     instead of 100% of the old, smaller one — comfortably inside the plane's
+     actual edge rather than landing exactly on it, which is what a hard
+     boundary at the mesh's rasterized edge needs: full coverage BEFORE the
+     edge, not asymptotically approaching it at the edge itself. */
+  const yardFloorTex = concreteFloor();
+  const yardFloorM = new THREE.MeshStandardMaterial({
+    map: yardFloorTex, color: "#ffffff", metalness: 0.05, roughness: 0.92,
+    transparent: true, opacity: 0,
+  });
+  const ground = draftingGround({
+    size: 40, y: FLOOR - 0.01, step: PITCH_X, color: GRID_INK, opacity: 0.11,
+    surface: yardFloorM,
+    vignette: { color: VIGNETTE_C, start: 0.50, end: 1.0 },
+  });
   g.add(ground.mesh);
+  if (ground.surfaceMesh) g.add(ground.surfaceMesh);
+  if (ground.vignetteMesh) g.add(ground.vignetteMesh);
 
   /* ---- the gantry ----
      Plain materials, no maps. makeMetal() costs three canvases and a Sobel
@@ -324,7 +494,7 @@ export function yardSubject(): CardSubject {
   const spreader = metalBox(CW + 0.12, 0.14, 0.9, dark);
   spreader.position.y = CH / 2 + 0.07;
   lift.add(spreader);
-  const load = con(loadSkin);
+  const load = con(cleanSkin(LOAD_LIVERY));
   load.castShadow = true;
   lift.add(load);
 
@@ -422,7 +592,19 @@ export function yardSubject(): CardSubject {
     focus: new THREE.Vector3(SLOT_X, LOW, 0.5),
     materials: mats,
     marks: [loadDet, ...inv],
-    ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
+    /* Surface peak 0.94 (near-opaque concrete, not full 1 so a hint of the
+       backdrop glow still reads through at grazing angles), vignette peak 1
+       (it exists purely to hide the plane's edge, so full coverage there is
+       correct). Both are local peaks multiplied onto the shared intro fade
+       `o` — `setSurfaceOpacity`/`setVignetteOpacity` set raw opacity, they do
+       not know a peak of their own the way the grid shader's uPeak does. */
+    ground: {
+      setOpacity: (o) => {
+        setGroundOpacity(ground, o);
+        ground.setSurfaceOpacity?.(o * 0.94);
+        ground.setVignetteOpacity?.(o);
+      },
+    },
     tick: (p) => {
       hoist.position.x =
         p < 0.32 ? -TRAVEL + TRAVEL * seg(p, 0, 0.32)
@@ -480,6 +662,14 @@ export function yardSubject(): CardSubject {
     dispose: () => {
       mats.forEach((m) => m.dispose());
       ground.material.dispose();
+      // the concrete TEXTURE is cached and shared with the other two cards —
+      // only the material wrapping it is this scene's own
+      yardFloorM.dispose();
+      ground.surfaceMesh?.geometry.dispose();
+      if (ground.vignetteMesh) {
+        (ground.vignetteMesh.material as THREE.Material).dispose();
+        ground.vignetteMesh.geometry.dispose();
+      }
       conGeo.dispose();
       cableGeo.dispose();
       barGeo.long.dispose();
@@ -554,16 +744,43 @@ export function warehouseSubject(): CardSubject {
   const steelLt = own(new THREE.MeshStandardMaterial({
     color: "#A9B2BD", metalness: 0.7, roughness: 0.44, transparent: true, opacity: 0,
   }));
-  // timber, lifted the same way as everything else: #8A6E45 -> #A98A5C, so the
-  // pallet under the load reads as wood rather than as a dark gap
+  /* The forklift's OWN pallet, under the counted load — was one flat tan
+     BoxGeometry. `palletDeck()` bakes real deck-board separation into BOTH an
+     albedo and a roughness canvas (raw timber varies far more in roughness
+     than painted steel does, which is why this is the one skin here worth
+     the second map). It bakes its own tan colour (`#C7A876`, board tone
+     variance around it), which is BRIGHTER than the old flat `#A98A5C` this
+     replaced (L~171 raw vs L~141 old — see the yard's rust-wiring note for
+     why a white tint on a baked map is not neutral). Retuned to land back on
+     the old value rather than left white: tint (216,209,199)/255 hex
+     `#D8D1C7`, chosen so tint x baked ~= (169,138,92), the old palletM hex,
+     to the nearest few units — same target, now textured. */
+  const deck = palletDeck();
   const palletM = own(new THREE.MeshStandardMaterial({
-    color: "#A98A5C", metalness: 0, roughness: 0.9, transparent: true, opacity: 0,
+    map: deck.map, roughnessMap: deck.roughnessMap, color: "#D8D1C7", metalness: 0,
+    transparent: true, opacity: 0,
   }));
-  /* Light blue for the stock in the racking — cargo sits between the DARK panel
-     and the brighter overlay in value, the rule that holds across the row.
-     #8CBBDD -> #A8CDE6, matching the yard's livery lift. */
-  const brushedN = own(makeMetal({ base: "#9AA0A8", kind: "brushed", metalness: 0.7, rough: 0.45 }).material);
-  const crateM = own(tintMetal(brushedN, "#A8CDE6", { metalness: 0.3 }));
+  /* The RACKING stock, formerly a featureless flat-blue slab and now a
+     stretch-wrapped pallet load — `wrappedPallet()` is what reads as "load"
+     rather than "box" at this size, the milky film and diagonal overlap
+     lines doing the same job the corrugation ramp does for a container.
+
+     A WHITE TINT HERE WAS THE SAME BUG AS THE CONTAINERS. The canvas bakes a
+     light carton hint (`#B7BCC2`) under an even lighter milky film overlay —
+     estimated raw average around (198,202,208), L~171 — well above the old
+     `crateM` this replaced (`tintMetal(brushedN, "#A8CDE6")`, i.e. NEUTRAL's
+     ~0.60 fraction x #A8CDE6, L~124), so at `color:"#ffffff"` these slabs
+     rendered brighter than everything else on the card, exactly the
+     containers' failure mode. Tint (140,168,196)/255 hex `#8CA8C4` chosen so
+     tint x the estimated raw average lands close to the old crateM value:
+     (198,202,208) x (0.549,0.659,0.769) ~= (109,133,160), L~130 — just above
+     the old L~124 (the wrap is meant to read slightly brighter than a bare
+     crate; it is plastic film over cargo, not the cargo itself) and still
+     comfortably under the #5CC8FF overlay's ~182. */
+  const wrapM = own(new THREE.MeshStandardMaterial({
+    map: wrappedPallet(), color: "#8CA8C4", metalness: 0.05, roughness: 0.5,
+    envMapIntensity: 0.25, transparent: true, opacity: 0,
+  }));
 
   // kraft board, from the shared cache — the same two canvases Factory uses
   const kraftSide = own(new THREE.MeshStandardMaterial({
@@ -587,10 +804,24 @@ export function warehouseSubject(): CardSubject {
      a warehouse" behind the thing that is actually happening. */
   const RACK_Z = -2.7;
   const BAY = 2.5;
+  /* The uprights were plain steel bars — the single detail that makes racking
+     read as racking is the punched-slot column, so `rackUpright()` goes on
+     all four. It is a narrow (96px) canvas built to tile vertically
+     (wrapT = RepeatWrapping already set inside skins.ts); `repeat.y` here is
+     what maps that tiling onto THIS upright's actual 3.5-unit height. Setting
+     `.repeat` mutates the shared cached texture instance — fine, since this
+     is its only caller in the current scene set, but a second scene wiring
+     the same getter at a different upright height would need its own
+     texture, not this one. */
+  const rackTex = rackUpright();
+  rackTex.repeat.set(1, 3.5);
+  const rackM = own(new THREE.MeshStandardMaterial({
+    map: rackTex, color: "#ffffff", metalness: 0.55, roughness: 0.6, transparent: true, opacity: 0,
+  }));
   // four uprights bounding three bays — the old three left both beam ends
   // cantilevered into air, which is what read as "missing legs"
   for (const x of [-BAY * 1.5, -BAY * 0.5, BAY * 0.5, BAY * 1.5]) {
-    const u = metalBox(0.14, 3.5, 0.14, steel);
+    const u = metalBox(0.14, 3.5, 0.14, rackM);
     u.position.set(x, FLOOR + 1.75, RACK_Z);
     g.add(u);
   }
@@ -610,14 +841,32 @@ export function warehouseSubject(): CardSubject {
   ];
   for (const [rx, lvl, crate] of SLOTS) {
     const base = lvl === 0 ? FLOOR : lvl === 1 ? FLOOR + 1.21 : FLOOR + 2.36;
-    const m = crate ? new THREE.Mesh(rackLoadGeo, crateM) : new THREE.Mesh(rackLoadGeo, kraft);
+    const m = crate ? new THREE.Mesh(rackLoadGeo, wrapM) : new THREE.Mesh(rackLoadGeo, kraft);
     m.position.set(rx, base + 0.31, RACK_Z);
     g.add(m);
   }
 
+  /* THE FLOOR — same wiring and the same arithmetic as the yard (see that
+     scene's comment for the luminance numbers; the concrete texture is the
+     same cached canvas, shared across all three cards). Size and vignette
+     falloff bumped the same way as the yard's fix (30 -> 36, falloff pulled
+     in to 0.32/0.68) — this camera's angle is less extreme than the yard's,
+     but the edge fix is solving the same geometry problem and there is no
+     reason to leave one card on the old, edge-exposing numbers. */
+  const warehouseFloorTex = concreteFloor();
+  const warehouseFloorM = new THREE.MeshStandardMaterial({
+    map: warehouseFloorTex, color: "#ffffff", metalness: 0.05, roughness: 0.92,
+    transparent: true, opacity: 0,
+  });
   // 0.13 -> 0.20 (x1.6) and light ink — see GRID_INK
-  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.20 });
+  const ground = draftingGround({
+    size: 36, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.20,
+    surface: warehouseFloorM,
+    vignette: { color: VIGNETTE_C, start: 0.50, end: 1.0 },
+  });
   g.add(ground.mesh);
+  if (ground.surfaceMesh) g.add(ground.surfaceMesh);
+  if (ground.vignetteMesh) g.add(ground.vignetteMesh);
 
   /* ---- the fixed camera over the aisle ----
      Cantilevered off the racking, looking straight down at ONE spot. A fixed
@@ -644,10 +893,23 @@ export function warehouseSubject(): CardSubject {
   const truck = new THREE.Group();
   g.add(truck);
 
+  /* Wheels were flat black cylinders. `tyre()` splits the two surfaces a real
+     tyre actually has — `tread` wraps the circumference (CylinderGeometry's
+     side group), `cap` is a face-on disc for the two end groups. A
+     CylinderGeometry (unlike metalBox's RoundedBoxGeometry) has three real
+     material groups out of the box, so the 3-material array binds correctly
+     without the `faces()` workaround. */
+  const tyreTex = tyre();
+  const tyreTreadM = own(new THREE.MeshStandardMaterial({
+    map: tyreTex.tread, color: "#ffffff", metalness: 0.05, roughness: 0.88, transparent: true, opacity: 0,
+  }));
+  const tyreCapM = own(new THREE.MeshStandardMaterial({
+    map: tyreTex.cap, color: "#ffffff", metalness: 0.1, roughness: 0.7, transparent: true, opacity: 0,
+  }));
   const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.24, 12);
   for (const [wx, wr] of [[-0.75, 0.26], [0.55, 0.32]] as const) {
     for (const wz of [-0.46, 0.46]) {
-      const w = new THREE.Mesh(wheelGeo, dark);
+      const w = new THREE.Mesh(wheelGeo, [tyreTreadM, tyreCapM, tyreCapM]);
       w.rotation.x = Math.PI / 2;
       w.scale.setScalar(wr / 0.3);
       w.position.set(wx, FLOOR + wr, wz);
@@ -814,7 +1076,14 @@ export function warehouseSubject(): CardSubject {
     focus: new THREE.Vector3(CAM_X, FORK_Y + 0.5, 0),
     materials: mats,
     marks: [loadDet, cartonDet],
-    ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
+    // same surface/vignette peaks as the yard — see that scene's comment
+    ground: {
+      setOpacity: (o) => {
+        setGroundOpacity(ground, o);
+        ground.setSurfaceOpacity?.(o * 0.94);
+        ground.setVignetteOpacity?.(o);
+      },
+    },
     tick: (p) => {
       /* The sweep band. `p` is the card loop progress, already pinned to a
          fixed 0.85 by card-scene in reduced motion, so this needs no branch
@@ -900,6 +1169,15 @@ export function warehouseSubject(): CardSubject {
     dispose: () => {
       mats.forEach((m) => m.dispose());
       ground.material.dispose();
+      // the concrete and rack-upright TEXTURES are cached and shared; only the
+      // materials wrapping them, and the surface/vignette planes, are this
+      // scene's own
+      warehouseFloorM.dispose();
+      ground.surfaceMesh?.geometry.dispose();
+      if (ground.vignetteMesh) {
+        (ground.vignetteMesh.material as THREE.Material).dispose();
+        ground.vignetteMesh.geometry.dispose();
+      }
       rackLoadGeo.dispose();
       cartonGeo.dispose();
       /* Disposes the cone material AND its ground pool material; the shared
@@ -986,7 +1264,6 @@ export function factorySubject(): CardSubject {
      lightness: near-grey items, and an overlay that is the only saturated cyan
      in the frame. #8CBBDD -> #A8CDE6, matching the yard and warehouse cargo. */
   const crateM = own(tintMetal(brushedN, "#A8CDE6"));    // plastic crates
-  const flagM = own(tintMetal(paintedN, PALETTE.warn));  // the only warm thing
   /* The zone outline is a LIT material painted on the belt, not an unlit
      overlay, so it is dimmed by the belt's own shading before it ever reaches
      the frame. #2E86BE was already the darker of the two blues and on a dark
@@ -997,7 +1274,24 @@ export function factorySubject(): CardSubject {
   /* ---- the line, end to end ---- */
   const BELT_L = 15.0, BELT_Y = -0.55;
   const BELT_TOP = BELT_Y + 0.08;
-  const belt = metalBox(BELT_L, 0.16, 1.5, darkM);
+  /* The belt surface was flat translucent grey — `beltSurface()` bakes the
+     splice seam and idler tracking marks real rubber has, and it is applied
+     via metalBox, so ONE material covers every face of the belt slab (the
+     RoundedBoxGeometry single-group limit; the top face is what's ever seen,
+     the rest is an acceptable freebie). Repeat chosen at 10 along X: the
+     texture's single splice band is not physically meant to repeat, but at
+     card size a plain diffuse tile every 1.5 world units (BELT_L / 10) reads
+     as belt material rather than as one giant seam stretched the belt's full
+     15 units, and 1.5 does not line up with the units' own 2.0 pitch, so the
+     seam never appears to "chase" a specific carton. wrapT stays
+     ClampToEdge (set inside skins.ts) — nothing repeats across the belt's
+     width, only along its length. */
+  const beltTex = beltSurface();
+  beltTex.repeat.set(10, 1);
+  const beltM = own(new THREE.MeshStandardMaterial({
+    map: beltTex, color: "#ffffff", metalness: 0.1, roughness: 0.88, transparent: true, opacity: 0,
+  }));
+  const belt = metalBox(BELT_L, 0.16, 1.5, beltM);
   belt.position.set(0, BELT_Y, 0);
   belt.receiveShadow = true;
   g.add(belt);
@@ -1025,8 +1319,28 @@ export function factorySubject(): CardSubject {
   // held quieter than the shared 0.16: this camera sits low, so the floor is
   // seen very obliquely and the grid rakes almost to the horizon
   // 0.1 -> 0.16 (x1.6) and light ink — see GRID_INK
-  const ground = draftingGround({ size: 34, y: -0.72, step: 1.0, color: GRID_INK, opacity: 0.16 });
+  /* THE FLOOR — same wiring, same arithmetic as the yard and warehouse (see
+     the yard's comment for the luminance numbers); this is the busiest of
+     the three builds (PERFORMANCE.md #40: 236ms), so this is a cache hit
+     against the same texture the other two cards already warmed, not a new
+     canvas. Size and vignette falloff bumped the same way as the yard's edge
+     fix (34 -> 44, falloff pulled in to 0.32/0.68) — this camera sits low
+     with a shallow, near-horizon view of the floor (see the comment above on
+     why the grid itself is held quieter here), which is the same raking-angle
+     failure mode the yard had. */
+  const factoryFloorTex = concreteFloor();
+  const factoryFloorM = new THREE.MeshStandardMaterial({
+    map: factoryFloorTex, color: "#ffffff", metalness: 0.05, roughness: 0.92,
+    transparent: true, opacity: 0,
+  });
+  const ground = draftingGround({
+    size: 44, y: -0.72, step: 1.0, color: GRID_INK, opacity: 0.16,
+    surface: factoryFloorM,
+    vignette: { color: VIGNETTE_C, start: 0.50, end: 1.0 },
+  });
   g.add(ground.mesh);
+  if (ground.surfaceMesh) g.add(ground.surfaceMesh);
+  if (ground.vignetteMesh) g.add(ground.vignetteMesh);
 
   /* ---- the inspection station ----
      ONE camera, per the product's own claim that count, SKU and condition come
@@ -1295,7 +1609,14 @@ export function factorySubject(): CardSubject {
     focus: new THREE.Vector3(ZONE_X, 0.4, 0.7),
     materials: mats,
     marks: dets,
-    ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
+    // same surface/vignette peaks as the yard and warehouse — see the yard's comment
+    ground: {
+      setOpacity: (o) => {
+        setGroundOpacity(ground, o);
+        ground.setSurfaceOpacity?.(o * 0.94);
+        ground.setVignetteOpacity?.(o);
+      },
+    },
     tick: (p) => {
       /* The sweep band. `p` is the card loop progress, already pinned to a
          fixed 0.85 by card-scene in reduced motion, so this needs no branch
@@ -1347,17 +1668,21 @@ export function factorySubject(): CardSubject {
          legible at card size instead of being a 2px chip. Position-derived, so
          it is off at p=0 and off again once the carton wraps. */
       flagLit = xs[FLAGGED] > STATION_X + 0.3;
-      /* EVERY carton lights while the tool is actually on it. The mark is the
-         arm's touch, so it has to appear wherever the arm works, not only on the
-         one defective unit — otherwise the arm passes over six boxes and marks
-         none of them. The flagged carton alone KEEPS the mark after the arm has
-         moved on, which is what separates "inspected" from "failed". Still purely
-         position-derived (engage and nearCarton are computed above), so the loop
-         stays periodic. */
-      const pressing = engage > 0.55;
+      /* ONLY THE FLAGGED CARTON EVER TURNS ORANGE. An earlier version also lit
+         WHICHEVER carton the arm happened to be pressing on, on the theory
+         that "the mark is the arm's touch". That reading was wrong against
+         the row's own rule (`#ED510C` is reserved for conclusions, never
+         decorative) and it broke at runtime: with `flagLit` staying true for
+         the rest of the flagged carton's run AND a second, healthy carton
+         able to be mid-press at the very same tick, the belt could show TWO
+         solid-orange bodies at once — a colour meant to mean "defect" landing
+         on stock that passed inspection. Orange now marks exactly one thing,
+         the carton that is actually bad; every other carton the arm touches
+         stays plain kraft, same as the untouched ones. Still purely
+         position-derived (`flagLit` alone), so the loop stays periodic. */
       for (let i = 0; i < UNIT_N; i++) {
         if (!units[i].carton) continue;
-        const glow = (i === FLAGGED && flagLit) || (i === nearCarton && pressing);
+        const glow = i === FLAGGED && flagLit;
         units[i].body.material = glow ? flagBoard : kraft;
       }
 
@@ -1408,6 +1733,15 @@ export function factorySubject(): CardSubject {
     dispose: () => {
       mats.forEach((m) => m.dispose());
       ground.material.dispose();
+      // the concrete and belt-surface TEXTURES are cached and shared; only the
+      // materials wrapping them, and the surface/vignette planes, are this
+      // scene's own
+      factoryFloorM.dispose();
+      ground.surfaceMesh?.geometry.dispose();
+      if (ground.vignetteMesh) {
+        (ground.vignetteMesh.material as THREE.Material).dispose();
+        ground.vignetteMesh.geometry.dispose();
+      }
       rollGeo.dispose();
       /* Disposes the cone material AND its ground pool material; the shared
          cone/pool GEOMETRY is module-level and flagged, never touched here.
@@ -1455,427 +1789,635 @@ export function factorySubject(): CardSubject {
    truck drives laterally, Factory's belt runs laterally. A fourth card moving
    left-to-right would have read as a third conveyor no matter what was on it.
    This one moves along Z, and that alone separates it in a row of four. */
+/* 02 · Viso Data — REWRITTEN AGAIN. The feed-wall concept and its four-hop
+   trace are correct and stay; the owner's verdict on the previous pass was
+   that it "makes no visual sense" — bare screens floating with no visible
+   source. This pass adds the physical world the wall was missing: real
+   monitors (bezel + recessed glass, not a bare coloured box), a rack that
+   holds them, a console below, and a physical camera aimed OUT of frame that
+   the trace now visibly originates from (camera -> A -> B -> C -> D). See the
+   module-level report handed to the owner for the full value table. */
 export function dataSubject(): CardSubject {
   const _t0 = performance.now();
   const g = new THREE.Group();
   const mats: THREE.Material[] = [];
   const own = <T extends THREE.Material>(m: T) => { mats.push(m); return m; };
-
-  /* One generated finish, tinted — and it asks for exactly the neutral brushed
-     parameters Warehouse and Factory already build, so it is a cache hit and
-     costs nothing. Metalness stays low throughout: these cards run `noEnv`, and
-     a metal with nothing to reflect either blows out on edge highlights or goes
-     dead (see DECISIONS.md). */
-  const brushedN = own(makeMetal({ base: "#9AA0A8", kind: "brushed", metalness: 0.7, rough: 0.45 }).material);
-  /* The mast, spine and reader head lifted for the dark panel — #4E565F ->
-     #838C96 and #3A4149 -> #646C76, the same ~+53 the other three cards' steel
-     takes. Both still sit below recB (#A3ACB6), so the mechanism reads as
-     darker than the record it is filing, which is the value order this scene
-     depends on: the DECK has to be the bright thing. */
-  const frameM = own(tintMetal(brushedN, "#838C96", { metalness: 0.14 }));
-  const darkM = own(tintMetal(brushedN, "#646C76", { metalness: 0.14 }));
-  /* recA/recB/clipM ARE UNCHANGED. They were already the lightest materials in
-     any of the four cards — #A3ACB6-#CFDEEA is exactly the band the dark
-     flagships light their cargo in — because the deck had to hold as a solid
-     object against a near-white panel. Against black they simply work, and the
-     exposure lift (0.78 -> 1.18) is doing the rest; taking them higher would
-     push the clip into the ACES roll-off and flatten the wedge's grain. */
-  const recA = own(tintMetal(brushedN, "#B2BBC5", { metalness: 0.14 }));
-  const recB = own(tintMetal(brushedN, "#A3ACB6", { metalness: 0.14 }));
-  // the retrieved frame: the lightest thing in the deck, still under the
-  // overlay — nothing in a scene may be as bright as the graphics over it
-  const clipM = own(tintMetal(brushedN, "#CFDEEA", { metalness: 0.16 }));
-  // the picture ON the clip stays dark: the clip is light, so its content
-  // reads by being darker than it, and that is unaffected by the panel flip
-  const inkM = own(tintMetal(brushedN, "#5E6A76", { metalness: 0.12 }));
+  const es = (t: number) => t * t * (3 - 2 * t);
+  const seg = (p: number, a: number, b: number) => es(clamp01((p - a) / (b - a)));
 
   const FLOOR = -0.95;
-  const DECK_Y = 0.12;
 
-  /* ---- the deck: the record, receding into the past ---- */
-  const N = 26;
-  const FW = 1.62, FH = 1.02, FT = 0.045;
-  const PULLED = 9;                      // the frame the trace lands on
-  const frameGeo = new THREE.BoxGeometry(FW, FH, FT);
+  /* ---- the wall grid — sized in monitor OUTER faces, not bare tiles ----
+     camY/ty are fixed at 0.62 (index.tsx, id "data") so GRID_CY is pinned to
+     it: this is the one hero card whose camera sits exactly level with the
+     grid's own centre, which is why the rack rails below get the
+     round-profile treatment rather than a flat cap — see the note at RAIL_Y. */
+  const COLS = 5, ROWS = 3;
+  const SCREEN_W = 1.15, SCREEN_H = 0.72;         // unchanged from the previous pass
+  const BEZEL = 0.05;                              // bezel width on all sides
+  const MON_W = SCREEN_W + 2 * BEZEL;              // 1.25 — monitor outer face
+  const MON_H = SCREEN_H + 2 * BEZEL;              // 0.82
+  const MON_D = 0.12;                              // body depth — gives it sides
+  const SCREEN_D = 0.05;
+  const GAP = 0.06;                                 // clear gap between monitor bodies
+  const GRID_CX = 0, GRID_CY = 0.62;
+  const STEP_X = MON_W + GAP;                       // 1.31
+  const STEP_Y = MON_H + GAP;                       // 0.88
+  const WALL_W = COLS * MON_W + (COLS - 1) * GAP;   // 6.49
+  const WALL_H = ROWS * MON_H + (ROWS - 1) * GAP;   // 2.58
+  const colX = (c: number) => GRID_CX + (c - (COLS - 1) / 2) * STEP_X;
+  const rowY = (r: number) => GRID_CY + ((ROWS - 1) / 2 - r) * STEP_Y;
 
-  /* Spacing runs 0.46 at the near end down to 0.13 at the far end. THIS IS THE
-     COMPRESSION: the same number of frames occupies less and less depth the
-     further back you go, so the far half fuses into a solid wedge while the
-     recent end stays separable. Nothing has to say "compressed"; the deck is. */
-  const zs: number[] = [];
-  let z = 0.75;
-  for (let i = 0; i < N; i++) {
-    zs.push(z);
-    z -= 0.46 - (0.33 * i) / (N - 1);
+  /* One generated finish, shared with Factory/Warehouse — cache hit, costs
+     nothing extra on this page. */
+  const brushedN = own(makeMetal({ base: "#9AA0A8", kind: "brushed", metalness: 0.7, rough: 0.45 }).material);
+
+  /* VALUE LADDER, all against the backdrop (~11). SECOND PASS on these four —
+     the first round back-solved from one measured data point (rackM's
+     #171E27, hex-average 30.67 vs a measured render of 30.7) and that single
+     point undershot: screenshotted, the whole structure family came in near-
+     black and the card read as the darkest of the four on the row. Same
+     back-solve method (rendered mean tracks hex-channel average under this
+     studio's lighting), new targets, all raised — bezel by far the most,
+     since it's the largest-area element and was disappearing into the rack
+     behind it:
+       rackM      #171E27 (23,30,39)     avg 30.7   unchanged — measured, correct
+       consoleM   #262C32 (38,44,50)     avg 44.0   was 34 — +10, on target
+       bezelM     #383E44 (56,62,68)     avg 62.0   was 46 — +16, on target,
+                                                     the big one
+       camHouseM  #3C4248 (60,66,72)     avg 66.0   was 40 — +26, ASKED FOR 58
+                                                     but the brief's own two
+                                                     asks conflict at that
+                                                     number: "keep the
+                                                     ordering rack < console <
+                                                     bezel < camera housing"
+                                                     needs camHouseM > 62, and
+                                                     58 < 62 breaks it. Kept
+                                                     the ORDER (the brief
+                                                     calls it out as the
+                                                     harder constraint) and
+                                                     nudged the number to 66,
+                                                     4 clear of bezel rather
+                                                     than 4 under it.
+       camLensM   #646E78 (100,110,120)  avg 110.0  was 95 — +15, on target
+     Final order: rack(30.7) < console(44) < bezel(62) < camHousing(66) <
+     idle-screen(57.3)... camHousing(66) also now sits above idle-screen
+     (57.3), which the brief's ordering list does not mention either way and
+     which is consistent with "the camera must be findable" (fix 2) — a
+     housing brighter than a dark idle tile is exactly what makes it read as
+     the thing in front of the wall, not part of it. */
+  const rackM = own(tintMetal(brushedN, "#171E27", { metalness: 0.14 }));
+  const bezelM = own(tintMetal(brushedN, "#383E44", { metalness: 0.14 }));
+  const consoleM = own(tintMetal(brushedN, "#262C32", { metalness: 0.14 }));
+  const camHouseM = own(tintMetal(brushedN, "#3C4248", { metalness: 0.14 }));
+  const camLensM = own(tintMetal(brushedN, "#646E78", { metalness: 0.5 }));
+
+  /* TILE FACE VALUES — UNCHANGED from the previous pass, because they already
+     hit their targets exactly and the brief says not to re-tune what reads
+     correctly. Checked against the backdrop (~11), never a white clip point:
+       idle    #313942 (49,57,66)    mean 57.3   5.2x   target ~57
+       content #414A54 (65,74,84)    mean 74.3   6.8x   target ~75
+       active  #6C7C88 (108,124,136) mean 122.7  11.2x  target ~122
+     Unlit MeshBasicMaterial, so mean-RGB is the rendered value directly.
+
+     SCANLINE TEXTURE, new this pass — "faint horizontal scanline texture on
+     idle screens so they read as live video, not dark glass." A 4x64 canvas,
+     16 of 64 rows at 235/255 against 48 at 255/255: average multiplier
+     250/255 = 0.980, so it costs the idle face ~2% of its measured mean
+     (57.3 -> ~56.1) — that is the "faint" the brief asked for, not a redo of
+     the value ladder. Applied to idleFaceM only, per the brief's own scope
+     ("on idle screens"); the four trace tiles and the three content tiles
+     stay flat so nothing competes with the hop. ONE canvas, repeated via
+     UV tiling, shared by all idle tiles through idleFaceM.map — no
+     per-tile texture cost. */
+  const scanCanvas = document.createElement("canvas");
+  scanCanvas.width = 4; scanCanvas.height = 64;
+  const scanCtx = scanCanvas.getContext("2d")!;
+  for (let y = 0; y < 64; y++) {
+    const v = y % 4 === 0 ? 235 : 255;
+    scanCtx.fillStyle = `rgb(${v},${v},${v})`;
+    scanCtx.fillRect(0, y, 4, 1);
   }
-  const DECK_BACK = zs[N - 1];
+  const scanTex = new THREE.CanvasTexture(scanCanvas);
+  scanTex.wrapS = scanTex.wrapT = THREE.RepeatWrapping;
+  scanTex.repeat.set(1, 22);
 
-  const plates: THREE.Mesh[] = [];
-  for (let i = 0; i < N; i++) {
-    const m = new THREE.Mesh(frameGeo, i === PULLED ? clipM : (i % 2 ? recA : recB));
-    m.position.set(0, DECK_Y, zs[i]);
-    m.castShadow = i < 8;              // only the near few — the rest is a wedge
-    g.add(m);
-    plates.push(m);
+  const idleFaceM = own(new THREE.MeshBasicMaterial({ color: "#313942", map: scanTex, transparent: true, opacity: 0 }));
+  const contentFaceM = own(new THREE.MeshBasicMaterial({ color: "#414A54", transparent: true, opacity: 0 }));
+
+  /* THE TRACED OBJECT. Body and marks get their OWN material at their OWN
+     z-offset — the exact bug that shipped twice in this file's previous
+     version (ribs on the body, same material, same z, unrenderable).
+
+     THIRD PASS. Pass one (mark mean 99.0, gap 50.7) was invisible. Pass two
+     overcorrected on BOTH axes it was told to push: rails at 32% of body
+     height each (64% combined) plus a door block at 4x the rails' contrast
+     read as a dark bar with a light slit through it and a black end-cap —
+     a key or a USB stick, not a container seen side-on. The fix is not
+     "less" in the direction of pass one, it is specific proportions:
+       body       #8398A6 (131,152,166) mean 149.7  12.8x — brighter than any tile
+       mark(rail) #333D48 ( 51, 61, 72) mean  61.3   5.2x — gap to body 88.4
+       mark(door) #3D4854 ( 61, 72, 84) mean  72.3   6.2x — gap to body 77.4,
+                                                              only 11.0 ABOVE
+                                                              the rails: the
+                                                              door reads as
+                                                              distinguishable
+                                                              from the rails,
+                                                              not as a
+                                                              separate darker
+                                                              object welded to
+                                                              one end. */
+  const objectM = own(new THREE.MeshBasicMaterial({ color: "#8398A6" }));
+  const markM = own(new THREE.MeshBasicMaterial({ color: "#333D48" }));
+  const doorM = own(new THREE.MeshBasicMaterial({ color: "#3D4854" }));
+
+  /* THE TRACE — connectors, the bracket, and (new) the LEDs. #5CC8FF, mean
+     182.3, 16.6x the backdrop: the brightest thing in frame, same accent
+     every detection on this page uses. `presence` tier: a connector mid-draw
+     is the system WORKING, not a conclusion, so it must not go quiet just
+     because the card isn't hovered — same rule the sight cones and scan bars
+     on the other three cards already follow. Reused verbatim for the four
+     trace monitors' power LEDs, so "connectors, bracket, LEDs on active
+     monitors" really is one material, one value, per the brief. */
+  const connectorM = own(new THREE.MeshBasicMaterial({
+    color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false,
+    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.92, tier: "presence" },
+  }));
+  /* The eleven idle monitors' LEDs — dim, constant, ramps with the wall's own
+     power-on (`power`) and nothing else. Its own small material so it never
+     competes with connectorM's brighter ramp. */
+  const ledDimM = own(new THREE.MeshBasicMaterial({ color: "#3A4A56", transparent: true, opacity: 0 }));
+  /* The four trace monitors get their OWN LED opacity (driven by that hop's
+     `lights[i]`, not the shared power ramp) and their own bezel tint, so the
+     lit screen visibly "spills" onto the structure around it — brief item 5,
+     "let lit screens spill a little light onto their own bezel and the rail
+     behind". Four tiny materials, reused for two purposes each (LED mesh +
+     rail-glow mesh behind that monitor), so this is 4 materials driving 8
+     meshes, not 8 materials. */
+  // 4 trace hops, hard-coded rather than derived from PATH (declared further
+  // below) to avoid a use-before-declaration ordering problem
+  const ledActiveMats = Array.from({ length: 4 }, () => own(new THREE.MeshBasicMaterial({
+    color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+  })));
+  const BEZEL_BASE_C = new THREE.Color("#383E44");
+  const BEZEL_LIT_C = new THREE.Color("#4C6E80");
+  const bezelPathMats = Array.from({ length: 4 }, () => own(bezelM.clone()));
+
+  /* ---- geometry, shared aggressively ----
+     ONE screen box (15 monitors), ONE horizontal bezel bar, ONE vertical
+     bezel bar, ONE LED box, ONE unit cylinder (rails, posts, arms, cables —
+     every cylindrical part on the card reuses this one geometry via
+     non-uniform scale), ONE unit box for every part of the traced object (4
+     instances x 4 parts = 16 meshes), ONE connector plane (4 meshes).
+     Console and camera housing go through `metalBox`, which pools its own
+     RoundedBoxGeometry by dimension — see its header comment — so those cost
+     nothing extra to add. Nothing here is allocated per instance. */
+  const screenGeo = new THREE.BoxGeometry(SCREEN_W, SCREEN_H, SCREEN_D);
+  const bezelHGeo = new THREE.BoxGeometry(MON_W, BEZEL, MON_D);
+  const bezelVGeo = new THREE.BoxGeometry(BEZEL, SCREEN_H, MON_D);
+  const ledGeo = new THREE.BoxGeometry(0.045, 0.02, 0.02);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
+  const lensGeo = new THREE.CylinderGeometry(0.075, 0.09, 0.16, 14);
+  const objGeo = new THREE.BoxGeometry(1, 1, 1);
+  const connGeo = new THREE.PlaneGeometry(1, 0.035);
+  connGeo.translate(0.5, 0, 0); // pivot at the start end, so scale.x draws progressively
+
+  /* BoxGeometry face order +x,-x,+y,-y,+z,-z. `faces()` (see file header) puts
+     the bezel on the four side groups and the glass face on front/back — a
+     single shared array per face-material, reused by every screen that
+     shares that face colour, exactly the deck's old `deckFaceArrays`
+     pattern. This is the screen's own thin (0.05) rim, barely visible once
+     it sits recessed behind the bezel frame bars below — the frame bars are
+     what actually reads as "monitor bezel" up close. */
+  const idleFaces = faces(bezelM, bezelM, idleFaceM);
+  const contentFaces = faces(bezelM, bezelM, contentFaceM);
+
+  /* Grid coordinates (col, row), 0-indexed. Four NON-adjacent, NON-collinear
+     tiles carry the trace — see the report for why these four: no two share
+     an edge, and no three sit on one row, column or diagonal, so the hop
+     reads as a search across the wall rather than a scan along it.
+       A (0,0) top-left      -> B (3,1) mid-right
+       B (3,1) mid-right     -> C (1,2) bottom-left
+       C (1,2) bottom-left   -> D (4,0) top-right (the conclusion) */
+  const PATH: [number, number][] = [[0, 0], [3, 1], [1, 2], [4, 0]];
+  const CONTENT: [number, number][] = [[2, 0], [0, 2], [3, 2]];
+  const pathKey = (c: number, r: number) => `${c},${r}`;
+  const contentSet = new Set(CONTENT.map(([c, r]) => pathKey(c, r)));
+
+  const IDLE_C = new THREE.Color("#313942");
+  const ACTIVE_C = new THREE.Color("#6C7C88");
+  const pathMats: THREE.MeshBasicMaterial[] = PATH.map(() =>
+    own(new THREE.MeshBasicMaterial({ color: IDLE_C.clone(), transparent: true, opacity: 0 })));
+  const pathFaceArrays = pathMats.map((m) => faces(bezelM, bezelM, m));
+
+  /* SCREEN_Z: the glass sits RECESSED ~0.02 behind the bezel frame's front
+     face, per the brief ("insets ~0.02 into the bezel so the bezel casts a
+     lip over it"). The frame bars below are drawn only around the SCREEN's
+     perimeter (they don't cover its 1.15x0.72 opening at all — four bars,
+     not a solid box with a hole cut in it), so the recess reads correctly
+     without any CSG: nothing occludes the screen or the traced object drawn
+     in front of it, because nothing is there to occlude with. */
+  const SCREEN_Z = -0.02;
+  const BEZEL_FRONT_Z = MON_D / 2 - 0.01;   // ~0.05, the frame bars' front face
+  const MON_BACK_Z = -MON_D / 2;            // -0.06, where the mounting arm attaches
+
+  // per-monitor LED position: bottom-right corner of the bottom bezel bar
+  const LED_X = MON_W / 2 - 0.09, LED_Y = -MON_H / 2 + BEZEL / 2;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const key = pathKey(c, r);
+      const pi = PATH.findIndex(([pc, pr]) => pc === c && pr === r);
+      const isPath = pi >= 0;
+      const mat = isPath ? pathFaceArrays[pi] : contentSet.has(key) ? contentFaces : idleFaces;
+      const cx = colX(c), cy = rowY(r);
+
+      const screen = new THREE.Mesh(screenGeo, mat);
+      screen.position.set(cx, cy, SCREEN_Z);
+      g.add(screen);
+
+      // the bezel frame — 4 shared-geometry bars, one material per monitor
+      // (base bezelM, or that hop's bezelPathMats while it's live)
+      const frameMat = isPath ? bezelPathMats[pi] : bezelM;
+      for (const sy of [-1, 1]) {
+        const h = new THREE.Mesh(bezelHGeo, frameMat);
+        h.position.set(cx, cy + sy * (MON_H / 2 - BEZEL / 2), 0);
+        g.add(h);
+      }
+      for (const sx of [-1, 1]) {
+        const v = new THREE.Mesh(bezelVGeo, frameMat);
+        v.position.set(cx + sx * (MON_W / 2 - BEZEL / 2), cy, 0);
+        g.add(v);
+      }
+
+      // the power LED — dim on every idle monitor, its own brighter material
+      // on the four trace monitors (opacity driven per-hop in tick())
+      const led = new THREE.Mesh(ledGeo, isPath ? ledActiveMats[pi] : ledDimM);
+      led.position.set(cx + LED_X, cy + LED_Y, BEZEL_FRONT_Z + 0.005);
+      g.add(led);
+    }
   }
-  const clip = plates[PULLED];
 
-  /* Content on the retrieved frame, so that when it turns to face you it reads
-     as a picture of something rather than a blank card. Invisible while it is
-     edge-on in the deck, which is most of the loop, so it costs nothing to
-     leave permanently on. */
-  const clipArt = new THREE.Group();
-  for (const [w, h, x, y] of [[0.5, 0.34, -0.28, -0.1], [0.3, 0.5, 0.3, 0.02], [0.86, 0.07, -0.05, 0.34]] as const) {
-    const b = new THREE.Mesh(frameGeo, inkM);
-    b.scale.set(w / FW, h / FH, 0.6);
-    b.position.set(x, y, FT * 0.8);
-    clipArt.add(b);
+  /* ---- the rack — three horizontal rails, two end posts, one short
+     mounting arm per monitor. Slim: this is structure, not subject.
+
+     RAIL PROFILE IS A CYLINDER, DELIBERATELY, NOT A THIN BOX. The middle
+     rail sits at row 1's own Y (0.62) — EXACTLY the camera's eye height on
+     this rig (camY/ty 0.62, see index.tsx). That is precisely the geometry
+     the brief's own invariant warns about: "any thin horizontal surface near
+     y 0.62 is seen nearly edge-on and will alias" — which is why the
+     previous pass's flat outer frame was deleted. A cylinder has no face
+     that goes edge-on: its silhouette is a rounded highlight from any
+     viewing angle, radius 0.05 is well above sub-pixel at this camera
+     distance (~10.6), so the invariant's failure mode does not apply to it.
+     This is the "positioned away from eye level, or thick enough to have a
+     visible face" choice made explicit — here it's the latter, by shape
+     rather than by offset. */
+  const RAIL_Z = MON_BACK_Z - 0.08;             // -0.14, clear behind the monitor backs
+  const RAIL_R = 0.05;
+  const railY = [rowY(0), rowY(1), rowY(2)];    // 1.50, 0.62, -0.26
+  for (const ry of railY) {
+    const rail = new THREE.Mesh(cylGeo, rackM);
+    rail.rotation.z = Math.PI / 2;              // unit cylinder's axis is Y; lay it flat along X
+    rail.scale.set(RAIL_R, WALL_W + 0.5, RAIL_R);
+    rail.position.set(GRID_CX, ry, RAIL_Z);
+    g.add(rail);
   }
-  clip.add(clipArt);
-
-  // the spine the record is filed along — gives the deck a mechanism to be part
-  // of, and stops it reading as a loose stack of paper
-  const spine = metalBox(0.16, 0.16, 0.75 - DECK_BACK + 0.6, darkM);
-  spine.position.set(0, DECK_Y - FH / 2 - 0.14, (0.75 + DECK_BACK) / 2);
-  g.add(spine);
-  for (const sz of [0.62, DECK_BACK + 0.25]) {
-    const post = metalBox(0.13, 0.9, 0.13, frameM);
-    post.position.set(0, FLOOR + 0.45, sz);
+  const POST_X = WALL_W / 2 + 0.15;
+  const postTop = railY[0] + 0.3, postBot = railY[2] - 0.3;
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(cylGeo, rackM);
+    post.scale.set(0.06, postTop - postBot, 0.06);   // unit cylinder axis is already Y — no rotation needed
+    post.position.set(sx * POST_X, (postTop + postBot) / 2, RAIL_Z);
     g.add(post);
   }
-
-  /* ---- the reader ----
-     A head on a short mast at the near end, looking down the deck. Same visual
-     language as Factory's and Warehouse's cameras: this is the thing that made
-     the record, and the sight cone is what says so. */
-  /* Placed BEHIND the deck (-x) and past its near end, not beside it. The first
-     pass stood the mast at x=1.85 — which is between the camera and the deck at
-     this azimuth — so a big dark post sat straight across the frames it was
-     supposed to be reading. Anything on the +x side of this scene occludes the
-     subject. */
-  const READ_X = -1.55, READ_Z = 1.75;
-  const mast = metalBox(0.13, 1.9, 0.13, frameM);
-  mast.position.set(READ_X, FLOOR + 0.95, READ_Z);
-  g.add(mast);
-  const arm = metalBox(1.4, 0.12, 0.12, frameM);
-  arm.position.set(READ_X + 0.7, FLOOR + 1.86, READ_Z);
-  g.add(arm);
-  /* Head and lens live in one group that is AIMED, not posed. The old lens hung
-     straight down off the head, so the reader stared at the floor while its
-     sight cone claimed it was reading the deck — the two disagreed. lookAt
-     orients the group's +z, so the lens is built pointing along local +z. */
-  const readerHead = new THREE.Group();
-  readerHead.position.set(READ_X + 1.4, FLOOR + 1.72, READ_Z);
-  const head = metalBox(0.38, 0.28, 0.46, darkM);
-  readerHead.add(head);
-  const lensGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.15, 14);
-  const lens = new THREE.Mesh(lensGeo, darkM);
-  lens.rotation.x = Math.PI / 2;
-  lens.position.set(0, 0, 0.3);
-  readerHead.add(lens);
-  readerHead.lookAt(0, DECK_Y + FH / 2, zs[8]);
-  g.add(readerHead);
-
-  // 0.1 -> 0.16 (x1.6) and light ink — see GRID_INK
-  const ground = draftingGround({ size: 30, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.16 });
-  g.add(ground.mesh);
-
-  /* ---- the vision layer ---- */
-  _deep("data:mats+geom", _t0);
-  const dm = detectMaterials();
-  mats.push(...dm.all);
-
-  /* The reader's field of view, dropping onto the near end of the deck.
-     "presence" tier — the camera's existence never ramps with hover, only its
-     conclusions do. */
-  /* WAS A FLAT QUAD-FAN, NOW A REAL CONE — and this is the riskiest of the
-     three, because it is the one whose quad was genuinely wide.
-     apex   = midpoint of (READ_X+1.32, FLOOR+1.66, READ_Z) and
-              (READ_X+1.48, FLOOR+1.66, READ_Z)  = (-0.15, 0.71, 1.75)
-     target = midpoint of (0.92, DECK_Y+0.18, 0.35) and (-0.92, ...)
-                                                 = (0.00, 0.30, 0.35)
-     axis   = (0.15, -0.41, -1.40)
-     length = sqrt(0.0225 + 0.1681 + 1.9600) = sqrt(2.1506) = 1.46649
-     far half-width = 0.92 (unchanged from the quad)
-     halfAngle = atan(0.92 / 1.46649) = atan(0.627322) = 0.56029 rad (32.10 deg)
-
-     NO footprintY. The beam lands on the receding DECK, well above the
-     drafting floor, and the deck is a stack of frames rather than a plane — a
-     flat disc anywhere in there would cut through the frames it is supposed to
-     be lighting. */
-  const sightCone = createSightCone();
-  {
-    const apex = new THREE.Vector3(READ_X + 1.40, FLOOR + 1.66, READ_Z);
-    const tgt = new THREE.Vector3(0, DECK_Y + 0.18, 0.35);
-    sightCone.aim(apex, tgt, Math.atan(0.92 / apex.distanceTo(tgt)));
+  // one short mounting arm per monitor, rail Y to monitor back
+  const ARM_R = 0.028;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cx = colX(c), cy = rowY(r);
+      const arm = new THREE.Mesh(cylGeo, rackM);
+      arm.rotation.x = Math.PI / 2;             // point the unit cylinder along Z
+      arm.scale.set(ARM_R, MON_BACK_Z - RAIL_Z, ARM_R);
+      arm.position.set(cx, cy, (MON_BACK_Z + RAIL_Z) / 2);
+      g.add(arm);
+    }
   }
-  sightCone.material.userData = { max: 0.14, tier: "presence" };
+  // rail-glow behind the four trace monitors — the "spill onto the rail"
+  // half of brief item 5, reusing ledActiveMats so no new material is spent
+  PATH.forEach(([c, r], i) => {
+    const glow = new THREE.Mesh(ledGeo, ledActiveMats[i]);
+    glow.scale.set(3, 2.4, 1.4);
+    glow.position.set(colX(c), rowY(r), RAIL_Z + 0.015);
+    g.add(glow);
+  });
+
+  /* ---- the console — a desk below the wall, what makes the wall read as a
+     control room rather than a floating grid (brief item 3). Top surface at
+     y = -0.55, front panel dropping to FLOOR (-0.95), forward of the wall at
+     z ~= +0.55. */
+  const DESK_TOP_Y = -0.55, DESK_D = 0.9, DESK_Z = 0.55, DESK_W = WALL_W - 0.09;
+  const DESK_FRONT_Z = DESK_Z + DESK_D / 2;   // 1.0, the desk's own front edge
+  const deskTop = metalBox(DESK_W, 0.06, DESK_D, consoleM);
+  deskTop.position.set(GRID_CX, DESK_TOP_Y - 0.03, DESK_Z);
+  g.add(deskTop);
+  const deskFrontH = DESK_TOP_Y - FLOOR;       // 0.40
+  const deskFront = metalBox(DESK_W, deskFrontH, 0.05, consoleM);
+  deskFront.position.set(GRID_CX, DESK_TOP_Y - deskFrontH / 2, DESK_FRONT_Z - 0.025);
+  g.add(deskFront);
+  // the emissive strip along the desk's front top edge — its OWN material,
+  // dimmer than connectorM's 0.92 max, because this is ambient console
+  // decor, not a trace connector, and "faint" was the brief's own word.
+  const deskStripM = own(new THREE.MeshBasicMaterial({
+    color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+  }));
+  deskStripM.userData = { max: 0.3, tier: "presence" };
+  const deskStrip = new THREE.Mesh(ledGeo, deskStripM);
+  deskStrip.scale.set(DESK_W / 0.045, 1, 1);
+  deskStrip.position.set(GRID_CX, DESK_TOP_Y - 0.03, DESK_FRONT_Z + 0.006);
+  g.add(deskStrip);
+
+  /* ---- cable runs — a few thin cylinders from the rack's bottom rail down
+     to the console, brief item 5's second half. Same shared cylGeo, thinned
+     via non-uniform scale. */
+  const CABLE_XS = [-2.4, -0.9, 0.6, 2.1];
+  for (const cx of CABLE_XS) {
+    const cable = new THREE.Mesh(cylGeo, rackM);
+    const topY = railY[2], botY = DESK_TOP_Y;
+    cable.scale.set(0.018, topY - botY, 0.018);
+    cable.position.set(cx, (topY + botY) / 2, (RAIL_Z + DESK_Z) / 2);
+    g.add(cable);
+  }
+
+  /* ---- the camera — the piece the owner called out as missing, and then
+     called out AGAIN as too small: "it is the source of the entire trace and
+     currently renders as a small dark blob at the frame edge." Mounted at
+     x ~= -3.5, y = 1.15. Aimed OUT of frame — left and slightly toward the
+     viewer — so it reads as watching the yard, not the monitors it feeds.
+
+     CAM_SCALE = 1.6 applied to the whole `camMount` GROUP, not to each part
+     individually — "housing, hood, lens, arm, wall plate together," per the
+     brief, and a group scale is the one change that guarantees they stay in
+     proportion to each other. Every child position/size below is still
+     authored in the camera's own pre-scale local units; the group transform
+     is what makes them 60% bigger in the world. */
+  const CAM_SCALE = 1.6;
+  const camMount = new THREE.Group();
+  camMount.position.set(-3.5, 1.15, 0.15);
+  const AIM_DIR = new THREE.Vector3(-1, -0.05, 0.35).normalize();
+  camMount.lookAt(camMount.position.clone().add(AIM_DIR));  // local -Z now points along AIM_DIR
+  camMount.scale.setScalar(CAM_SCALE);
+  g.add(camMount);
+
+  const wallPlateGeo = new THREE.BoxGeometry(0.14, 0.14, 0.05);
+  const wallPlate = new THREE.Mesh(wallPlateGeo, rackM);
+  wallPlate.position.set(0, 0, 0.24);
+  camMount.add(wallPlate);
+  const camArm = new THREE.Mesh(cylGeo, rackM);
+  camArm.rotation.x = Math.PI / 2;
+  camArm.scale.set(0.035, 0.16, 0.035);
+  camArm.position.set(0, 0, 0.15);
+  camMount.add(camArm);
+  const camHousing = metalBox(0.22, 0.16, 0.28, camHouseM);
+  camHousing.position.set(0, 0, 0);
+  camMount.add(camHousing);
+  const camHood = metalBox(0.15, 0.035, 0.16, camHouseM);
+  camHood.position.set(0, 0.09, -0.22);
+  camMount.add(camHood);
+  const camLens = new THREE.Mesh(lensGeo, camLensM);
+  camLens.rotation.x = Math.PI / 2;
+  camLens.position.set(0, 0, -0.22);
+  camMount.add(camLens);
+  /* THE GLINT — "give the lens a visible bright rim... it's the one element
+     that explains where the feeds come from." A thin torus around the
+     lens's front face, reusing connectorM (no new material spent) so it
+     carries the same accent and the same presence-tier always-on ramp as
+     every other piece of "the machine is watching" on this card. Torus
+     geometry's own axis is already local Z, matching the lens barrel — no
+     rotation needed. */
+  const rimGeo = new THREE.TorusGeometry(0.078, 0.012, 8, 16);
+  const camGlint = new THREE.Mesh(rimGeo, connectorM);
+  camGlint.position.set(0, 0, -0.30);
+  camMount.add(camGlint);
+
+  // the sight cone — subtle, presence tier, aimed further out along the same
+  // axis. Static camera and static cone: aimed once, never re-aimed per
+  // frame, the same pattern factorySubject uses for its own fixed cone.
+  // The lens tip moves with CAM_SCALE too (child local z=-0.22, half-length
+  // 0.08, scaled by 1.6 -> 0.48 along AIM_DIR from the mount's own origin),
+  // so the cone apex is derived from CAM_SCALE rather than re-measured by
+  // hand — it stays correct if the scale ever changes again.
+  const camLensWorld = camMount.position.clone().addScaledVector(AIM_DIR, 0.30 * CAM_SCALE);
+  const camConeTarget = camMount.position.clone().addScaledVector(AIM_DIR, 3.4);
+  const sightCone = createSightCone();
+  sightCone.aim(camLensWorld, camConeTarget, 0.245);   // ~14 degrees, kept narrow
+  sightCone.material.userData = { max: 0.09, tier: "presence" };
   own(sightCone.material);
   g.add(sightCone.group);
 
-  /* THE SEARCH BAR — a bright plane that travels BACKWARD along the deck. It is
-     the only thing in any of the four cards that moves along Z, and that is
-     deliberate: three lateral conveyors and a fourth would have collapsed
-     together. "presence", because a search running is the machine working, not
-     a conclusion it has reached. */
-  /* A THIN SLICE, not a full card. At FW*1.5 x FH*1.5 and the shared scan alpha
-     this rendered as a solid blue rectangle wedged into the deck — it read as
-     one more frame, a coloured one, rather than as something passing through.
-     A search bar has to be a slice of light: the deck's height, barely wider
-     than a frame, and its own low-alpha material so it can be quiet without
-     dragging Factory's and Warehouse's scan bars down with it. */
-  /* #2E86BE @ 0.20 -> #8FDCFF @ 0.26. This one crosses the DECK, not the
-     backdrop, so the blend that matters is against recA/recB (~(175,185,197)):
-     the old dark blue at 0.20 darkened the frames it passed over, which on
-     paper read as a shadow moving through the archive and on a dark panel reads
-     as nothing at all. A pale cyan at 0.26 lifts a frame it is over to
-     ~(166,194,212) — a slice of light travelling back through the record, which
-     is what a search running is supposed to look like. Still a slice and never
-     a plate: the geometry is unchanged. */
-  const scanGeo = new THREE.PlaneGeometry(FW * 1.12, FH * 1.18);
-  const scanM = own(new THREE.MeshBasicMaterial({
-    color: "#8FDCFF", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.26, tier: "presence" },
-  }));
-  const scan = new THREE.Mesh(scanGeo, scanM);
-  scan.position.set(0, DECK_Y, 0.9);
-  g.add(scan);
+  /* ---- the traced object — a container silhouette, schematic, ties this
+     card to the other three. Body + top/bottom rail + one door-end panel,
+     the same asymmetric read the previous version settled on: two symmetric
+     rails alone still reads as a ladder/barcode, the off-centre door panel
+     is what breaks the repeat. Four instances, one geometry, three materials.
 
-  /* THE QUERY CURSOR — the antecedent the retrieval never had.
-     A frame lifted out of the deck at 0.52 answered a question nobody had been
-     shown being asked: the wide search slice above says "a search is running",
-     but it never RESOLVES on anything, so the clip that pops out could be any
-     clip. This is the resolving half — a hairline that walks the deck frame by
-     frame and stops dead on the one that is about to lift.
+     SECOND PASS AT THE SIZING, not just the colour. At ~40px shipped, a
+     rail built at its true schematic proportion (a thin strip near the
+     object's edge) is sub-pixel and vanishes regardless of contrast — this
+     card's whole failure mode has been "correct in the abstract, invisible
+     at the size that ships" (see PERFORMANCE.md's sibling note on this same
+     trap for build-cost claims). So the rails are exaggerated well past a
+     realistic container's proportions: each now claims 32% of the body's
+     height (was 16%), leaving a 36% band of visible body between them
+     instead of the old ~68%. The door end goes further still — 34% of the
+     width (was 22%) and 85% of the height (was 72%), on its own darkest
+     material, so it reads as a solid block at one end rather than a third
+     stripe the same weight as the rails. */
+  const OBJ_Z = SCREEN_Z + SCREEN_D / 2 + 0.03;   // clear of the recessed glass face
+  const MARK_Z = OBJ_Z + 0.02;                     // clear of the body — never coplanar
+  function buildContainer(w: number, h: number) {
+    const group = new THREE.Group();
+    const part = (pw: number, ph: number, x: number, y: number, z: number, mat: THREE.Material) => {
+      const m = new THREE.Mesh(objGeo, mat);
+      m.scale.set(pw, ph, 0.03);
+      m.position.set(x, y, z);
+      group.add(m);
+      return m;
+    };
+    const body = part(w, h, 0, 0, OBJ_Z, objectM);
+    // rails at 15% of body height EACH (30% combined) — a container is
+    // mostly flank, with rails as edges rather than half the object
+    const railH = h * 0.15;
+    part(w * 0.94, railH, 0, h / 2 - railH / 2, MARK_Z, markM);         // top rail
+    part(w * 0.94, railH, 0, -h / 2 + railH / 2, MARK_Z, markM);        // bottom rail
+    // door panel inset at one end, flush to the body's edge — 22% of width,
+    // 78% of height, not a block spanning the full end
+    part(w * 0.22, h * 0.78, w * 0.39, 0, MARK_Z, doorM);
+    return { group, body };
+  }
+  /* Same object, a different framing in every tile it is seen in — position,
+     scale, both hand-picked per hop rather than derived, because "the same
+     container seen by four different cameras" is a statement about each shot
+     being independently composed, not about a formula. */
+  const OBJ_SHOTS: { w: number; h: number; x: number; y: number }[] = [
+    { w: 0.62, h: 0.28, x: -0.05, y: -0.06 },  // A — establishing, small, off-centre
+    { w: 0.70, h: 0.30, x: 0.08, y: 0.04 },    // B — a closer angle
+    { w: 0.50, h: 0.22, x: 0.10, y: -0.08 },   // C — a wide, distant camera
+    { w: 0.80, h: 0.34, x: -0.05, y: 0.02 },   // D — the closest shot, the conclusion
+  ];
+  const objInstances = PATH.map((_, i) => {
+    const shot = OBJ_SHOTS[i];
+    return buildContainer(shot.w, shot.h);
+  });
+  PATH.forEach(([c, r], i) => {
+    const inst = objInstances[i];
+    const shot = OBJ_SHOTS[i];
+    inst.group.position.set(colX(c) + shot.x, rowY(r) + shot.y, 0);
+    inst.group.scale.setScalar(0.001); // grown in by tick(), never zero (a zero scale is a degenerate matrix)
+    g.add(inst.group);
+  });
 
-     0.06 wide against the deck's 1.62 frames, so it can only ever read as a
-     cursor, never as another plate. Parked at x = FW/2 + 0.12: this rig's
-     azimuth (0.52-0.64 rad) puts the camera on the +x side, so just outside the
-     deck's +x edge is the one place a thin vertical mark is never buried
-     between two frames. Billboarded in trackers() for the same reason the case
-     card is — 0.06 of width disappears entirely the moment it turns edge-on. */
-  const CUR_W = 0.06;
-  const cursorGeo = new THREE.PlaneGeometry(CUR_W, FH * 1.1);
-  const cursorM = own(new THREE.MeshBasicMaterial({
-    color: "#5CC8FF", transparent: true, opacity: 0, toneMapped: false,
-    depthWrite: false, side: THREE.DoubleSide, userData: { max: 0.55, tier: "presence" },
-  }));
-  const cursor = new THREE.Mesh(cursorGeo, cursorM);
-  cursor.position.set(FW / 2 + 0.12, DECK_Y, zs[0]);
-  g.add(cursor);
+  /* ---- the connectors — thin lit lines drawn progressively. Length is
+     precomputed once; each frame only writes scale.x. FOUR now, not three:
+     camera -> A leads, then A -> B -> C -> D as before — this is brief item
+     4, "wire it into the trace": when hop A fires, a connector runs FROM THE
+     CAMERA to monitor A, making the whole chain literal (camera sees, feed
+     appears, trace follows, detection concludes). connMeshes[i] now lines up
+     1:1 with lights[i], so tick() below needs no +1 offset any more. The
+     camera leg uses the camera housing's own (x, y), ignoring its z — these
+     connectors are flat 2D lines in the wall's own plane, same convention
+     the previous three already used. */
+  const HOP_POINTS: [number, number][] = [
+    [camMount.position.x, camMount.position.y],
+    [colX(PATH[0][0]), rowY(PATH[0][1])],
+    [colX(PATH[1][0]), rowY(PATH[1][1])],
+    [colX(PATH[2][0]), rowY(PATH[2][1])],
+    [colX(PATH[3][0]), rowY(PATH[3][1])],
+  ];
+  const connMeshes: { mesh: THREE.Mesh; len: number }[] = [];
+  for (let i = 0; i < HOP_POINTS.length - 1; i++) {
+    const [x0, y0] = HOP_POINTS[i];
+    const [x1, y1] = HOP_POINTS[i + 1];
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    const mesh = new THREE.Mesh(connGeo, connectorM);
+    mesh.position.set(x0, y0, 0.09);
+    mesh.rotation.z = Math.atan2(dy, dx);
+    mesh.scale.set(0.0001, 1, 1);
+    g.add(mesh);
+    connMeshes.push({ mesh, len });
+  }
 
+  /* ---- the ground — unchanged pattern from every other card on the row.
+     Kept because the invariant says so, not because this scene needs the
+     floor to tell its own story; the wall does that. */
+  const dataFloorTex = concreteFloor();
+  const dataFloorM = new THREE.MeshStandardMaterial({
+    map: dataFloorTex, color: "#ffffff", metalness: 0.05, roughness: 0.92,
+    transparent: true, opacity: 0,
+  });
+  mats.push(dataFloorM);
+  const ground = draftingGround({
+    size: 34, y: FLOOR - 0.01, step: 1.2, color: GRID_INK, opacity: 0.16,
+    surface: dataFloorM,
+    vignette: { color: VIGNETTE_C, start: 0.50, end: 1.0 },
+  });
+  g.add(ground.mesh);
+
+  _deep("data:mats+geom", _t0);
+
+  /* ---- the vision layer — the detection bracket, at the moment the trace
+     concludes on D. Reused verbatim from detect.ts; nothing here reinvents
+     what a bracket is. */
+  const dm = detectMaterials();
+  mats.push(...dm.all);
   const det = createTracker(dm.accent);
   g.add(det.group);
 
-  /* The case mark: an orange rule over two grey lines, riding beside the
-     retrieved clip. Its own materials, never dm.* — the reveal multiplies
-     opacity per frame and dm.warn is shared with the tracker. */
-  const caseMat = (color: string, max: number) => own(new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
-    userData: { max, tier: "mark" },
-  }));
-  const caseWarn = caseMat("#ED510C", 1);
-  const caseLine = caseMat("#5A6B7A", 0.8);
-  /* A RECORD, not a label. Three bars said "something was logged"; a case file
-     has fields. Title rule, divider, four label/value rows and a footer badge
-     reads as structured data at a glance without a single glyph of type, which
-     is the only option at this size. Bars are x-positioned as well as y, so the
-     label column and value column line up like a real form. */
-  const caseCard = new THREE.Group();
-  const barGeo = new THREE.PlaneGeometry(1, 1);
-  /* A BACKING PLATE, because a record needs a surface. Without it the grey
-     rows were drawn straight over the deck behind them — slate lines on slate
-     frames, invisible at card size, so only the orange title rule survived and
-     the whole thing read as a stray dash.
-
-     ON A DARK PANEL THE PLATE IS THE POINT. A record pulled out of an archive
-     ought to look like a document, and paper on near-black is the strongest
-     read available — it is also the only place in the row where a light slab is
-     correct rather than a mistake. #F1F4F7 -> #DCE4EC: one step down, because
-     at 0.97 alpha over a (14,16,21) ground the old value was a light SOURCE
-     brighter than every overlay in the scene, and nothing may out-brighten the
-     accent. #DCE4EC still reads unambiguously as paper. The 0.03 rim at
-     #5A6B7A now falls to a dark ground rather than a light one, so it reads as
-     the card's own drop shadow instead of a hairline — which is the right
-     answer for a card lying in front of the archive either way. */
-  for (const [w, h, col, op] of [[1.52, 1.06, "#5A6B7A", 0.5], [1.46, 1.0, "#DCE4EC", 0.97]] as const) {
-    const plate = new THREE.Mesh(barGeo, own(new THREE.MeshBasicMaterial({
-      color: col, transparent: true, opacity: 0, toneMapped: false,
-      depthWrite: false, userData: { max: op, tier: "mark" },
-    })));
-    plate.scale.set(w, h, 1);
-    plate.position.set(0, 0.03, -0.01);
-    caseCard.add(plate);
-  }
-  /* THREE ROWS, TWO HARD COLUMNS. The previous twelve bars were meant to read
-     as a filled form, but every label was a different width starting at a
-     different x (-0.48, -0.45, -0.50, -0.46) and every value likewise, so at
-     card size the whole block was a field of ragged grey dashes — noise where
-     a record was supposed to be. What makes a form read as a form at 4mm is
-     COLUMN ALIGNMENT, not row count, so: four rows down to three, every label
-     the same width sharing a left edge at -0.63, every value sharing a left
-     edge at +0.02, and only the value widths varying (which is the one thing
-     that actually differs between fields of real data). Bars are centred on x,
-     so each x below is leftEdge + w/2 — that arithmetic is load-bearing and
-     changing a width without changing its x breaks the column. */
-  const LABEL_L = -0.63, VALUE_L = 0.02;
-  const lab = (w: number, y: number) => [w, 0.05, LABEL_L + w / 2, y, caseLine] as const;
-  const val = (w: number, y: number) => [w, 0.05, VALUE_L + w / 2, y, caseLine] as const;
-  const CASE_BARS: readonly (readonly [number, number, number, number, THREE.Material])[] = [
-    // title rule, then the divider under it
-    [1.30, 0.075, 0.00, 0.36, caseWarn],
-    [1.30, 0.016, 0.00, 0.25, caseLine],
-    lab(0.36, 0.10), val(0.52, 0.10),
-    lab(0.36, -0.04), val(0.44, -0.04),
-    lab(0.36, -0.18), val(0.58, -0.18),
-    // status badge, on the label column's left edge
-    [0.30, 0.070, LABEL_L + 0.15, -0.36, caseWarn],
-  ];
-  for (const [w, h, x, y, mat] of CASE_BARS) {
-    const m = new THREE.Mesh(barGeo, mat);
-    m.scale.set(w, h, 1);
-    m.position.set(x, y, 0);
-    caseCard.add(m);
-  }
-  g.add(caseCard);
-
   _deep("data:detect", _t0);
 
-  const es = (t: number) => t * t * (3 - 2 * t);
-  const seg = (p: number, a: number, b: number) => es(clamp01((p - a) / (b - a)));
-  /* Where the clip ends up: UP and FORWARD out of the deck, barely sideways.
-
-     The first pass sent it out to x=2.15, and at this azimuth the camera sits on
-     the +x side — so it travelled straight at the right frame edge and clipped,
-     bracket and all. Lifting it instead keeps it near the middle of frame, and
-     it is the better gesture anyway: a record is pulled UP out of a file, not
-     shoved out the end of one. The 1.05 of lift also clears it of the near
-     frames it would otherwise pass through on its way forward. */
-  /* OUT_Z IS ABSOLUTE, NOT A DELTA OFF THE FILED POSITION. It was
-     zs[PULLED] + 2.65 = -0.265, and the deck's own plates sit at 0.290 and
-     -0.157 and -0.590 — so the "retrieved" frame travelled 2.65 forward and
-     stopped still inside the archive, interleaved with the frames it was
-     supposed to have been pulled out of, and the case card at +0.55 landed
-     within 0.005 of plate 1. Anchoring to the deck's NEAR END (0.75) instead
-     of to the pulled frame's own z is the only form of this that cannot end up
-     inside the deck: 2.30 is 1.55 clear in front of the whole archive, and
-     OUT_Y lifts the clip's lower edge (0.72 at the 1.42 scale) to 0.746, clear
-     of the deck's top edge at DECK_Y + FH/2 = 0.63.
-
-     OUT_Y IS BOUNDED ABOVE BY THE FRAME, not by taste. Projected into this
-     card's frustum (fov 30, rad 9.0, camY 1.6, ty 0.35, panel ~564x191) the
-     clip's top edge reaches ndc y 0.87 at OUT_Y 1.35 and 0.99 at 1.55 — so
-     1.55, which is what the clearance arithmetic alone argues for, would have
-     shaved the top of the retrieved frame against the panel edge across the
-     whole azimuth sweep. Any future lift has to be re-projected, not eyeballed. */
-  const OUT_X = 1.12, OUT_Y = 1.35, OUT_Z = 2.30;
-  /* The case card sits low and further forward again, so the clip reads above
-     it with air between the two and the archive reads behind both. */
-  const CASE_Y = 0.05, CASE_Z = OUT_Z + 0.85;
-  let pulled = 0;
-  // filed orientation — the identity end of the turn toward the viewer
-  const _qId = new THREE.Quaternion();
+  let bracketOn = false;
 
   return {
     group: g,
-    focus: new THREE.Vector3(0, DECK_Y, zs[PULLED]),
+    focus: new THREE.Vector3(colX(PATH[3][0]), rowY(PATH[3][1]), 0),
     materials: mats,
     marks: [det],
-    ground: { setOpacity: (o) => setGroundOpacity(ground, o) },
+    ground: {
+      setOpacity: (o) => {
+        setGroundOpacity(ground, o);
+        ground.setSurfaceOpacity?.(o * 0.94);
+        ground.setVignetteOpacity?.(o);
+      },
+    },
     tick: (p) => {
-      /* The sweep band. `p` is the card loop progress, already pinned to a
-         fixed 0.85 by card-scene in reduced motion, so this needs no branch
-         of its own — x8 puts a little under three sweeps in a loop. */
-      sightCone.tick(p * 8);
-      /* 0.00-0.08  idle
-         0.08-0.40  the search runs back along the deck
-         0.40-0.52  it settles on the frame
-         0.52-0.70  the frame is pulled out and turns to face you
-         0.70-0.86  held: the case is written
-         0.86-1.00  filed back into the deck
-         Every value below is a function of p alone, so the loop cannot drift
-         and there is no state to reset. */
-      const travel = seg(p, 0.08, 0.44);
-      scan.position.z = 0.9 + (zs[PULLED] - 0.9) * travel;
-      scan.visible = p > 0.05 && p < 0.6;
-      scanM.opacity *= p < 0.5 ? 1 : Math.max(0, (0.6 - p) / 0.1);
+      /* 0.00-0.12  wall powers on
+         0.12-0.30  hop 1: tile A lights, object appears
+         0.30-0.48  connector A->B draws, tile B lights, object appears
+         0.48-0.66  connector B->C draws, tile C lights, object appears
+         0.66-0.84  connector C->D draws, tile D lights, object appears,
+                    the bracket snaps on near the end of this window
+         0.84-1.00  hold on the conclusion
+         Every value below is a function of p alone — no state to reset, the
+         same discipline the previous version of this card depended on. */
+      const power = seg(p, 0, 0.12);
+      idleFaceM.opacity *= power;
+      contentFaceM.opacity *= power;
+      ledDimM.opacity *= power * 0.55;
 
-      /* THE CURSOR'S SWEEP, in the 0.20 immediately before the frame lifts:
-           0.32-0.46  walks the deck, frame 0 -> frame PULLED
-           0.46-0.49  holds on the target
-           0.49-0.53  fades out as the lift begins at 0.52
-         LINEAR IN DECK-INDEX SPACE, not in z. The deck's spacing tightens with
-         depth (0.46 down to 0.13), so a cursor moving at constant z-speed would
-         cross two frames a second at the near end and fifteen at the far end —
-         it would read as accelerating into the archive instead of stepping
-         through it. Interpolating between zs[i] and zs[i+1] makes it slow down
-         in world space exactly as the record compresses, which is the same fact
-         the deck's geometry states. It only reaches index 9 here, so the
-         deceleration is mild; it is still the correct construction, and it
-         cannot be got wrong later if PULLED moves deeper. */
-      const sweep = clamp01((p - 0.32) / 0.14);
-      const fi = PULLED * sweep;
-      const i0 = Math.min(Math.floor(fi), N - 2);
-      cursor.position.z = zs[i0] + (zs[i0 + 1] - zs[i0]) * (fi - i0);
-      cursor.visible = p >= 0.32 && p < 0.53;
-      /* 0->full over the first 15% of the sweep (0.32-0.341) so it arrives
-         rather than switching on, then flat until the fade. Multiplied into the
-         opacity the card's material loop has already set, exactly as scanM and
-         the case card do, so the peak stays userData.max = 0.55. */
-      cursorM.opacity *= !cursor.visible ? 0
-        : p < 0.49 ? clamp01((p - 0.32) / 0.021)
-          : (0.53 - p) / 0.04;
-
-      // out of the deck, then back into it
-      pulled = p < 0.52 ? 0 : p < 0.86 ? seg(p, 0.52, 0.70) : 1 - seg(p, 0.86, 1);
-      const e = es(pulled);
-      clip.position.set(OUT_X * e, DECK_Y + OUT_Y * e, zs[PULLED] + (OUT_Z - zs[PULLED]) * e);
-      /* Turning to face you is the whole gesture: edge-on it is one frame among
-         thousands, square-on it is the clip. Orientation is NOT set here — it is
-         handled in trackers() by slerping toward the live camera quaternion,
-         because "face the viewer" can only be defined where the camera is
-         available. A fixed -90deg about Y put the frame's normal on -X, which
-         faced the in-scene reader head on the -X side — the exact opposite of
-         the viewer, who sits at +X for this azimuth range. */
-      clip.scale.setScalar(1 + 0.42 * e);
-
-      // the case card rides beside the clip once it is most of the way out
-      const c = clamp01((pulled - 0.55) / 0.35);
-      const ce = es(c);
-      caseCard.visible = ce > 0.01;
-      // sits directly under the clip, riding with it rather than at a fixed spot
-      /* Pushed 0.55 FORWARD of the clip, not level with it. The deck runs back
-         from here, so anything sharing the clip's z-plane is read against grey
-         frames; in front of the whole archive it is read against paper. */
-      caseCard.position.set(OUT_X + 0.04, CASE_Y - 0.1 * (1 - ce), CASE_Z);
-      for (const ch of caseCard.children) {
-        const m = (ch as THREE.Mesh).material as THREE.Material & { opacity: number };
-        m.opacity *= ce;
+      const lights = [seg(p, 0.12, 0.30), seg(p, 0.30, 0.48), seg(p, 0.48, 0.66), seg(p, 0.66, 0.84)];
+      for (let i = 0; i < 4; i++) {
+        const l = lights[i];
+        pathMats[i].opacity *= power;
+        pathMats[i].color.copy(IDLE_C).lerp(ACTIVE_C, l);
+        objInstances[i].group.scale.setScalar(Math.max(0.001, l));
+        // the spill: this hop's LED, its rail glow (same material, second
+        // mesh) and its bezel tint all ramp with the same `l` — one number
+        // driving three reads of "this monitor is the one live right now"
+        ledActiveMats[i].opacity *= power * l * 0.9;
+        bezelPathMats[i].color.copy(BEZEL_BASE_C).lerp(BEZEL_LIT_C, l);
       }
+      for (let i = 0; i < connMeshes.length; i++) {
+        const { mesh, len } = connMeshes[i];
+        mesh.scale.x = Math.max(0.0001, len * lights[i]);
+      }
+
+      // the bracket snaps on in the last 4% of D's window and holds through
+      // the loop's final rest — a snap, not a fade, because the conclusion
+      // is a discrete event, not a gradual one
+      bracketOn = p >= 0.80;
     },
     trackers: (camera) => {
-      /* The clip is parented directly to the subject root, which carries no
-         rotation, so its local orientation is its world orientation and the
-         camera quaternion can be used unmodified. */
-      clip.quaternion.slerpQuaternions(_qId, camera.quaternion, es(pulled));
-      // the bracket only exists once the clip is genuinely out and readable
-      det.follow(pulled > 0.35 ? clip : null, camera);
-      caseCard.quaternion.copy(camera.quaternion);
-      if (cursor.visible) cursor.quaternion.copy(camera.quaternion);
+      det.follow(bracketOn ? objInstances[3].body : null, camera);
     },
+    /* GEOMETRY NOT DISPOSED HERE, on purpose: `det`'s bracket bars use
+       detect.ts's module-shared `_barGeo`, and the sight cone's own volume
+       uses detect.ts's module-shared `_coneGeo`/`_poolGeo` — both flagged
+       `userData.shared` and never touched by any scene's dispose, or every
+       other tracker/cone on the page would break. `deskTop`/`deskFront`/
+       `camHousing`/`camHood` all came from `metalBox`, which pools geometry
+       by size and is never disposed by a caller either. Everything else
+       below (`screenGeo`, `bezelHGeo`, `bezelVGeo`, `ledGeo`, `cylGeo`,
+       `lensGeo`, `rimGeo`, `wallPlateGeo`, `objGeo`, `connGeo`) is this
+       scene's own plain BoxGeometry/CylinderGeometry/TorusGeometry, built
+       once and reused via shared references across every monitor/bar/rail/
+       arm/cable instance, so IS disposed here. */
     dispose: () => {
       mats.forEach((m) => m.dispose());
       ground.material.dispose();
-      frameGeo.dispose();
-      lensGeo.dispose();
-      /* Disposes the cone material AND its ground pool material; the shared
-         cone/pool GEOMETRY is module-level and flagged, never touched here.
-         The cone material is also in `mats`, and Material.dispose() is safe
-         to call twice. */
+      scanTex.dispose();
       sightCone.dispose();
-      scanGeo.dispose();
-      cursorGeo.dispose();
-      barGeo.dispose();
+      screenGeo.dispose();
+      bezelHGeo.dispose();
+      bezelVGeo.dispose();
+      ledGeo.dispose();
+      cylGeo.dispose();
+      lensGeo.dispose();
+      rimGeo.dispose();
+      wallPlateGeo.dispose();
+      objGeo.dispose();
+      connGeo.dispose();
     },
   };
 }
+

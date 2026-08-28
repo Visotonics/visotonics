@@ -26,6 +26,17 @@ import * as THREE from "three";
 export interface Ground {
   mesh: THREE.Mesh;
   material: THREE.Material;
+  /** Present only when `opts.surface` was supplied: the solid floor plane
+      under the grid, and the setter for its opacity ramp. A later pass wires
+      these into a scene's intro fade the same way `setGroundOpacity` already
+      drives the grid. Both are optional so every existing caller — which
+      passes no `surface` — is completely unaffected. */
+  surfaceMesh?: THREE.Mesh;
+  setSurfaceOpacity?: (o: number) => void;
+  /** Present only when `opts.vignette` was supplied: the radial falloff mesh
+      drawn just above the surface, and its opacity setter. */
+  vignetteMesh?: THREE.Mesh;
+  setVignetteOpacity?: (o: number) => void;
 }
 
 /**
@@ -70,6 +81,28 @@ export function draftingGround(opts?: {
      literally unbounded geometry. */
   fadeStart?: number;
   fadeEnd?: number;
+  /* OPTIONAL SOLID FLOOR, under the grid. Every subject on the home hero
+     currently floats in black void because the grid alone at opacity
+     0.11–0.20 has nothing to sit on — it is measurement lines with no
+     surface for them to measure. Passing a material here adds a second plane
+     just below the grid, same size, same radial framing, so the grid reads
+     as "lines drawn on a floor" instead of "lines drawn on nothing". Caller
+     owns the material (dispose it themselves); this function only positions
+     it and hands back an opacity setter matching `setGroundOpacity`'s shape,
+     for a later pass to ramp on the same intro fade.
+
+     NOT wired to any subject by this pass — see the file header. */
+  surface?: THREE.Material;
+  /* OPTIONAL VIGNETTE: a second, unlit falloff plane drawn just ABOVE the
+     surface (and above the grid) that fades from fully transparent at the
+     centre to the given colour at the edge. This is what turns "floor
+     plane that stops at a rectangle" into "floor that dissolves into the
+     backdrop" — the same fog trick lead-card/site.ts leans on, done here
+     with an explicit colour since these cards have no scene fog to lean on.
+     `color` should be the scene's own backdrop colour so the seam is
+     invisible; `start`/`end` are fractions of the plane's half-size, same
+     convention as `fadeStart`/`fadeEnd` above. */
+  vignette?: { color: string; start?: number; end?: number };
 }): Ground {
   const size = opts?.size ?? 26;
   const step = opts?.step ?? 1;
@@ -142,7 +175,146 @@ export function draftingGround(opts?: {
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = opts?.y ?? -1.0;
   mesh.renderOrder = -1;   // under everything; it is the floor
-  return { mesh, material };
+
+  const groundY = opts?.y ?? -1.0;
+  let surfaceMesh: THREE.Mesh | undefined;
+  let setSurfaceOpacity: ((o: number) => void) | undefined;
+  if (opts?.surface) {
+    // BELOW the grid line-for-line: same plane size so its own edge (if it
+    // has one — most callers will hand in a repeating map with no fade of
+    // its own) sits exactly where the grid's edge does, and a hair lower in
+    // Y so it never z-fights the lines drawn over it.
+    const surfGeo = new THREE.PlaneGeometry(size, size);
+    surfaceMesh = new THREE.Mesh(surfGeo, opts.surface);
+    surfaceMesh.rotation.x = -Math.PI / 2;
+    surfaceMesh.position.y = groundY - 0.008;
+    surfaceMesh.renderOrder = -3;
+    surfaceMesh.castShadow = false;
+    surfaceMesh.receiveShadow = false;
+
+    /* RADIAL DISSOLVE, injected into whatever material the caller handed in.
+       This is what actually hides the plane's edge, and it replaced a flat
+       coloured `vignette` plane that could not.
+
+       Why the old approach could not work: the vignette painted ONE colour
+       over the floor's outer ring, chosen to match the backdrop. But the
+       backdrop is not one colour — studio.ts's cyclorama composites a glow
+       pool over its ramp (`col + cGlow*g*0.55`, with g falling off as
+       pow(dot(...), 3.4)), so what sits behind the floor's edge is a
+       GRADIENT, brightest directly behind the subject and decaying toward
+       the frame edges. A flat fill matched against a gradient leaves a seam
+       somewhere by construction — tuning the hex only moved which part of
+       the arc showed it. On these cameras (looking down ~6.7deg through a
+       30deg vfov) that seam lands near frame CENTRE, which is why it read as
+       a hard horizon line straight across every card.
+
+       Fading the surface's own alpha instead means the cyclorama shows
+       through it directly, so the match is exact everywhere for free, with
+       no colour to keep in sync if the backdrop is ever re-graded.
+
+       Implemented via onBeforeCompile rather than a bespoke ShaderMaterial so
+       the caller keeps its MeshStandardMaterial — its map, roughness and the
+       scene's real lighting all still apply; only alpha is modified. World
+       position is taken from the plane's own local xy (it is a flat,
+       axis-aligned plane, so local radius IS world radius) which avoids
+       depending on any varying three may or may not provide. */
+    const surfMat = opts.surface as THREE.Material & {
+      transparent?: boolean;
+      onBeforeCompile?: (shader: { vertexShader: string; fragmentShader: string; uniforms: Record<string, { value: unknown }> }) => void;
+      customProgramCacheKey?: () => string;
+    };
+    const fadeStart = opts.vignette?.start ?? 0.55;
+    const fadeEnd = opts.vignette?.end ?? 1.0;
+    surfMat.transparent = true;
+    surfMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uFadeSize = { value: size };
+      shader.uniforms.uFadeStart = { value: fadeStart };
+      shader.uniforms.uFadeEnd = { value: fadeEnd };
+      shader.vertexShader =
+        "varying vec2 vGroundXY;\n" +
+        shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vGroundXY = position.xy;");
+      shader.fragmentShader =
+        "varying vec2 vGroundXY;\nuniform float uFadeSize;\nuniform float uFadeStart;\nuniform float uFadeEnd;\n" +
+        shader.fragmentShader.replace(
+          "#include <dithering_fragment>",
+          "#include <dithering_fragment>\n" +
+            "  float gd = length(vGroundXY) / (uFadeSize * 0.5);\n" +
+            "  gl_FragColor.a *= 1.0 - smoothstep(uFadeStart, uFadeEnd, gd);"
+        );
+    };
+    // three caches compiled programs by material type + defines; this material
+    // now has injected code, so give it its own key or a sibling Standard
+    // material could be handed this program (or this one theirs).
+    surfMat.customProgramCacheKey = () => `ground-radial-fade-${size}-${fadeStart}-${fadeEnd}`;
+    setSurfaceOpacity = (o: number) => {
+      const m = opts.surface as THREE.Material & { opacity?: number };
+      if (typeof m.opacity === "number") m.opacity = o;
+    };
+  }
+
+  let vignetteMesh: THREE.Mesh | undefined;
+  let setVignetteOpacity: ((o: number) => void) | undefined;
+  /* The flat coloured vignette plane is SUPERSEDED by the radial alpha
+     dissolve injected into the surface material above, and is now built only
+     when there is no surface to dissolve. Running both would be actively
+     worse than either: the surface would correctly fade to transparent, and
+     then this plane would paint an opaque flat colour back over the same
+     ring, reintroducing exactly the seam the dissolve exists to remove.
+
+     `opts.vignette` is still read — its `start`/`end` now drive the dissolve
+     (see above), so no caller has to change. Callers that pass `vignette`
+     WITHOUT a `surface` (none today, but the option is public) keep the old
+     behaviour, which is correct for them: with no surface there is no alpha
+     to fade, so a painted falloff is the only tool available. */
+  if (opts?.vignette && !opts?.surface) {
+    // Same radial distance field as the grid's own fade, reused rather than
+    // reinvented, but driving a flat colour fill instead of line alpha —
+    // this plane's job is to COVER the surface's edge, not measure it.
+    const vColor = new THREE.Color(opts.vignette.color);
+    const vMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uColor: { value: vColor },
+        uSize: { value: size },
+        uOpacity: { value: 0 },
+        uStart: { value: opts.vignette.start ?? 0.55 },
+        uEnd: { value: opts.vignette.end ?? 1.0 },
+      },
+      vertexShader: `
+        varying vec2 vP;
+        void main() {
+          vP = position.xy;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        varying vec2 vP;
+        uniform vec3 uColor;
+        uniform float uSize, uOpacity, uStart, uEnd;
+        void main() {
+          float d = length(vP) / (uSize * 0.5);
+          float a = smoothstep(uStart, uEnd, d) * uOpacity;
+          if (a < 0.002) discard;
+          gl_FragColor = vec4(uColor, a);
+        }`,
+    });
+    const vGeo = new THREE.PlaneGeometry(size, size);
+    vignetteMesh = new THREE.Mesh(vGeo, vMaterial);
+    vignetteMesh.rotation.x = -Math.PI / 2;
+    /* BELOW THE GRID, not above it. At groundY + 0.002 / renderOrder 0 this
+       plane sorted as ordinary transparent geometry and painted over anything
+       else drawn at ground level — most visibly Factory's sight-cone footprint
+       pool, which is exactly the "black thing on top of the scan line". It
+       only ever needed to cover the SURFACE's edge, so it belongs between the
+       surface and the grid, and drawn before either. */
+    vignetteMesh.position.y = groundY - 0.004;
+    vignetteMesh.renderOrder = -2;
+    vignetteMesh.castShadow = false;
+    vignetteMesh.receiveShadow = false;
+    setVignetteOpacity = (o: number) => { vMaterial.uniforms.uOpacity.value = o; };
+  }
+
+  return { mesh, material, surfaceMesh, setSurfaceOpacity, vignetteMesh, setVignetteOpacity };
 }
 
 /** Ramp the grid with the scene's intro fade. */

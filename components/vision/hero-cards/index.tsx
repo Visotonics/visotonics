@@ -132,31 +132,47 @@ export function DataCard() {
   return (
     <CardScene
       build={dataSubject}
-      /* DRIFT, and held short. The subject now moves along Z — a search running
-         back through the deck, then a frame pulled out sideways — so the camera
-         only needs enough travel to keep the deck from flattening.
+      /* NEAR FRONT-ON, which is what this card's rationale said all along.
 
-         AZIMUTH IS THE WHOLE SHOT HERE. The deck is filed along Z, so at a low
-         azimuth it collapses into a single frame seen head-on and the entire
-         idea disappears. 0.74 -> 0.90 (about 42-52deg) keeps the recession
-         readable end to end: near frames separable, far ones fused into the
-         compressed wedge, which is the claim.
+       The header of this file has always described Data as a FEED WALL: "a
+       feed wall only reads as a wall from in front of it — raked away, the
+       single lit tile stops being one thing among many and just becomes a
+       bright edge." The scene had drifted into a deck of frames filed along Z
+       and the camera had been raked to 0.52-0.64 to make that recession read,
+       which is exactly the failure the original note predicted. Rebuilt
+       2026-08-19 as the wall it was specified to be, and the camera comes back
+       with it.
 
-         camY 2.3 looking at y=0.15 from 9.8 ground units puts the eye above the
-         deck rather than level with it — level, the frames stack into one line.
-         The retrieved clip comes out to x=2.15 and forward, deliberately clear
-         of both the wedge behind it and the frame edge, because this camera
-         moves and anything parked near an edge eventually leaves frame.
+       Card aspect is 347/260 = 1.335, so at a 30deg vertical fov the visible
+       width is 2*tan(15deg)*1.335 = 0.715 x distance.
 
-         Zoomed in 2026-07-27 (rad reduced) — these cards carry less geometry
-         than Yard and read too small at matched distance; the fov arithmetic
-         above predates the zoom.
+       THE SUBJECT IS NOT JUST THE WALL. Monitors carry bezels (outer body
+       1.25 x 0.82, pitch 1.31) so the wall spans 6.49, and the camera sits off
+       its left end at x=-3.5 with its own housing and mount, taking the
+       content to roughly 7.6 wide. At rad 10.6 the visible width was 7.58 —
+       dead equal to the content, which is exactly why the end monitors clipped
+       at both edges and the camera was half out of frame.
 
-         Re-angled 2026-07-27: camY 2.3 / az 0.74-0.90 was a high oblique that
-         read as looking down on dominoes; 1.6 / 0.52-0.64 sits nearer eye level
-         so the frames read as standing records and the recession still holds.
-         loop 8s — the search-and-retrieve gesture read as sluggish at the shared 14. */
-      rig={{ camY: 1.6, ty: 0.35, rad: [9.0, 9.0], az: [0.52, 0.64], motion: "drift", loop: 8, id: "data" }}
+       rad 12.2 gives 8.72 visible, so 7.6 of content fills 87% with real
+       margin at both ends. The camera is the thing that must not clip: it is
+       the source the whole trace originates from, and a source cut in half by
+       the frame edge reads as an accident rather than as the point.
+
+       camY == ty == 0.62: the eye is LEVEL with the wall's centre. Any
+       elevation here starts keystoning the screens and they stop reading as a
+       grid of monitors.
+
+       Raised 0.35 -> 0.62 when the console went in underneath. The wall had to
+       lift clear of the floor to make room for it, and the eye lifts with the
+       wall or the level shot is lost. At rad 10.6 the visible height is
+       0.536 x 10.6 = 5.68, so the frame covers y = -2.22..3.46: the 2.58-tall
+       wall and the console below it both sit inside with margin.
+
+       az 0.10-0.20 is the whole azimuth budget. Enough that the wall has a
+       face and an edge and is not a flat texture; far short of the rake that
+       collapses the tiles. loop 9 carries a four-hop trace at a readable
+       cadence — see the beat table in subjects.ts. */
+      rig={{ camY: 0.62, ty: 0.62, rad: [12.2, 11.8], az: [0.10, 0.20], motion: "drift", loop: 9, id: "data" }}
     />
   );
 }

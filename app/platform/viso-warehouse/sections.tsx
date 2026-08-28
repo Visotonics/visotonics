@@ -3,18 +3,15 @@ import { Reveal } from "@/components/motion";
 import {
   ANCHOR_OFFSET,
   BORDER_D,
-  CANVAS_LIGHT,
+  CANVAS_DARK,
   CROSS_D,
   Cross,
   Dot,
   GRID_D,
-  GRID_L,
   SIGNAL,
   SURFACE_DARK,
   TXT_D1,
   TXT_D2,
-  TXT_L1,
-  TXT_L2,
   Verticals,
   eyebrow,
   mono,
@@ -22,7 +19,7 @@ import {
 } from "../viso-yard/_shared";
 import { Schematic } from "../viso-yard/_media";
 // lazy: keeps three.js out of this page's critical bundle — see _vision/lazy
-import { WorkVisionScene } from "@/components/vision/_vision/lazy";
+import { AuditVisionScene, DimensionVisionScene, SecureVisionScene, WorkVisionScene } from "@/components/vision/_vision/lazy";
 
 /* ---------------------------------------------------------------------------
    Viso Warehouse — section modules. Ported from the VisoWarehouse-Overview
@@ -95,7 +92,6 @@ export function SectionProductsOverview() {
   );
 }
 
-const CROSS_INK = "rgba(90,95,106,0.6)"; // corner ink on light bands
 const MUTED = "#6C7480";
 
 // dark-section eyebrow-row chrome: gridline through the eyebrow + one orange dot
@@ -150,8 +146,8 @@ export function SectionAudit() {
             </p>
           </div>
 
-          <div style={{ marginTop: 96, border: `1px solid ${BORDER_D}`, background: SURFACE_DARK, borderRadius: 8, overflow: "hidden" }}>
-            <Schematic file="audit-schematic.svg" label="Audit trail — a detected event bound to an order ID, retrievable by search as a clip" fit="width" style={{ display: "block", width: "100%" }} />
+          <div style={{ position: "relative", marginTop: 96, width: "100%", aspectRatio: "1000 / 750", border: `1px solid ${BORDER_D}`, background: SURFACE_DARK, borderRadius: 8, overflow: "hidden" }}>
+            <AuditVisionScene bare />
           </div>
 
           <div style={{ marginTop: 96, borderTop: `1px solid rgba(244,245,247,0.18)`, borderBottom: `1px solid rgba(244,245,247,0.18)`, display: "flex", justifyContent: "space-between", gap: 24 }}>
@@ -232,37 +228,37 @@ export function SectionDimension() {
   return (
     <section
       id="dimension-vision"
-      className={`${ANCHOR_OFFSET} on-light`}
-      style={{ position: "relative", background: CANVAS_LIGHT, boxSizing: "border-box", overflow: "hidden" }}
+      className={ANCHOR_OFFSET}
+      style={{ position: "relative", background: CANVAS_DARK, boxSizing: "border-box", overflow: "hidden" }}
     >
-      <Cross color={CROSS_INK} style={{ left: -4, top: -4, zIndex: 3 }} />
-      <Cross color={CROSS_INK} style={{ left: "calc(100% - 5px)", top: -4, zIndex: 3 }} />
-      <Cross color={CROSS_INK} style={{ left: -4, bottom: -4, zIndex: 3 }} />
-      <Cross color={CROSS_INK} style={{ left: "calc(100% - 5px)", bottom: -4, zIndex: 3 }} />
+      <Cross color={CROSS_D} style={{ left: -4, top: -4, zIndex: 3 }} />
+      <Cross color={CROSS_D} style={{ left: "calc(100% - 5px)", top: -4, zIndex: 3 }} />
+      <Cross color={CROSS_D} style={{ left: -4, bottom: -4, zIndex: 3 }} />
+      <Cross color={CROSS_D} style={{ left: "calc(100% - 5px)", bottom: -4, zIndex: 3 }} />
       <div aria-hidden="true" className="hidden md:block" style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-        <Verticals color={GRID_L} />
+        <Verticals color={BORDER_D} />
       </div>
 
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ position: "relative", zIndex: 1, maxWidth: 1232, margin: "0 auto", padding: "128px 64px 96px", boxSizing: "border-box" }}>
-        <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 14 }}>03 — DIMENSION VISION · VOLUMETRIC CAPTURE · CAMERA, NOT TAPE MEASURE</span>
+        <span style={{ ...eyebrow(TXT_D2), display: "block", fontSize: 14 }}>03 — DIMENSION VISION · VOLUMETRIC CAPTURE · CAMERA, NOT TAPE MEASURE</span>
         <div style={{ marginTop: 64, display: "flex", alignItems: "center", gap: 48 }}>
           <div style={{ flex: "0 0 395px" }}>
-            <h2 style={{ margin: 0, fontFamily: sans, fontSize: 56, lineHeight: 1.06, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>The tape measure retires.</h2>
-            <p style={{ margin: "32px 0 0", fontFamily: sans, fontSize: 18, lineHeight: 1.4, color: TXT_L2 }}>
+            <h2 style={{ margin: 0, fontFamily: sans, fontSize: 56, lineHeight: 1.06, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>The tape measure retires.</h2>
+            <p style={{ margin: "32px 0 0", fontFamily: sans, fontSize: 18, lineHeight: 1.4, color: TXT_D2 }}>
               Cartons, sacks, drums and pallets — including the irregular shapes a tape measure was never going to agree on — captured as volumetric data with an annotated image attached.
             </p>
           </div>
-          <div style={{ flex: "1 1 auto", border: `1px solid ${GRID_L}`, boxSizing: "border-box" }}>
-            <Schematic file="visotonics-dimension-schematic.svg" label="Dimension overview — front and side elevations with L/W/H callouts, captured from camera view" fit="width" style={{ display: "block", width: "100%" }} />
+          <div style={{ position: "relative", flex: "1 1 auto", aspectRatio: "813 / 560", border: `1px solid ${BORDER_D}`, boxSizing: "border-box" }}>
+            <DimensionVisionScene bare />
           </div>
         </div>
 
-        <div style={{ marginTop: 96, borderTop: `1px solid rgba(90,95,106,0.4)`, borderBottom: `1px solid rgba(90,95,106,0.4)` }}>
+        <div style={{ marginTop: 96, borderTop: `1px solid rgba(244,245,247,0.18)`, borderBottom: `1px solid rgba(244,245,247,0.18)` }}>
           {DIMENSION_SPECS.map(([k, v], i) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, height: 48, borderBottom: i < DIMENSION_SPECS.length - 1 ? `1px solid ${GRID_L}` : undefined }}>
-              <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L1 }}>{k}</span>
-              <span style={{ fontFamily: mono, fontSize: 13, letterSpacing: "0.08em", color: TXT_L2, textAlign: "right" }}>{v}</span>
+            <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, height: 48, borderBottom: i < DIMENSION_SPECS.length - 1 ? `1px solid ${BORDER_D}` : undefined }}>
+              <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D1 }}>{k}</span>
+              <span style={{ fontFamily: mono, fontSize: 13, letterSpacing: "0.08em", color: TXT_D2, textAlign: "right" }}>{v}</span>
             </div>
           ))}
         </div>
@@ -270,19 +266,19 @@ export function SectionDimension() {
 
       {/* MOBILE */}
       <Reveal as="div" className="md:hidden" style={{ position: "relative", zIndex: 1, padding: "48px 24px 56px" }}>
-        <span style={{ ...eyebrow(TXT_L2), display: "block", fontSize: 12 }}>03 — DIMENSION VISION · VOLUMETRIC CAPTURE · CAMERA, NOT TAPE MEASURE</span>
-        <h2 style={{ margin: "28px 0 0", fontFamily: sans, fontSize: 36, lineHeight: 1.06, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1 }}>The tape measure retires.</h2>
-        <p style={{ margin: "20px 0 0", fontFamily: sans, fontSize: 15, lineHeight: 1.5, color: TXT_L2 }}>
+        <span style={{ ...eyebrow(TXT_D2), display: "block", fontSize: 12 }}>03 — DIMENSION VISION · VOLUMETRIC CAPTURE · CAMERA, NOT TAPE MEASURE</span>
+        <h2 style={{ margin: "28px 0 0", fontFamily: sans, fontSize: 36, lineHeight: 1.06, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_D1 }}>The tape measure retires.</h2>
+        <p style={{ margin: "20px 0 0", fontFamily: sans, fontSize: 15, lineHeight: 1.5, color: TXT_D2 }}>
           Cartons, sacks, drums and pallets — including the irregular shapes a tape measure was never going to agree on — captured as volumetric data with an annotated image attached.
         </p>
-        <div style={{ marginTop: 40, border: `1px solid ${GRID_L}`, boxSizing: "border-box" }}>
+        <div style={{ marginTop: 40, border: `1px solid ${BORDER_D}`, boxSizing: "border-box" }}>
           <Schematic file="visotonics-dimension-schematic-mobile.svg" label="Dimension overview — front elevation with L/W/H callouts" fit="width" style={{ display: "block", width: "100%" }} />
         </div>
-        <div style={{ marginTop: 40, borderTop: `1px solid rgba(90,95,106,0.4)`, borderBottom: `1px solid rgba(90,95,106,0.4)` }}>
+        <div style={{ marginTop: 40, borderTop: `1px solid rgba(244,245,247,0.18)`, borderBottom: `1px solid rgba(244,245,247,0.18)` }}>
           {DIMENSION_SPECS.map(([k, v], i) => (
-            <div key={k} style={{ padding: "14px 0", borderBottom: i < DIMENSION_SPECS.length - 1 ? `1px solid ${GRID_L}` : undefined }}>
-              <span style={{ display: "block", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L1 }}>{k}</span>
-              <span style={{ display: "block", marginTop: 4, fontFamily: mono, fontSize: 13, letterSpacing: "0.08em", color: TXT_L2 }}>{v}</span>
+            <div key={k} style={{ padding: "14px 0", borderBottom: i < DIMENSION_SPECS.length - 1 ? `1px solid ${BORDER_D}` : undefined }}>
+              <span style={{ display: "block", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D1 }}>{k}</span>
+              <span style={{ display: "block", marginTop: 4, fontFamily: mono, fontSize: 13, letterSpacing: "0.08em", color: TXT_D2 }}>{v}</span>
             </div>
           ))}
         </div>
@@ -480,7 +476,9 @@ export function SectionSecure({ n = "06" }: { n?: string }) {
             </p>
           </div>
 
-          <MediaFrame file="warehouse-secure-schematic-desktop.svg" label="Signal trace — continuous feed with nuisance events filtered below threshold and one real event opening a case" style={{ margin: "56px 41px 0", borderRadius: 0 }} />
+          <div style={{ position: "relative", margin: "56px 41px 0", width: "calc(100% - 82px)", aspectRatio: "1046 / 340", background: SURFACE_DARK, border: `1px solid ${BORDER_D}`, overflow: "hidden" }}>
+            <SecureVisionScene bare />
+          </div>
 
           <div style={{ margin: "72px 41px 0", borderTop: `1px solid rgba(244,245,247,0.18)`, borderBottom: `1px solid rgba(244,245,247,0.18)` }}>
             {SECURE_LEDGER.map(([k, v], i) => (

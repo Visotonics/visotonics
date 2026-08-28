@@ -186,10 +186,23 @@ const loadCargo = () => import("../cargo-vision/scene")
 const loadDocument = () => import("../document-vision/scene")
   .then(async (m) => { (await import("../document-vision/document")).warmDocumentTextures(); return m; });
 const loadLead = () => import("../lead-card/scene");
-const loadCards = () => import("../hero-cards");
+/* The four cards warm their skins too, same contract as the flagships above.
+   `skins.ts` gained painted container rust/door ends, rack uprights, wrapped
+   pallets, pallet decks, belt rubber, tyres and a 1024 concrete floor — all
+   cached, so without this the FIRST card build on the scroll path pays for
+   every one of those canvases instead of getting cache hits. */
+const loadCards = () => import("../hero-cards")
+  .then(async (m) => { (await import("../hero-cards/skins")).warmHeroSkins(); return m; });
 
 const loadAscii = () => import("../ascii-hero/scene")
   .then(async (m) => { (await import("../ascii-hero/ascii")).warmAsciiAtlas(); return m; });
+
+const loadAudit = () => import("../audit-vision/scene")
+  .then(async (m) => { (await import("../audit-vision/audit")).warmAuditTextures(); return m; });
+const loadDimension = () => import("../dimension-vision/scene")
+  .then(async (m) => { (await import("../dimension-vision/dimension")).warmDimensionTextures(); return m; });
+const loadSecure = () => import("../secure-vision/scene")
+  .then(async (m) => { (await import("../secure-vision/secure")).warmSecureTextures(); return m; });
 
 const DynContainer = dynamic(loadContainer, { ssr: false, loading: Placeholder });
 const DynTank = dynamic(loadTank, { ssr: false, loading: Placeholder });
@@ -199,6 +212,9 @@ const DynCrane = dynamic(loadCrane, { ssr: false, loading: Placeholder });
 const DynCargo = dynamic(loadCargo, { ssr: false, loading: Placeholder });
 const DynDocument = dynamic(loadDocument, { ssr: false, loading: Placeholder });
 const DynAscii = dynamic(loadAscii, { ssr: false, loading: Placeholder });
+const DynAudit = dynamic(loadAudit, { ssr: false, loading: Placeholder });
+const DynDimension = dynamic(loadDimension, { ssr: false, loading: Placeholder });
+const DynSecure = dynamic(loadSecure, { ssr: false, loading: Placeholder });
 const DynLead = dynamic(loadLead, { ssr: false, loading: Placeholder });
 const DynYard = dynamic(() => loadCards().then((m) => m.YardCard), { ssr: false, loading: Placeholder });
 const DynWarehouse = dynamic(() => loadCards().then((m) => m.WarehouseCard), { ssr: false, loading: Placeholder });
@@ -230,6 +246,9 @@ export const DocumentVisionScene = (p: SceneProps) => <WhenNear warm={loadDocume
 /* The ASCII field takes  rather than bare/bleed — it is a background,
    and how loud it is belongs to the page it sits behind, not to the scene. */
 export const AsciiHeroScene = (p: { intensity?: number }) => <WhenNear warm={loadAscii}><DynAscii {...p} /></WhenNear>;
+export const AuditVisionScene = (p: SceneProps) => <WhenNear warm={loadAudit}><DynAudit {...p} /></WhenNear>;
+export const DimensionVisionScene = (p: SceneProps) => <WhenNear warm={loadDimension}><DynDimension {...p} /></WhenNear>;
+export const SecureVisionScene = (p: SceneProps) => <WhenNear warm={loadSecure}><DynSecure {...p} /></WhenNear>;
 export const LeadCardScene = () => <WhenNear warm={loadLead}><DynLead /></WhenNear>;
 export const YardCard = () => <WhenNear warm={loadCards}><DynYard /></WhenNear>;
 export const WarehouseCard = () => <WhenNear warm={loadCards}><DynWarehouse /></WhenNear>;
@@ -242,7 +261,6 @@ export const DataCard = () => <WhenNear warm={loadCards}><DynData /></WhenNear>;
    its own; it exists to generate the DARK_METAL maps (shared with gate-vision)
    during idle rather than on the scroll path. */
 const loadWork = () => import("../work-vision/scene")
-  .then(async (m) => { (await import("../work-vision/work")).warmWorkTextures(); return m; })
   .then(async (m) => { (await import("../work-vision/work")).warmWorkTextures(); return m; });
 const DynWork = dynamic(loadWork, { ssr: false, loading: Placeholder });
 export const WorkVisionScene = (p: SceneProps) => <WhenNear warm={loadWork}><DynWork {...p} /></WhenNear>;

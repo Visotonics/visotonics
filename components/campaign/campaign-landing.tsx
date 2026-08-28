@@ -13,7 +13,8 @@
    set) or confirms "emailed shortly", and fires GA4 + LinkedIn events.
 --------------------------------------------------------------------------- */
 
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import {
   CANVAS_DARK,
   TXT_D1,
@@ -46,33 +47,58 @@ function RuleMark() {
 
 /* ------------------------------------------------------------------ media */
 
+/* The native r3f port of the container/gate/scan segment — replaces a captured
+   .webm that could never carry the scene's DOM detection overlays (see
+   components/campaign-film/index.tsx's header for why capture was a dead end).
+   `ssr: false` is mandatory, not a bundle-size nicety: the component touches
+   WebGL, matchMedia and IntersectionObserver, none of which exist at SSR time. */
+const CampaignFilm = dynamic(() => import("@/components/campaign-film"), { ssr: false });
+
+/* Both the click-to-play affordance and the two static captions below were built for the era
+   when this panel showed a captured/static video — they told the viewer "there's a real demo
+   behind this button". Now that `CampaignFilm` renders the actual live gate/scan sequence
+   underneath them, that framing runs backwards: a viewer clicks expecting more, and lands on
+   "coming soon", which undersells a demo that's already playing. And the static caption
+   "VSTU 907032 :: READ 0.99" duplicates — with a different, frozen number — the film's own
+   live OCR chip a few pixels below it.
+
+   Gated on `videoUrl` rather than deleted outright: no campaign defines one today (checked
+   app/campaigns/data.ts), so right now this renders the plain, uninterrupted film everywhere,
+   but the old click-through/caption behavior comes back automatically the day a real recorded
+   video is actually uploaded for a campaign — nothing to remember to re-enable by hand. */
 function MediaPane({ videoUrl, onPlay, height }: { videoUrl?: string; onPlay: () => void; height: number }) {
+  const Wrap = videoUrl ? "button" : "div";
   return (
-    <button
-      type="button"
-      onClick={onPlay}
-      aria-label="Watch the demo video"
-      className="cursor-pointer group"
-      style={{ position: "relative", height, width: "100%", background: "#000", border: `1px solid ${BORDER_D}`, padding: 0 }}
+    <Wrap
+      type={videoUrl ? "button" : undefined}
+      onClick={videoUrl ? onPlay : undefined}
+      aria-label={videoUrl ? "Watch the demo video" : undefined}
+      className={videoUrl ? "cursor-pointer group" : "group"}
+      style={{ position: "relative", height, width: "100%", background: "#000", border: `1px solid ${BORDER_D}`, padding: 0, overflow: "hidden" }}
     >
+      <CampaignFilm />
       <div aria-hidden="true" style={{ position: "absolute", inset: 18, border: "1px solid rgba(244,245,247,0.07)" }} />
       <Cross color={CROSS_D} style={{ left: 14, top: 14 }} />
       <Cross color={CROSS_D} style={{ right: 14, bottom: 14 }} />
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div
-          className="transition-transform group-hover:scale-105"
-          style={{ width: 84, height: 84, border: "1px solid rgba(244,245,247,0.28)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(10,11,14,0.35)" }}
-        >
-          <div style={{ width: 0, height: 0, borderLeft: `20px solid ${TXT_D1}`, borderTop: "12px solid transparent", borderBottom: "12px solid transparent", marginLeft: 6 }} />
-        </div>
-      </div>
-      <span style={{ position: "absolute", left: 30, bottom: 28, fontFamily: mono, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: TXT_D2, opacity: 0.7 }}>
-        VSTU 907032 :: READ 0.99
-      </span>
-      <span style={{ position: "absolute", right: 30, top: 28, fontFamily: mono, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: videoUrl ? SIGNAL : TXT_D2, opacity: videoUrl ? 1 : 0.7 }}>
-        {videoUrl ? "● Demo · 90 sec" : "Demo · coming soon"}
-      </span>
-    </button>
+      {videoUrl && (
+        <>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div
+              className="transition-transform group-hover:scale-105"
+              style={{ width: 84, height: 84, border: "1px solid rgba(244,245,247,0.28)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(10,11,14,0.35)" }}
+            >
+              <div style={{ width: 0, height: 0, borderLeft: `20px solid ${TXT_D1}`, borderTop: "12px solid transparent", borderBottom: "12px solid transparent", marginLeft: 6 }} />
+            </div>
+          </div>
+          <span style={{ position: "absolute", left: 30, bottom: 28, fontFamily: mono, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: TXT_D2, opacity: 0.7 }}>
+            VSTU 907032 :: READ 0.99
+          </span>
+          <span style={{ position: "absolute", right: 30, top: 28, fontFamily: mono, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: SIGNAL }}>
+            ● Demo · 90 sec
+          </span>
+        </>
+      )}
+    </Wrap>
   );
 }
 

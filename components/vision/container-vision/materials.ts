@@ -77,50 +77,108 @@ function drawSteel(ctx: CanvasRenderingContext2D, w: number, h: number, seed: nu
 }
 
 /* ---- HD-ish defect painters (albedo) ---- */
-function paintRust(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, rnd: () => number) {
-  // irregular corroded patch: dark base, orange bloom, pitting, bleed streaks
+export function paintRust(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, rnd: () => number) {
+  // Corrosion is directional and edge-anchored, not a radial blob: it seeds at
+  // an edge/seam point — here treated as (cx, cy - r*0.5), i.e. the TOP of the
+  // patch, sitting where the caller has already placed a corner/rail/weld —
+  // and bleeds DOWNWARD under gravity in tapering streaks that follow the run,
+  // not a fungal colony spreading equally in every direction.
+  //
+  // Palette moved from a bright orange-leaning set (peak ~#b5652f, sat ~59%,
+  // plus highlight grain at rgba(214,138,74) sat ~65%) down to a desaturated
+  // iron-oxide brown (peak ~#7a4f34, sat ~40%, highlight grain at
+  // rgba(150,102,66) sat ~39%) so no pixel in the patch approaches the SIGNAL
+  // orange #ED510C (sat ~90%) even at small on-screen sizes.
   ctx.save();
+  const anchorX = cx;
+  const anchorY = cy - r * 0.5;
+  const streakBottom = cy + r * 0.95;
+
+  // seed blob: compact, sits at the anchor, does not spread sideways past ~0.4r
+  const seedCols = ["#1e140f", "#3c2a20", "#54382a", "#7a4f34"];
   for (let layer = 0; layer < 4; layer++) {
-    const cols = ["#2a1a12", "#5a3320", "#8a4a28", "#b5652f"];
-    ctx.fillStyle = cols[layer];
-    const pts = 14;
+    ctx.fillStyle = seedCols[layer];
+    const pts = 12;
     ctx.beginPath();
     for (let i = 0; i <= pts; i++) {
       const a = (i / pts) * Math.PI * 2;
-      const rad = r * (0.55 + layer * 0.11) * (0.7 + rnd() * 0.6);
-      const x = cx + Math.cos(a) * rad;
-      const y = cy + Math.sin(a) * rad * 0.85;
+      const rad = r * (0.24 + layer * 0.05) * (0.7 + rnd() * 0.6);
+      const x = anchorX + Math.cos(a) * rad;
+      // flattened + biased downward: the seed is not a circle, it is already
+      // starting to drip before it becomes a streak
+      const y = anchorY + Math.sin(a) * rad * 0.6 + Math.max(0, Math.sin(a)) * rad * 0.5;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.globalAlpha = 0.6 - layer * 0.08;
+    ctx.globalAlpha = 0.62 - layer * 0.08;
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-  // pitting speckle
-  for (let i = 0; i < r * 3; i++) {
-    const a = rnd() * Math.PI * 2;
-    const rad = rnd() * r * 0.9;
-    ctx.fillStyle = rnd() > 0.5 ? "#1c120c" : "#c9773a";
+
+  // downward streaks/runs bleeding from the anchor — 3 to 5 of them, each a
+  // tapering polygon that narrows toward the tip, never a uniform bar
+  const streakCount = 3 + Math.floor(rnd() * 3);
+  const streakXs: number[] = [];
+  for (let s = 0; s < streakCount; s++) {
+    const sx = anchorX + (rnd() - 0.5) * r * 0.75;
+    streakXs.push(sx);
+    const len = (streakBottom - anchorY) * (0.55 + rnd() * 0.5);
+    const wTop = r * (0.1 + rnd() * 0.09);
+    const segs = 8;
+    const left: [number, number][] = [];
+    const right: [number, number][] = [];
+    let drift = 0;
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const y = anchorY + len * t;
+      drift += (rnd() - 0.5) * r * 0.06;
+      const w = wTop * (1 - t) * (0.6 + rnd() * 0.5);
+      left.push([sx + drift - w, y]);
+      right.push([sx + drift + w, y]);
+    }
     ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad * 0.85, rnd() * 2.2, 0, Math.PI * 2);
+    ctx.moveTo(left[0][0], left[0][1]);
+    for (const [x, y] of left) ctx.lineTo(x, y);
+    for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(sx, anchorY, sx, anchorY + len);
+    g.addColorStop(0, "#6b4025dd");
+    g.addColorStop(0.55, "#6b402599");
+    g.addColorStop(1, "#6b402500");
+    ctx.fillStyle = g;
     ctx.fill();
   }
-  // fine granular oxide grain
-  for (let i = 0; i < r * 26; i++) {
-    const a = rnd() * Math.PI * 2;
-    const rad = Math.pow(rnd(), 0.65) * r;
-    const g = rnd();
-    ctx.fillStyle = g > 0.72 ? "rgba(214,138,74,0.5)" : g > 0.4 ? "rgba(92,52,28,0.55)" : "rgba(28,18,12,0.5)";
-    ctx.fillRect(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad * 0.85, 1 + rnd() * 1.6, 1 + rnd() * 1.6);
+
+  // pitting speckle — concentrated near the anchor and along the streak
+  // columns, weighted toward the top, never scattered in a full disc
+  for (let i = 0; i < r * 2.2; i++) {
+    const sx = streakXs[Math.floor(rnd() * streakXs.length)] ?? anchorX;
+    const t = Math.pow(rnd(), 1.6); // biased toward the top
+    const x = sx + (rnd() - 0.5) * r * 0.22;
+    const y = anchorY + t * (streakBottom - anchorY);
+    ctx.fillStyle = rnd() > 0.5 ? "#160e0a" : "#8a5c3c";
+    ctx.beginPath();
+    ctx.arc(x, y, rnd() * 2, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // flaking scale: hard-edged chips lifting off the surface
-  for (let i = 0; i < 16; i++) {
+  // fine granular oxide grain, same top-biased column distribution
+  for (let i = 0; i < r * 18; i++) {
+    const sx = streakXs[Math.floor(rnd() * streakXs.length)] ?? anchorX;
+    const t = Math.pow(rnd(), 1.4);
+    const x = sx + (rnd() - 0.5) * r * 0.3;
+    const y = anchorY + t * (streakBottom - anchorY);
+    const g = rnd();
+    ctx.fillStyle = g > 0.72 ? "rgba(150,102,66,0.45)" : g > 0.4 ? "rgba(74,44,26,0.5)" : "rgba(22,14,10,0.45)";
+    ctx.fillRect(x, y, 1 + rnd() * 1.5, 1 + rnd() * 1.5);
+  }
+  // flaking scale: hard-edged chips lifting off the surface, clustered at the
+  // anchor where the corrosion is oldest/thickest rather than spread wide
+  for (let i = 0; i < 10; i++) {
     const a = rnd() * Math.PI * 2;
-    const rad = rnd() * r * 0.85;
-    const fx0 = cx + Math.cos(a) * rad;
-    const fy0 = cy + Math.sin(a) * rad * 0.85;
-    const s = 3 + rnd() * 7;
+    const rad = rnd() * r * 0.32;
+    const fx0 = anchorX + Math.cos(a) * rad;
+    const fy0 = anchorY + Math.max(-0.3, Math.sin(a)) * rad * 0.7 + rnd() * r * 0.25;
+    const s = 2.5 + rnd() * 5;
     ctx.beginPath();
     ctx.moveTo(fx0, fy0);
     for (let k = 1; k <= 5; k++) {
@@ -128,25 +186,16 @@ function paintRust(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: num
       ctx.lineTo(fx0 + Math.cos(aa) * s * (0.6 + rnd() * 0.7), fy0 + Math.sin(aa) * s * (0.6 + rnd() * 0.7));
     }
     ctx.closePath();
-    ctx.fillStyle = "rgba(18,11,8,0.55)";
+    ctx.fillStyle = "rgba(14,9,6,0.5)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(224,150,86,0.4)";
+    ctx.strokeStyle = "rgba(160,110,72,0.35)";
     ctx.lineWidth = 1;
     ctx.stroke();
-  }
-  // downward bleed streaks
-  for (let i = 0; i < 6; i++) {
-    const x = cx + (rnd() - 0.5) * r * 1.3;
-    const g = ctx.createLinearGradient(x, cy, x, cy + r * (1 + rnd()));
-    g.addColorStop(0, "#7a4526cc");
-    g.addColorStop(1, "#7a452600");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, cy, 2 + rnd() * 3, r * (1 + rnd()));
   }
   ctx.restore();
 }
 
-function paintDent(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, rnd: () => number, strength = 1) {
+export function paintDent(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, rnd: () => number, strength = 1) {
   // concave deformation: shadow lower-half, highlight upper rim, contour rings.
   // `strength` lets the front dent stay soft (it also has real geometry depth)
   // while decal-only dents on other faces read strongly enough to be seen.

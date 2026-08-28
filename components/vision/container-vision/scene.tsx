@@ -21,6 +21,7 @@ import { type Callout, type Readout, createCallout, createReadout, makeProjector
 import { buildContainer, L } from "./container";
 import { buildMaterials, makeCrackDecal, makeDentDecal } from "./materials";
 import { buildHud } from "./hud";
+import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 
 const LOOP = 10;
 const HOLD_END = 1.75;    // brief beat on the finished container, centred, alone
@@ -142,6 +143,31 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
          previous inline values were already identical to it. */
       const studio = createStudio(wrap, { bare, maxDpr: 1.75, shadowMapSize: 1024 });
       const { renderer, scene, camera, bloom, shadowMat } = studio;
+
+      /* ---- ground: WIREFRAME GRID ONLY, deliberately no solid surface ----
+         A pass once put a solid concreteFloor() under this grid, on the
+         reasoning that the studio's invisible shadow catcher (a ShadowMaterial
+         plane at the default floorY, -1.36) was receiving the container's
+         contact shadow with no visible surface beneath it. That reasoning was
+         mechanically sound and visually wrong, and it was REVERTED on review:
+         a photographic concrete floor puts this scene in a room, and Container
+         Vision is not in a room — it shares the drawn, schematic, blueprint
+         language of Yard Vision, where the ground is a measured plane rather
+         than a place. The grid IS the floor here; that is the house look for
+         these two scenes, and the shadow reading as a mark on a drawing rather
+         than on poured concrete is the intended effect, not a defect.
+
+         Do not "fix" this again by adding a surface. If the shadow ever looks
+         unsupported, the answer is the grid's own opacity/glow, not a slab.
+
+         y matches the studio's default floorY exactly (-1.36) so the grid sits
+         coincident with the shadow catcher rather than fighting it. Sized to
+         the OPENING shot's rad (9.77), the widest this loop ever pulls back. */
+      const ground = draftingGround({
+        size: 30, y: -1.36, step: 1, color: PALETTE.grid, opacity: 0.13,
+        glow: 2.2, majorBoost: 2.2, fadeStart: 0.55, fadeEnd: 1.0,
+      });
+      scene.add(ground.mesh);
 
       /* ---- subject ---- */
       const mats = buildMaterials();
@@ -334,6 +360,7 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         mats.steel.opacity = solid;
         mats.dark.opacity = solid;
         mats.front.material.opacity = solid;
+        setGroundOpacity(ground, solid);
         /* SEAL THE SUBJECT once the intro fade has finished.
 
            `transparent: true` is required to fade the container in, but a
@@ -561,6 +588,8 @@ export default function ContainerVisionScene({ bare = false, bleed = 0 }: { bare
         decalTex.forEach((x) => x.dispose());
         decalMats.forEach((m) => m.dispose());
         mats.dispose();
+        ground.material.dispose();
+        ground.mesh.geometry.dispose();
         // studio.dispose() traverses the scene itself and skips any geometry
         // tagged userData.shared (metal.ts's rounded-box cache, detect.ts's
         // tracker bar) — see studio.ts's dispose comment. The old cleanup here

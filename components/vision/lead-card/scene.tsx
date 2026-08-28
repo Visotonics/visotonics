@@ -16,8 +16,12 @@
      gate      a truck crossing under a gantry          (Gate Vision)
      dock      a trailer on a bay, cargo moving         (Cargo Vision)
      warehouse pallets counted on the apron             (Viso Warehouse)
-     factory   a line running parts past a head         (Viso Factory)
      people    staff walking the site, resolved         (Work Vision)
+
+   FACTORY LINE REMOVED, 2026-08 fidelity pass (P1). The conveyor belt, its
+   legs and the parts riding it are gone at the owner's request; head 3 is
+   kept and re-aimed at its remaining real targets (three walkers) rather
+   than removed, since it never watched the belt exclusively.
 
    Four camera poles cover it. Each head sweeps its own arc on its own period,
    so the site is never fully observed at one instant and never unobserved
@@ -43,7 +47,7 @@ import { mountWhenVisible } from "../_vision/mount";
 import { clamp01, easeInOut, lerp, placeCamera } from "../_vision/camera";
 import { makeMetal, metalBox } from "../_vision/metal";
 import { addGrain } from "../_vision/noise";
-import { createTracker, detectMaterials } from "../hero-cards/detect";
+import { createSightCone, createTracker, detectMaterials } from "../hero-cards/detect";
 import { cardboardSide, containerSide } from "../hero-cards/skins";
 import { ROAD_Z, buildRoadway } from "./site";
 
@@ -440,8 +444,13 @@ const SKIN_NEUTRAL = "#9AA0A8";
    are used unchanged rather than pre-compensated because the correction is a
    look call and belongs to whoever screenshots this — if the vests read
    muddy, these two constants are the whole fix and nothing else moves. */
-const VEST_ORANGE = "#B85413";
-const HELMET_YELLOW = "#C9A227";
+/* P7, 2026-08: bumped ~1.2x over the raw authored-half values above, to
+   offset this card's lite rig running at 0.98 exposure vs work-vision's
+   full rig at 1.18 (1.18/0.98 ~= 1.2). Vests were reading muddy against the
+   dark cyclorama; this is the exact fix the comment above calls out —
+   nothing else about the figures changed. */
+const VEST_ORANGE = "#DC6517";
+const HELMET_YELLOW = "#F1C22F";
 
 /* ---- camera housings ------------------------------------------------------
    Plain, unmapped, per the same critique work-vision's heads got: a moulded
@@ -1116,6 +1125,44 @@ export default function LeadCardScene() {
         const cabT = bx(1.5, 1.3, 1.2, cabBlue);
         cabT.position.set(1.9, GROUND + 1.0, 0);
         truck.add(cabT);
+        /* ================= P3: CAB DETAIL =================
+           The cab was one flat blue box. Four cheap additions, all `plain()`
+           (unmapped, no new canvas — see the budget note this file already
+           carries), placed off the cab's own measured bounds rather than
+           guessed: body 1.5 long centred x=1.9 -> spans 1.15..2.65,
+           1.3 tall centred GROUND+1.0 -> spans GROUND+0.35..1.65,
+           1.2 deep -> +-0.6.
+
+           WINDSCREEN: a raked plate near the nose rather than a vertical one
+           — a real cab glass leans back several degrees. Dark blue-grey,
+           low roughness so it picks up a specular hint without needing an
+           env map (there is none on this card, envMapIntensity stays low).
+           GRILLE: a darker plate at the very nose, below the screen.
+           BUMPER: a `dark` bar at the chassis line, matching the running
+           gear's own material so the cab reads as part of one vehicle.
+           MIRRORS: two small arms + heads, the one silhouette detail that
+           reads as "cab" from the side even at this size. */
+        const glass = plain("#141B24", 0.35);
+        const grilleTone = plain("#20242B", 0.55);
+        const mirrorArm = dark;
+        const windscreen = bx(0.05, 0.55, 1.0, glass);
+        windscreen.position.set(2.62, GROUND + 1.42, 0);
+        windscreen.rotation.z = -0.28; // raked back, top leaning toward the trailer
+        truck.add(windscreen);
+        const grille = bx(0.05, 0.55, 0.9, grilleTone);
+        grille.position.set(2.66, GROUND + 0.62, 0);
+        truck.add(grille);
+        const bumperT = bx(0.14, 0.14, 1.15, dark);
+        bumperT.position.set(2.7, GROUND + 0.34, 0);
+        truck.add(bumperT);
+        for (const sz of [-1, 1]) {
+          const mArm = bx(0.28, 0.03, 0.03, mirrorArm);
+          mArm.position.set(2.3, GROUND + 1.25, sz * 0.68);
+          truck.add(mArm);
+          const mHead = bx(0.03, 0.14, 0.1, mirrorArm);
+          mHead.position.set(2.44, GROUND + 1.25, sz * 0.74);
+          truck.add(mHead);
+        }
         const chassis = bx(6.6, 0.16, 1.0, dark);
         chassis.position.set(-0.2, GROUND + 0.52, 0);
         truck.add(chassis);
@@ -1627,124 +1674,15 @@ export default function LeadCardScene() {
           pallet.add(stringer);
         }
 
-        /* -- factory: a line running parts past a head, right -- */
-        const belt = bx(6.2, 0.18, 0.9, dark);
-        put(belt, 11.4, GROUND + 0.62, -1.6, false);
-        /* THE LEGS WENT THROUGH THE FLOOR. Found by the same bottom-vs-GROUND
-           sweep that caught the walkers and the trailer, and it is the worst of
-           the three: 1.2 tall centred at GROUND + 0.1 spans GROUND - 0.50 ..
-           GROUND + 0.70, so half a metre of every leg was buried and the top
-           0.17 stood proud through the belt it was supposed to be holding up.
-           Invisible in a void; not invisible on a drafting grid.
-
-           Sized to the job instead: the belt is 0.18 tall at GROUND + 0.62, so
-           its underside is GROUND + 0.53. A leg of exactly that height centred
-           at GROUND + 0.265 runs GROUND + 0.00 .. GROUND + 0.53 — floor to
-           belt, nothing spare at either end. */
-        /* ================= THE CHECKPOINT BENCH =================
-
-           READ THIS FIRST IF THE NAMING LOOKS ODD. The round called for "the
-           checkpoint bench"; this card has no object by that name, and the
-           thing it means is the FACTORY LINE — the belt at x 11.4 that runs
-           parts past head 3, which the same round referred to as "the
-           checkpoint framing". So the bench grammar is applied here. If that
-           reading is wrong, this whole block is what moves.
-
-           Work act 3's bench is a top on four legs with an APRON under the
-           front edge and a LOW RAIL tying the legs, and the apron is the
-           member its note singles out — "the single thing that stops a work
-           bench looking like a table tennis table", because in silhouette it
-           gives the top a thickness instead of a 60mm line. Three bare posts
-           under a slab was this card's version of the same defect.
-
-           MEASURED OFF THE BELT, which is unchanged: 6.2 x 0.18 x 0.9 at
-           (11.4, GROUND + 0.62, -1.6), so it spans x 8.30..14.50,
-           y GROUND + 0.53..0.71, z -2.05..-1.15 and its UNDERSIDE is
-           GROUND + 0.53.
-
-           FOUR LEGS, NOT THREE, evenly pitched between an inset pair:
-             outer legs  11.4 +- (3.1 - 0.35) = 8.65 and 14.15
-             span        14.15 - 8.65 = 5.50, in three bays of 5.50/3 = 1.8333
-             so          8.65, 10.48, 12.32, 14.15   (bays 1.83/1.84/1.83)
-           Section stays 0.13 — already well over the 0.05 floor, and thinning
-           them would make the frame LESS visible, which is the opposite of
-           the ask. Height 0.53 centred GROUND + 0.265 -> floor to belt
-           underside, nothing spare at either end (unchanged).
-
-           MATERIAL: the legs move from `steel` to `cabBlue`. That is not
-           decoration — work act 3 puts its legs, aprons and rails ALL on
-           `m.rack`, its painted blue, and "the same bench grammar" is the
-           grammar including that. It also ties the checkpoint to the truck
-           cab, so the card's one saturated colour appears twice rather than
-           once. Costs nothing: the material already exists. Easy to revert —
-           it is this one identifier in three places. */
-        const BENCH_LEG_X = [8.65, 10.48, 12.32, 14.15] as const;
-        for (const lx of BENCH_LEG_X) {
-          const leg = bx(0.13, 0.53, 0.13, cabBlue);
-          put(leg, lx, GROUND + 0.265, -1.6, false);
-        }
-        /* ================= THE FLOATING-ROD ARTEFACT =================
-
-           FOUND, AND IT WAS THIS APRON. Reported as "a thin horizontal rod
-           floating free, left of the bench's leftmost leg, around
-           GROUND + 0.4-0.5". All three details identify it exactly:
-
-             height   the apron was 0.11 tall centred GROUND + 0.475, i.e.
-                      it spanned GROUND + 0.420..0.530 — the reported band
-             position it was 5.90 long centred at 11.4, so it spanned
-                      x 8.45..14.35 against outer legs at 8.65 and 14.15 —
-                      a 0.20 CANTILEVER past the leftmost post, which is
-                      precisely "left of the bench's leftmost leg"
-             shape    0.11 x 0.05 in section is a rod
-
-           I put that overhang there on purpose last round, reasoning that an
-           apron reaching past its end posts makes the frame read as
-           continuous. That reasoning is right on work-vision's bench (1.7
-           long, 0.07 of overhang, 4%) and wrong here: 0.20 of unsupported bar
-           at this scale, with the belt's own end at 8.30 and the leg at 8.65,
-           produced three staggered ends inside 0.35 units, and the middle one
-           reads as detached.
-
-           FIXED BY DYING INTO THE POSTS. 5.50 is EXACTLY the outer-leg span
-           (14.15 - 8.65), the same length and the same rule as the low rail
-           below, so there is now no unsupported end anywhere in the assembly.
-           At 89% of the belt's length it still reads as a full apron.
-
-           The rest is unchanged: 0.11 tall centred GROUND + 0.475 hangs
-           directly off the belt's underside (GROUND + 0.53) with no gap, and
-           z -1.17 with 0.05 of depth spans -1.195..-1.145, standing 0.005
-           proud of the belt's front face at -1.15. */
-        const benchApron = bx(5.50, 0.11, 0.05, cabBlue);
-        put(benchApron, 11.4, GROUND + 0.475, -1.17, false);
-        /* THE LOW RAIL, down the centre line in z so it passes through all
-           four legs. 5.50 long is EXACTLY the outer-leg span (14.15 - 8.65),
-           so it dies into the outer posts instead of overhanging them — a
-           rail that oversails reads as a dropped bar. At GROUND + 0.20 it
-           sits in the lower third of the 0.53 leg, where a shelf rail goes. */
-        const benchRail = bx(5.50, 0.05, 0.05, cabBlue);
-        put(benchRail, 11.4, GROUND + 0.20, -1.6, false);
-        const parts: THREE.Mesh[] = [];
-        for (let i = 0; i < 4; i++) {
-          /* KRAFT, like the apron cartons — and this reverses an earlier
-             call in this same pass, so the reason is worth keeping.
-
-             The argument for leaving these grey was that they are machined
-             PARTS passing a head, not parcels, and boarding them would turn
-             the factory line into a parcel conveyor. That distinction is real
-             and it does not survive this framing: at the checkpoint pan these
-             four are the most prominent boxes in shot, and an untextured box
-             at that size reads as exactly the white placeholder the rest of
-             this pass exists to eliminate. VISUAL CONSISTENCY WINS over the
-             taxonomy — a site where one row of boxes is board and another is
-             blank plastic reads as unfinished, not as two kinds of cargo.
-
-             Free, like the cartons: same shared `cartonBoard` material on the
-             same module-cached `cardboardSide()` canvas. No new texture, no
-             new material, no draw-call state change between them. */
-          const pm = bx(0.7, 0.42, 0.6, cartonBoard);
-          put(pm, 0, GROUND + 0.92, -1.6);
-          parts.push(pm);
-        }
+        /* -- factory line REMOVED, P1 of the 2026-08 fidelity pass --
+           The belt (6.2x0.18x0.9 at x 11.4), its four legs, the checkpoint
+           bench's apron/rail and the four parts riding it are gone at the
+           owner's explicit request ("remove the conveyor belt entirely").
+           Head 3 (POLES[3], x 13.2) split its pool between this belt's parts
+           and three walkers (people[0], people[2], people[4]) — see `pools`
+           below — so it is NOT solely a belt camera and is kept, re-aimed at
+           its remaining, already-real targets. See the pools comment for the
+           consequence (a 3-slot pool instead of 6). */
 
         /* -- people: staff walking the site (Work Vision) --
            A capsule and a head is all that survives at this size, and it reads
@@ -1946,24 +1884,42 @@ export default function LeadCardScene() {
           people.push({ grp, puck, ...spec });
         }
 
-        /* -- the cameras that see all of it: four poles, four arcs -- */
-        const heads: { yawGrp: THREE.Group; beam: THREE.Mesh; beamMat: THREE.MeshBasicMaterial }[] = [];
+        /* -- the cameras that see all of it: four poles, four arcs --
+
+           P2 OF THE 2026-08 FIDELITY PASS: the hand-rolled beam (a 4-segment
+           ConeGeometry — a square pyramid — on a flat MeshBasicMaterial) is
+           replaced with `createSightCone()`, the same volumetric shader the
+           flagships (crane/cargo/tank/work-vision) use: proper radial falloff,
+           the built-in animated sweep band (driven by `cone.tick(t)`), additive
+           blending, and a ground footprint pool at `footprintY: GROUND` so the
+           cones now pool on the floor like the flagships' do.
+
+           AIMING IS STILL WORLD-SPACE AND STILL HAND-DRIVEN, not the
+           crane/cargo rigs' local-space `aimAt`: this card's targets are
+           scattered across the whole site rather than one rig, so each frame
+           still computes a world apex (the lens) and a world target (whatever
+           the tracker is pointed at) and calls `cone.aim(from, to, halfAngle)`
+           directly — see the frame loop below.
+
+           THE MOUTH CAP IS PRESERVED BY DERIVING halfAngle FROM IT, not by
+           passing a fixed angle. The old code scaled a unit cone to
+           `(reach, mouth, mouth)` with `mouth = min(reach*0.06, 0.55)` — a
+           capped taper so a 25-unit throw does not open into a floodlight.
+           `createSightCone`'s `aim()` instead takes a half-angle and derives
+           its own radius as `len * tan(halfAngle)`, so the same capped `mouth`
+           is recovered every frame as `halfAngle = atan2(mouth, reach)` — the
+           exact old radius, just handed to the shader's own parameterisation
+           instead of a manual scale. */
+        const heads: { yawGrp: THREE.Group; lens: THREE.Mesh; cone: ReturnType<typeof createSightCone> }[] = [];
         const POLES = [
           { x: -9.6, z: 3.6, base: -0.35, arc: 0.5, period: 1.0, phase: 0.0 },
           { x: -1.6, z: 4.0, base: 0.05, arc: 0.55, period: 0.78, phase: 0.4 },
           { x: 6.2, z: 4.0, base: 0.1, arc: 0.5, period: 0.9, phase: 0.15 },
           { x: 13.2, z: 3.4, base: 0.4, arc: 0.45, period: 1.15, phase: 0.65 },
         ];
-        const beamMats: THREE.MeshBasicMaterial[] = [];
-        /* Built once and shared by all four beams. ConeGeometry runs along +Y
-           with its apex at +h/2; translating by -h/2 puts the apex at the
-           origin and rotating +90deg about Z lays it along +X, which is the
-           optical axis of these heads (the barrel sits at local +x). */
-        const beamGeo = new THREE.ConeGeometry(1, 1, 4, 1, true);
-        beamGeo.translate(0, -0.5, 0);
-        beamGeo.rotateZ(Math.PI / 2);
         const _tp = new THREE.Vector3();
         const _hp = new THREE.Vector3();
+        const _lp = new THREE.Vector3();   // the lens's world position — the cone's real apex
         /* Each pole's three top-level pieces, recorded per head. The treadmill
            wraps by nearest copy, and pole / arm / yaw group have base x of
            P.x, P.x+0.3 and P.x+0.62 — close, but not identical, so at the
@@ -2027,41 +1983,22 @@ export default function LeadCardScene() {
           lens.rotation.z = Math.PI / 2;
           lens.position.x = 0.41;
           yawGrp.add(lens);
-          /* the beam makes each head's aim legible without a label.
-             #3AA0DC -> #5CC8FF (PALETTE.accent). These cones are unlit,
-             `toneMapped: false` graphics, so they render at their literal sRGB
-             value and get NO help from the exposure lift above — the mid blue
-             was chosen to darken a white frame it was crossing, and on #0E1015
-             a darker-than-mid blue is simply less visible than the backdrop.
-             The dark scenes' accent is the one that reads here. */
-          const bm = new THREE.MeshBasicMaterial({
-            color: "#5CC8FF", transparent: true, opacity: 0,
-            side: THREE.DoubleSide, depthWrite: false, toneMapped: false,
-          });
-          /* UNFOGGED, and this is a per-material decision rather than a blanket
-             rule. A sight cone is not a surface in the world — it is the
-             system's own drawing of where a camera is looking, in the same ink
-             as the brackets — so distance must not dim it. It also has to stay
-             legible at the far end of a 15-unit throw, and at fog far = 3x rad
-             a beam crossing the frame would lose about a third of its density
-             exactly where it lands on its target: the cone would taper into
-             nothing right at the point it is supposed to be making. (Note the
-             spec's premise is inverted here: three's MeshBasicMaterial has
-             `fog: true` by DEFAULT, so adding scene.fog silently fogs every
-             detection graphic unless it is turned off — which is why this line
-             exists at all.) The cone's geometry, shader and colour are
-             untouched; only this flag is set. */
-          bm.fog = false;
-          beamMats.push(bm);
-          mats.push(bm);
-          /* UNIT cone: apex at the origin, opening along +X, one unit long and
-             one unit in radius at the far end. Per frame it is scaled to the
-             real distance to the target, so the beam always lands ON the thing
-             being detected instead of stopping in mid-air at a fixed 7.4. */
-          const beam = new THREE.Mesh(beamGeo, bm);
-          beam.position.set(0.42, 0, 0);
-          yawGrp.add(beam);
-          heads.push({ yawGrp, beam, beamMat: bm });
+          /* THE CONE. #5CC8FF, the dark scenes' accent — same colour the old
+             hand-rolled beam used, so this is a shader swap, not a repaint.
+             `footprintY: GROUND` turns on the ground pool so these cones land
+             on the floor like the flagships' do. UNFOGGED for the same reason
+             the old beam was: a sight cone is the system's own drawing of
+             where a camera is looking, in the same ink as the brackets, so
+             distance must not dim it — `createSightCone` does not fog its
+             materials itself, so no extra flag is needed here (compare the
+             old `bm.fog = false`, which existed only because a plain
+             MeshBasicMaterial defaults to fog:true). */
+          /* HELD OUT OF `mats`, exactly as the old `bm` was: its opacity is
+             driven per-frame below as `(0.10 + 0.20*hold) * solid`, not the
+             blunt "ramp straight to 1" every plain detection material gets. */
+          const cone = createSightCone({ color: "#5CC8FF", footprintY: GROUND });
+          g.add(cone.group);
+          heads.push({ yawGrp, lens, cone });
         }
 
         /* ================= THE HIGH MASTS =================
@@ -2116,17 +2053,40 @@ export default function LeadCardScene() {
         });
         poolMat.fog = true;
         const poolGeo = new THREE.PlaneGeometry(POOL_W, POOL_D);
+        /* Shared by all three high masts — one tapered tube and one cable
+           run cylinder, see the P6 note at the call site below for the
+           dimensions and the reasoning. */
+        const highMastPoleGeo = new THREE.CylinderGeometry(0.05, 0.11, MAST_H, 10);
+        const cableRunGeo = new THREE.CylinderGeometry(0.02, 0.02, MAST_H - 0.10, 6);
         for (const mx of MAST_X) {
           const mast = new THREE.Group();
           mast.position.x = mx;               // the ONLY x the wrap will write
           g.add(mast);
 
-          /* Pole 0.16 square x MAST_H, centred GROUND + MAST_H/2 = 3.5, so it
-             runs GROUND + 0.00 .. GROUND + 7.00. */
-          const pole = bx(0.16, MAST_H, 0.16, steel);
+          /* P6, TAPERED: was a straight 0.16-square box, which at 7.0 units
+             tall on 0.14-wide steel read as a fencepost. A real high mast is
+             a swaged tube — wider at the base where the bending moment is
+             largest, narrower at the tip — so this is a single tapered
+             cylinder, r 0.11 at the foot narrowing to 0.05 at the crown,
+             centred GROUND + MAST_H/2 = 3.5 exactly as the box was, so
+             nothing downstream (the arm, the floods, the halo, the pool) has
+             to move. `highMastPoleGeo` is shared by all three masts. */
+          const pole = new THREE.Mesh(highMastPoleGeo, steel);
           pole.position.set(0, GROUND + MAST_H / 2, MAST_Z);
           pole.castShadow = false;
           mast.add(pole);
+          /* THE CABLE RUN. A real high mast carries its floodlight feed up
+             the outside in conduit, which is the one detail that says
+             "serviced structure" rather than "prop pole". A single thin
+             cylinder run tight against the shaft, offset by the pole's own
+             taper-averaged radius (~0.08) plus half its own 0.02 so it sits
+             flush against the surface rather than floating off it or piercing
+             it. Runs the full mast height, GROUND + 0.05 (above the foot
+             plate) to GROUND + MAST_H - 0.05 (below the arm). */
+          const cableRun = new THREE.Mesh(cableRunGeo, dark);
+          cableRun.position.set(0.10, GROUND + MAST_H / 2, MAST_Z);
+          cableRun.castShadow = false;
+          mast.add(cableRun);
 
           const foot = new THREE.Mesh(footGeo, skirtTone);
           foot.position.set(0, GROUND + FOOT_H / 2, MAST_Z);
@@ -2310,7 +2270,16 @@ export default function LeadCardScene() {
              this head's own bay. */
           [docked, yardBoxes[7], people[3].grp, yardBoxes[2], docked, people[3].grp],
           [cartons[2], pallet, cartons[4], cartons[0], cartons[5], cartons[1]],
-          [people[0].grp, parts[1], people[2].grp, parts[3], people[4].grp, parts[0]],
+          /* SHRUNK FROM 6 TO 3, P1 of the 2026-08 fidelity pass. This pool used
+             to alternate walkers with parts off the factory belt (now removed
+             — see the note above `PEOPLE`). Its three parts slots are gone
+             with it rather than backfilled from another area's targets,
+             because every other pool already draws from its own area and
+             borrowing would duplicate an object across two tileOwner claims
+             (see the tileOwner note below). Head 3 now cycles its three real
+             walkers only; it repeats every 3 detections instead of every 6,
+             which is the honest cost of losing a third of its subjects. */
+          [people[0].grp, people[2].grp, people[4].grp],
         ];
 
         /* ================= THE TREADMILL =================
@@ -2352,13 +2321,12 @@ export default function LeadCardScene() {
            DYNAMIC things are excluded and handled by hand in frame(), because
            their x is already being written every frame: re-placing them here
            would just be overwritten, and they need to stay attached to the
-           WRAPPED copy of the prop they belong to (the truck to its gantry, the
-           parts to their belt) rather than to the original at its base x. */
+           WRAPPED copy of the prop they belong to (the truck to its gantry, a
+           walker to its head's tile) rather than to the original at its base x. */
         const PERIOD = 27.0;   // === 8.0 + 7.8 + 7.0 + 4.2, see above. Exact.
         const dynamic = new Set<THREE.Object3D>([
           truck,
           contactShadow,
-          ...parts,
           ...people.map((pr) => pr.grp),
           /* The ground pucks. Their x is written beside their walker's every
              frame, so like the truck's contact shadow they must be kept OUT
@@ -2366,6 +2334,15 @@ export default function LeadCardScene() {
              reason — see the puck note above. */
           ...people.map((pr) => pr.puck),
           ...trackers.map((tr) => tr.group),
+          /* The sight cones. `cone.aim(from, to, ...)` writes each frame's
+             absolute world apex/target straight into the cone mesh's LOCAL
+             position on the assumption that `cone.group` itself sits at the
+             origin (see createSightCone — the group is never transformed).
+             Left in the plain wrap it would get a baseX of 0 re-applied every
+             frame anyway (harmless) but the intent is the same as the
+             trackers' groups right above: it is driven entirely by hand and
+             must never be treated as static scenery. */
+          ...heads.map((h) => h.cone.group),
         ]);
 
         /* A HEAD AND EVERYTHING IT LOOKS AT SHARE ONE TILE.
@@ -2464,13 +2441,6 @@ export default function LeadCardScene() {
              once at construction and are never written again, so no future
              bounce or roll on the truck can lift the shadow off the ground. */
           contactShadow.position.x = truck.position.x + CS_OFF_X;
-
-          // the line runs, on head 3's belt (belt base x = 11.4, parts sit from
-          // -3.0 to +3.4 relative to it)
-          const beltX = wrapWith(11.4, 3);
-          parts.forEach((pm, i) => {
-            pm.position.x = beltX - 3.0 + ((t * 1.2 + i * 1.6) % 6.4);
-          });
 
           // people walk their paths, turning at each end, with a walking bob.
           // The path is wrapped as a whole, by its own midpoint, so a walker
@@ -2578,40 +2548,41 @@ export default function LeadCardScene() {
                the alpha arithmetic in the previous version of this block. On
                the road the lit end is reached through `acq` instead of a
                step, so acquisition and release are visible as the cone
-               filling in and draining out. */
-            h.beamMat.opacity = (0.10 + 0.20 * (onRoad ? acq : siteOn ? 1 : 0)) * solid;
+               filling in and draining out. `cone.setOpacity` is an alias onto
+               the ShaderMaterial's own uniform (see createSightCone) and also
+               drives the ground pool's alpha from the same master, so this one
+               call keeps the beam and its footprint in lock-step exactly as
+               `h.beamMat.opacity =` used to for the beam alone. */
+            h.cone.setOpacity((0.10 + 0.20 * (onRoad ? acq : siteOn ? 1 : 0)) * solid);
+            h.cone.tick(t);
 
             target.getWorldPosition(_tp);
             const dx = _tp.x - _hp.x, dz = _tp.z - _hp.z;
             const flat = Math.hypot(dx, dz);
             const drop = _hp.y - _tp.y;
-            // optical axis is local +X, so this is the yaw that puts it on target
+            // optical axis is local +X, so this is the yaw that puts the
+            // housing/lens on target — UNCHANGED, this still drives the
+            // physical head, independently of the cone's own aim below
             h.yawGrp.rotation.y = Math.atan2(-dz, dx);
-            // and this is the pitch, in the vertical plane the yaw just chose
-            h.beam.rotation.z = -Math.atan2(drop, flat);
-            /* REACH, not raw distance — the beam is parented at x = 0.42 (just
-               off the lens housing), so scaling it by the full head-to-target
-               distance made every beam overshoot its own subject by 0.42 units.
-               At card size that is the difference between a cone that lands on
-               the container and one that visibly passes through it.
+            /* THE CONE'S OWN APEX AND AIM. `h.lens`'s world position is the
+               exact point the old beam was parented 0.42 units off from (see
+               the old REACH note this replaces) — using it directly means no
+               manual 0.42 subtraction is needed, `cone.aim` derives its own
+               length from the real apex-to-target distance.
 
-               0.06 half-width, down from 0.14. atan(0.14) is an ~8deg half
-               angle, and at the 12-18 unit throws in this scene that put a
-               2.5-unit-wide mouth on the cone — a floodlight, not a camera's
-               field of attention. 0.06 is ~3.4deg, so the beam reads as an
-               optical axis with a little spread, and the bracket at the end of
-               it is the thing that says what was found. */
-            const reach = Math.max(0.1, Math.hypot(flat, drop) - 0.42);
-            /* THE MOUTH IS CAPPED, so the cone is not a pure angle. A constant
-               half-angle means width grows with throw, and these heads pick
-               targets right across the site: at the 25-unit throws that
-               produces a 3-unit-wide mouth, which at this framing is a third of
-               the frame height — the pale band that read as haze lying over the
-               whole scene rather than as one camera looking at one thing.
-               0.55 lets the near beams keep their natural taper (0.06 x 8 =
-               0.48, under the cap) and stops the far ones from opening up. */
+               THE MOUTH CAP IS PRESERVED, not dropped, by deriving a
+               half-angle from the SAME capped `mouth` the old scale used:
+               `mouth = min(reach * 0.06, 0.55)`, `halfAngle = atan2(mouth,
+               reach)`. `createSightCone`'s aim() computes its radius as
+               `len * tan(halfAngle)`, so this recovers exactly the old
+               capped radius every frame instead of a raw constant angle that
+               would let the 25-unit throws open into a floodlight (see the
+               old MOUTH IS CAPPED note this replaces, same numbers). */
+            h.lens.getWorldPosition(_lp);
+            const reach = Math.max(0.1, Math.hypot(flat, drop));
             const mouth = Math.min(reach * 0.06, 0.55);
-            h.beam.scale.set(reach, mouth, mouth);
+            const halfAngle = Math.atan2(mouth, reach);
+            h.cone.aim(_lp, _tp, halfAngle);
 
             trackers[i].follow(on ? target : null, camera);
           });
@@ -2734,6 +2705,14 @@ export default function LeadCardScene() {
           io.disconnect();
           metals.forEach((m) => m.dispose());
           mats.forEach((m) => m.dispose());
+          /* The sight cones. Held OUT of `mats` (same reason as the old beam
+             materials — their opacity is hand-driven, not ramped to 1), so
+             they need their own disposal. `cone.dispose()` only disposes the
+             cone's OWN ShaderMaterials, never `_coneGeo`/`_poolGeo` — those are
+             shared module-level across every `createSightCone` caller on the
+             page (flagged `userData.shared` in detect.ts) and must outlive
+             this card. */
+          heads.forEach((h) => h.cone.dispose());
           /* The roadway owns FRESH geometry as well as materials — four
              PlaneGeometries and the grid's — so unlike everything above it has
              to dispose both. Nothing it holds comes from `metalBox` or
@@ -2769,6 +2748,8 @@ export default function LeadCardScene() {
           haloGeo.dispose();
           poolGeo.dispose();
           horizonGeo.dispose();
+          highMastPoleGeo.dispose();
+          cableRunGeo.dispose();
           /* Two more materials held out of `mats` because their peaks are not
              1, so the blanket disposal above does not reach them. */
           puckMat.dispose();

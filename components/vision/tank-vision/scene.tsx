@@ -205,8 +205,44 @@ function buildTankMaterials(): TankMats {
   const shell = new THREE.MeshStandardMaterial({
     color: "#6B737C",
     metalness: 0.45,
-    roughness: 0.28,
-    envMapIntensity: 0.9,
+    /* 0.40, UP FROM 0.28. After the diffuse grade (#C4CCD6 -> #6B737C) and the
+       envMapIntensity cut (0.9 -> 0.5) below, the barrel STILL read near-white
+       on review, with a hot band on the crown. Both of those prior fixes were
+       correctly reasoned and both helped; what neither touched is how tightly
+       that reflection is focused.
+
+       Roughness is the surgical lever the earlier passes skipped. At 0.28 the
+       shell is near-polished, so the strip softbox's energy lands concentrated
+       — a narrow, clipping band. Raising to 0.40 spreads the SAME energy over a
+       wider arc, dropping the peak without removing the highlight, and without
+       touching the diffuse colour at all. That matters because the two prior
+       notes set real constraints on the other levers: diffuse cannot go much
+       darker (it would read as painted steel — the other flagships' material —
+       and would lose contrast against the rust decal's dark tones), and a
+       scene-wide exposure cut would drag the frame and fittings down with it.
+       Roughness is bound by neither.
+
+       It also preserves the stated read: this shell is meant to be legible by
+       "its CURVATURE and its specular band". Curvature comes from the gradient
+       across the barrel, not from the peak's intensity, and a broader band is
+       still a band — arguably a more honest one for rolled stainless, which is
+       not a mirror. */
+    roughness: 0.40,
+    /* 0.5, DOWN FROM 0.9. The studio's environment canvas (_vision/studio.ts)
+       draws two strip softboxes SPECIFICALLY to put a long highlight on a
+       curved brushed surface — its own comment names "a tank barrel's crown"
+       as one of the two things that strip is for. This is the only flagship
+       scene that never pulled its `createStudio` exposure down from the 1.18
+       default (document-vision runs 0.95, work-vision 0.86, both explicitly
+       because a bright surface under the shared five-light rig clipped) —
+       but a scene-wide exposure cut would also darken the shell's OWN colour,
+       frame and fittings, which are not the reported problem and were already
+       graded down once (see the #6B737C note above). The specular streak is
+       the environment's reflection specifically, so it is `envMapIntensity`
+       that is turned down, not exposure: this dims the mirrored strip
+       highlight on the crown while leaving the shell's diffuse read, and
+       every other material's lighting, untouched. */
+    envMapIntensity: 0.5,
     transparent: true,
     opacity: 0,
   });

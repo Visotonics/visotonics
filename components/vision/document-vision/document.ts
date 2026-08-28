@@ -238,8 +238,21 @@ function paintPage(): HTMLCanvasElement {
   c.fillStyle = "#EEECE6";
   c.fillRect(0, 0, TEX_W, TEX_H);
 
+  /* The top stop was 0.5 and blew the head of the page out to an unreadable white
+     field — the B/L's own title block and reference numbers, i.e. the part the OCR
+     story is about, were the part you could not see. Arithmetic: the base stock is
+     #EEECE6 (mean 234.7); compositing white at 0.5 lifts it to ~244.8, within ten
+     points of pure white BEFORE the five-light rig and ACES tonemapping, which then
+     clip it. The scene's exposure was already cut to 0.95 (scene.tsx) trying to
+     compensate for this, and could not — because the blowout is baked into the
+     texture, not the lighting.
+
+     0.10 keeps the stated intent ("so the sheet is not one flat fill"): it lands at
+     ~236.7, about two points above the base, a variation you read as paper rather
+     than as glare. It also matches the magnitude of this gradient's OWN other stops
+     (0.05 and 0.12) — the 0.5 was the outlier, five to ten times its neighbours. */
   const tone = c.createLinearGradient(0, 0, 0, TEX_H);
-  tone.addColorStop(0.00, "rgba(255,255,255,0.5)");
+  tone.addColorStop(0.00, "rgba(255,255,255,0.10)");
   tone.addColorStop(0.42, "rgba(255,255,255,0.00)");
   tone.addColorStop(0.78, "rgba(120,112,98,0.05)");
   tone.addColorStop(1.00, "rgba(120,112,98,0.12)");

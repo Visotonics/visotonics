@@ -32,12 +32,13 @@ import { draftingGround, setGroundOpacity } from "../hero-cards/ground";
 import { buildGateMaterials, gateStencilTexture } from "./materials";
 import { GANTRY_X, GROUND_Y, buildGate } from "./gate";
 
-/* 4.6s over a 27.2-unit run: 5.91 u/s, 52% faster than the previous 7.0s pass
-   (3.9 u/s) and 2.4x the original 2.5 u/s — a second, explicit user call
-   ("need gate vision to move much faster") on top of the first. The truck's
-   own speed is the only thing that changed here: RUN_FROM/RUN_TO (the frame
-   entry/exit points) are untouched, so the truck is still fully off-screen
-   through the wrap, it just gets there quicker.
+/* 4.6s over what was originally a 27.2-unit run (5.91 u/s), 52% faster than
+   the previous 7.0s pass (3.9 u/s) and 2.4x the original 2.5 u/s — a second,
+   explicit user call ("need gate vision to move much faster") on top of the
+   first. The run is now 26.2 units (5.6957 u/s) after RUN_FROM/RUN_TO was
+   tightened from +-13.6 to -12.9/+13.3 to cut dead frame time — see that
+   comment, on RUN_FROM below, for the full arithmetic; the truck is still
+   fully off-screen through the wrap, just with a smaller margin.
 
    Every phase-fraction "win" window below (reads, plate, seal, head, the
    cone and underline flashes) is driven by `phase = elapsed / LOOP`, so
@@ -61,17 +62,57 @@ const ZOOM_IN = 1.25;
 // The cab sits at +X on the model, so the run goes -X -> +X: the tractor
 // leads and the container trails through the heads behind it, which is also
 // the order the reads happen in.
-/* +-13.6, up from +-9.4: THE WRAP IS NOW INVISIBLE, which is what makes the
-   loop read as a procession of trucks instead of one truck teleporting.
-   The frame shows roughly x in [-8.0, +7.4]; the truck spans +4.715 ahead of
-   its origin to -5.70 behind. At the old +-9.4 the tail was still at +3.7 —
-   mid-frame — when the loop wrapped. Now the front enters the frame at
-   p = 0.033 and the tail exits at p = 0.982: the vehicle is fully off screen
-   through the wrap, so "one truck leaves, the next appears" with ~0.35s of
-   empty lane between them — which is exactly the beat the barrier's
-   down-and-waiting state exists to fill. */
-const RUN_FROM = -13.6;
-const RUN_TO = 13.6;
+/* RE-TIGHTENED, -12.9 / +13.3, DOWN FROM +-13.6/+-13.6 — RUN_FROM/RUN_TO
+   CHOSEN OVER LOOP, on purpose: this is the lever with no side effect on the
+   READS/plate/seal/head windows below (all of them are phase fractions of
+   LOOP, not of the run span — see the LOOP comment), so shrinking the run
+   cannot rescale any label's on-screen seconds the way touching LOOP would.
+
+   THE ARITHMETIC. The frame's own horizontal extent at this camera was
+   already derived once, when OPENING.rad was re-fit for the real in-section
+   canvas: roughly x in [-8.0, +7.4] (see that derivation above OPENING). The
+   truck's extents are fixed geometry, established in gate.ts: nose (the
+   trailer plate, the model's true foremost point) at local +4.715, tail
+   (chassis deck rear) at local -5.70.
+
+   For the vehicle to be FULLY off-frame at p=0 and p=1 — the standing
+   invariant this scene depends on to hide the loop's wrap — the run's ends
+   have to clear the frame edges by the truck's own overhang:
+     nose hidden at p=0:  RUN_FROM + 4.715 <= -8.0   ->  RUN_FROM <= -12.715
+     tail hidden at p=1:  RUN_TO   - 5.70  >=  7.4   ->  RUN_TO   >=  13.1
+   The old +-13.6 cleared those minimums by 0.885 and 0.5 respectively — real
+   margin, but more than the invariant needs. Tightened to the smallest
+   values that still clear both with a small safety margin for the frame
+   estimate's own imprecision (this scene has no browser to re-measure it
+   in): RUN_FROM -12.9 (margin 0.185), RUN_TO +13.3 (margin 0.2).
+
+   EFFECT ON DEAD TIME. Span drops 27.2 -> 26.2 units (-3.7%), and because
+   the truck crosses that span in one fixed LOOP (4.6s), speed drops with it:
+   26.2/4.6 = 5.6957 u/s (was 27.2/4.6 = 5.9130 u/s). Re-deriving the entry/
+   exit fractions at the new span:
+     entry (nose crosses -8.0):  vehicleX = -12.715
+       p = (-12.715 - (-12.9)) / 26.2 = 0.185/26.2 = 0.0071
+     exit  (tail crosses +7.4):  vehicleX =  13.1
+       p = (13.1 - (-12.9)) / 26.2 = 26.0/26.2 = 0.9924
+   Dead time (nothing on screen) = p<0.0071 plus p>0.9924 = 0.0071 + 0.0076 =
+   0.0147 of the loop = 4.6 * 0.0147 = 0.068s per loop — down from the old
+   0.0325 + 0.018 = 0.0505 of loop = 0.232s. A real cut (~71% less dead time
+   by this estimate), though the absolute numbers here are already small: at
+   this camera, per the frame's own prior derivation, most of the loop was
+   ALREADY showing some part of the truck even before this change. FLAGGED
+   HONESTLY: the frame-edge estimate above is inherited from an EARLIER pass
+   of this file, not re-measured for this one (no browser here to re-derive
+   it), and it does not fully explain a report of a COMPLETELY EMPTY frame at
+   ?phase=0.18 — 0.18 sits well inside the old visible window either way. The
+   far more likely cause of that specific symptom is fixed separately, in
+   applyFrame: `solid` (the intro reveal ramp) used to be driven only by
+   wall-clock time and ignored the `?phase` pin entirely, so a screenshot
+   taken before ~1.4s of real time had elapsed showed a still-fading-in (or
+   fully transparent) rig regardless of which phase was requested. See that
+   fix's own comment for detail. This RUN_FROM/RUN_TO tightening is the
+   secondary, compounding improvement on top of it. */
+const RUN_FROM = -12.9;
+const RUN_TO = 13.3;
 const vehicleX = (p: number) => lerp(RUN_FROM, RUN_TO, p);
 
 /* Camera — locked height, centred framing, barely moving. It drifts a little
@@ -161,8 +202,21 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
          survive on a scene this size; 1.75 keeps the edge quality and drops about
          a quarter of the pixels. Bloom, the full light rig and the environment are
          all deliberately LEFT ON here — unlike the hero cards, this scene is big
-         enough that all three are visible, and its look is signed off. */
-      const studio = createStudio(wrap, { floorY: GROUND_Y, shadowExtent: 12, spread: 1.6, bare, maxDpr: 1.75, shadowMapSize: 1024 });
+         enough that all three are visible, and its look is signed off.
+
+         EXPOSURE 1.18 -> 1.42. The whole rig was underexposed: the container
+         (PALETTE.steel #2C3A63, a genuine mid-navy) was reading as near-black
+         at most beats and the cab had almost no modelling on it. `exposure`
+         is the studio's own scene-level knob for exactly this (see studio.ts's
+         `StudioOpts.exposure` doc — "the default is set for a container-sized
+         subject at container distance"), so the fix belongs here rather than
+         in the shared rig. 1.42/1.18 = 1.203, a 20% lift — enough to bring the
+         navy up to a readable mid-blue without the studio's white softboxes
+         (already the brightest source in the room) clipping in turn; see the
+         lens-material note in materials.ts for the other half of the
+         exposure problem (a clipping specular, fixed at the material, not
+         the room). */
+      const studio = createStudio(wrap, { floorY: GROUND_Y, shadowExtent: 12, spread: 1.6, bare, maxDpr: 1.75, shadowMapSize: 1024, exposure: 1.42 });
       const { renderer, scene, camera, bloom, shadowMat } = studio;
 
       /* ---- subject: gate + the real container on a chassis ---- */
@@ -173,6 +227,20 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         (g.__visionGate ||= []).push(`${w} ${(performance.now() - _tg).toFixed(0)}`);
       };
       const cmats = buildMaterials();
+      /* THE CONTAINER'S OWN LIFT. `buildMaterials()` is a factory — a fresh
+         MeshStandardMaterial instance per call, not a shared singleton (see
+         container-vision/materials.ts: the module only caches the CANVAS
+         textures, never the material) — so raising these two instances'
+         envMapIntensity here is scoped to Gate Vision's own container and
+         cannot leak into Container Vision's build, which calls the same
+         factory separately. `steel` (the corrugated panels, the container's
+         own huge surface area) 0.32 -> 0.52; `dark` (hardware) 0.45 -> 0.65.
+         Both are the same +0.20 absolute lift as the exposure change above,
+         so the container gets a second, targeted pass on top of the room-wide
+         one — it is the single largest surface in frame and was the
+         specific complaint ("reads as near-black navy"). */
+      cmats.steel.envMapIntensity = 0.52;
+      cmats.dark.envMapIntensity = 0.65;
       gmark("containerMats");
       const mats = buildGateMaterials();
       gmark("gateMats");
@@ -215,17 +283,68 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
 
          Sits 4mm under the lane lines and 8mm over the grid, so the stack is
          grid -> road -> paint with no z-fighting; renderOrder is not needed
-         because these are opaque and depth-sorted honestly. */
+         because these are opaque and depth-sorted honestly.
+
+         THE MATERIAL IS mats.road NOW, NOT A LOCAL FLAT FILL — see
+         materials.ts's note: it carries hero-cards/skins.ts's shared
+         `concreteFloor()` map (reused, not repainted) so the lane reads as a
+         surface with aggregate and pour joints rather than a flat colour
+         under the truck's shadow. */
       const roadGeo = new THREE.PlaneGeometry(30, 4.1);
-      const roadMat = new THREE.MeshStandardMaterial({
-        color: "#15181D", roughness: 0.95, metalness: 0.0,
-        transparent: true, opacity: 0,
-      });
-      const road = new THREE.Mesh(roadGeo, roadMat);
+      const road = new THREE.Mesh(roadGeo, mats.road);
       road.rotation.x = -Math.PI / 2;
       road.position.set(0, GROUND_Y + 0.008, 0);
       road.receiveShadow = true;
       scene.add(road);
+
+      /* ---- THE APRON: the ground beyond the lane ----
+         Everything used to end at the road's 4.1-wide shoulder and the gantry
+         column — past that, nothing, so the frame ran out into black at every
+         beat except dead-centre on the truck. `mats.apron` carries the same
+         `concreteFloor()` map as the road (wider tile, lighter tint — see
+         materials.ts) and this plane is sized to run well past every camera
+         edge computed for the timing rebalance below (frame half-width was
+         derived at roughly 10-11 units either side of the lane centre; a
+         40x40 apron centred on the lane covers that with margin to spare in
+         every direction, including behind the gantry). Sits BELOW the road
+         and the drafting grid (GROUND_Y - 0.02, under the grid's
+         GROUND_Y - 0.012) so the stack reads grid -> road -> paint from above
+         with the apron never fighting either. Subordinate on purpose: no
+         markings, no lane paint, roughness 0.96 and a low envMapIntensity so
+         it recedes rather than competing with the truck or the overlays. */
+      const apronGeo = new THREE.PlaneGeometry(40, 40);
+      const apron = new THREE.Mesh(apronGeo, mats.apron);
+      apron.rotation.x = -Math.PI / 2;
+      apron.position.set(0, GROUND_Y - 0.02, 0);
+      apron.receiveShadow = true;
+      scene.add(apron);
+
+      /* ---- two yard light poles, far back on the apron ----
+         A place needs SOMETHING at the edge of the frame that isn't the
+         gantry or the truck, or the apron just reads as more void with a
+         texture on it. Two simple poles, well outside the lane and well
+         behind the gantry column (colZ = -3.5 in gate.ts), subordinate in
+         every sense: no shadow casting (a cost with nothing to show for it
+         at this distance), no detail beyond a shaft and a lit cap, and the
+         cap uses `mats.headlamp` — the same small emissive material as the
+         truck's own lamps, not a new colour to reconcile against the accent
+         rule. Kept tiny in frame on purpose; they read as depth cues, not
+         subjects. Geometry/material here are SCENE-OWNED (plain, undisposed
+         nowhere else) and go in the same cleanup list as the lane lines. */
+      const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 4.2, 8);
+      const capGeo = new THREE.SphereGeometry(0.09, 10, 8);
+      const poleMat = new THREE.MeshStandardMaterial({
+        color: "#20242A", roughness: 0.7, metalness: 0.3,
+        transparent: true, opacity: 0,
+      });
+      for (const [px, pz] of [[-7.5, -9], [8.5, -10]] as const) {
+        const shaft = new THREE.Mesh(poleGeo, poleMat);
+        shaft.position.set(px, GROUND_Y + 2.1, pz);
+        scene.add(shaft);
+        const cap = new THREE.Mesh(capGeo, mats.headlamp);
+        cap.position.set(px, GROUND_Y + 4.25, pz);
+        scene.add(cap);
+      }
 
       // the two lane edges the truck runs between
       const laneGeo = new THREE.BufferGeometry();
@@ -333,7 +452,8 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
       // the schematic's "SEAL · CHECKED" and "FACE · REAR · CAM 1/1" — both
       // read off the door end as it clears the heads
       // win widened ×1.522 to hold the same 0.98s it did at the old LOOP.
-      // Still well inside the tail's frame-exit at p=0.982.
+      // Still well inside the tail's frame-exit, now p=0.9924 after the
+      // RUN_FROM/RUN_TO tightening (see that comment).
       const seal = createCallout(overlay, {
         title: "Seal checked", detail: "88421 · rear face · cam 1/1",
         pos: model.anchors.seal.pos, normal: model.anchors.seal.normal,
@@ -442,7 +562,18 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         const drawT = easeInOut(clamp01(t / 0.62));
         model.edges.geometry.setDrawRange(0, Math.floor(edgeCount * drawT));
         edgeMat.opacity = 0.55 * drawT * (1 - smoothstep(0.58, 1.2, t));
-        const solid = frozen ? 1 : easeInOut(clamp01((t - 0.45) / 0.95));
+        /* `solid` used to be driven ONLY by wall-clock `t`, disconnected from
+           the `?phase` pin. `holdP` freezes the vehicle's POSITION instantly
+           but the reveal ramp still took its usual 0.45-1.40s of real time to
+           reach opacity 1 — so a screenshot taken shortly after the page
+           loads, at ANY `?phase` value, shows a still-fading-in (or fully
+           invisible) rig. That is a very plausible explanation for "?phase=
+           0.18 is a completely empty frame": the review tool pins the loop
+           position but was never told to also skip the intro fade. Fixed the
+           same way `frozen` already is — pinning a phase now snaps `solid` to
+           1 immediately, same as reduced-motion, so a review screenshot is
+           meaningful the instant the page paints rather than ~1.4s later. */
+        const solid = (frozen || holdP !== null) ? 1 : easeInOut(clamp01((t - 0.45) / 0.95));
         mats.all.forEach((m) => {
           (m as THREE.Material & { opacity: number }).opacity = solid;
         });
@@ -457,10 +588,12 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
         // shadow is on the ground before the truck is
         shadowMat.opacity = 0.62 * solid;
         setGroundOpacity(ground, solid);
-        roadMat.opacity = solid;
+        // road/apron opacity is carried by the `mats.all` sweep above now —
+        // both are gate materials, not scene-local ones, since the reuse.
         laneMat.opacity = solid * 0.3;
         stopMat.opacity = solid * 0.5;
         stencilMat.opacity = solid * 0.55;
+        poleMat.opacity = solid;
 
         /* Barrier choreography — the scene's claim, animated. The arm is DOWN
            and waiting through the whole approach — the state the loop's empty
@@ -469,40 +602,43 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            DELIBERATELY KEPT ON THE OLD FIXED PHASE POINTS, not re-tied to the
            Resolved read's win, which now starts later (0.4826, widened so the
            label holds its original absolute time — see LOOP and READS). The
-           barrier's 0.42 is a physical deadline, not a narrative cue: it has
-           to be fully up before the truck's front reaches the boom at
-           p=0.562, and rising with only (0.562-0.4826)=0.079 of phase to
-           work with leaves no room for a rise animation. So the read resolving
-           and the arm lifting are no longer frame-exact twins — the arm now
-           starts rising slightly BEFORE the "Resolved" label appears rather
-           than in the same frame. Still reads as "system reacts, then
-           confirms," just not simultaneously; flagged rather than shipped
-           quietly, since it's a real change from the old beat.
+           barrier's 0.42 is a physical deadline, not a narrative cue.
 
-           The rise is fully clear at p=0.52, 0.042 of the loop before the
-           truck's foremost point reaches the boom — 0.042 * 4.6 = 0.193s of
-           margin (was 0.294s at the old 7.0s LOOP). Tighter, still positive,
-           still safe: the truck never slows, read on the move, no
-           stop-and-shoot.
-
-           ARITHMETIC (unchanged — depends only on RUN_FROM/RUN_TO and the
-           boom position, neither of which moved). vehicleX(p) = -13.6 +
-           27.2p, boom at x=6.4.
+           ARITHMETIC — RE-DERIVED FOR THE RUN_FROM/RUN_TO TIGHTENING ABOVE.
+           The old derivation here was pinned to +-13.6; RUN_FROM/RUN_TO moved
+           to -12.9/+13.3 (see that comment), so vehicleX(p) is now
+           -12.9 + 26.2p, and every downstream crossing point shifts with it.
+           Boom stays at x=6.4 (untouched by the timing change).
              front: trailer plate at +4.715 (the model's true foremost point —
                see the extents note in gate.ts). Crosses 6.4 when
-               vehicleX = 1.685, i.e. p = (1.685 + 13.6) / 27.2 = 0.562.
+               vehicleX = 1.685, i.e. p = (1.685 + 12.9) / 26.2 = 0.5567.
              tail: chassis deck rear at -5.70. Clears 6.4 when vehicleX = 12.1,
-               p = 0.9449 — so the arm may not begin lowering before ~0.95.
-           Lowering runs 0.95..1.00: the arm descends just behind the departing
-           trailer (tail exits the frame at p=0.982) and is fully down AT the
-           wrap — which is what puts the "gate closed, waiting" beat on screen
-           for the whole of the next truck's approach (0.0..0.42). PRODUCT of
-           the two eases, not max: down at both ends of the cycle is the shape,
-           and the product is 0 at p=0 and p=1 by construction, so the wrap
-           cannot pop. */
+               p = (12.1 + 12.9) / 26.2 = 0.9542.
+           The rise (0.42..0.52) is fully clear at p=0.52, 0.0367 of the loop
+           before the front reaches the boom — 0.0367 * 4.6 = 0.169s of margin
+           (was 0.193s before the run was tightened). Still positive, still
+           safe, just tighter, same trade the run-tightening made everywhere
+           else: the truck never slows, read on the move, no stop-and-shoot.
+
+           LOWERING WAS MOVED, NOT JUST RE-EXPLAINED: the old window (0.95 to
+           1.00) started BEFORE the new tail-clear point of 0.9542 — the arm
+           would have begun dropping onto a trailer that had not yet cleared
+           the boom, which the old +-13.6 numbers never exposed because tail-
+           clear used to land at 0.9449, comfortably before 0.95. Moved the
+           lowering window to 0.97..1.00 (start pushed 0.95 -> 0.97, still a
+           0.03 fall so it lands fully down exactly at the wrap): margin from
+           tail-clear to lowering-start is 0.97 - 0.9542 = 0.0158 of the loop
+           = 0.073s — smaller than the rise's margin, but positive, and the
+           arm still descends just behind the departing trailer (tail exits
+           frame at the RUN_TO derivation's own p=0.9924) and is fully down AT
+           the wrap, which is what puts the "gate closed, waiting" beat on
+           screen for the whole of the next truck's approach (0.0..0.42).
+           PRODUCT of the two eases, not max: down at both ends of the cycle
+           is the shape, and the product is 0 at p=0 and p=1 by construction,
+           so the wrap cannot pop. */
         const upT =
           easeInOut(clamp01((cp - 0.42) / 0.10)) *
-          (1 - easeInOut(clamp01((cp - 0.95) / 0.05)));
+          (1 - easeInOut(clamp01((cp - 0.97) / 0.03)));
         model.barrier.rotation.x = -1.50 * (1 - upT);
 
         // the sight cone is lit across Reading and Resolved, and gone by
@@ -644,7 +780,11 @@ export default function GateVisionScene({ bare = false, bleed = 0 }: { bare?: bo
            disposing it here would leave the next build sampling a dead texture,
            the hazard materials.ts spells out. */
         ground.material.dispose();
-        roadMat.dispose(); roadGeo.dispose();
+        // roadMat/apronMat are gone — road and apron now draw through
+        // mats.road/mats.apron, disposed by mats.dispose() below. Only the
+        // scene-owned GEOMETRY is ours to drop here.
+        roadGeo.dispose(); apronGeo.dispose();
+        poleGeo.dispose(); capGeo.dispose(); poleMat.dispose();
         laneMat.dispose(); laneGeo.dispose();
         stopMat.dispose(); stopGeo.dispose();
         stencilMat.dispose(); stencilGeo.dispose();

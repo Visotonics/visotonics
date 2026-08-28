@@ -191,11 +191,29 @@ export function buildGate(mats: GateMaterials, cmats: MaterialSet): GateModel {
     addV(box(0.07, 0.62, 0.07, mats.dark), NOSE - 0.12, DECK_Y + 1.78, sz * (CAB_W / 2 + 0.2));
     addV(box(0.1, 0.46, 0.17, mats.dark), NOSE - 0.12, DECK_Y + 1.56, sz * (CAB_W / 2 + 0.24));
   }
-  // bumper, grille, lamps, exhaust stack
-  addV(box(0.3, 0.55, CAB_W - 0.1, mats.dark), NOSE + 0.12, DECK_Y + 0.2, 0);
+  // bumper — TRIM, not `dark`: a bumper is a lighter, more finished part than
+  // the chassis rails behind it, and the two used to be the same flat black
+  addV(box(0.3, 0.55, CAB_W - 0.1, mats.trim), NOSE + 0.12, DECK_Y + 0.2, 0);
   addV(box(0.12, 0.66, CAB_W - 0.7, mats.dark), NOSE + 0.04, DECK_Y + 1.0, 0);
+  // headlamps — emissive now, not `lens`: two dark boxes read as two more
+  // shadows under the old exposure. See materials.ts's `headlamp` note.
   for (const sz of [1, -1]) {
-    addV(box(0.09, 0.22, 0.44, mats.lens), NOSE + 0.16, DECK_Y + 0.54, sz * 0.86);
+    addV(box(0.09, 0.22, 0.44, mats.headlamp), NOSE + 0.16, DECK_Y + 0.54, sz * 0.86);
+  }
+  /* MARKER LIGHTS — five small amber clearance lamps along the roof cap's
+     front edge, evenly spaced across the cab width, sitting proud of the cap
+     the way real roof-marker lights do. Roof cap is box(CAB_LEN + 0.5, 0.3,
+     CAB_W - 0.08) at (cabX - 0.22, DECK_Y + 2.28, 0), so its front face is at
+     x = cabX - 0.22 + (CAB_LEN + 0.5)/2 and its half-width in z is
+     (CAB_W - 0.08)/2 = 1.21; the five lamps sit inside that at z in
+     [-0.88, 0.88], clear of the edges. */
+  {
+    const capFrontX = cabX - 0.22 + (CAB_LEN + 0.5) / 2 - 0.03;
+    const capY = DECK_Y + 2.28 + 0.16;
+    for (let i = 0; i < 5; i++) {
+      const mz = -0.88 + (i / 4) * 1.76;
+      addV(box(0.05, 0.05, 0.09, mats.marker), capFrontX, capY, mz);
+    }
   }
   const stack = cyl(0.09, 1.9, mats.rim, 12);
   addV(stack, cabX - 1.44, DECK_Y + 1.75, -(CAB_W / 2 + 0.11));

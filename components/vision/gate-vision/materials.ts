@@ -9,18 +9,24 @@
 import * as THREE from "three";
 import { PALETTE } from "../_vision/palette";
 import { makeMetal, makeRoughnessMap } from "../_vision/metal";
+import { tyre as tyreSkin, concreteFloor as concreteFloorSkin } from "../hero-cards/skins";
 
 /* The container's own paint comes from container-vision's material set — this
    module only covers the parts Gate Vision adds around it. */
 export interface GateMaterials {
   dark: THREE.MeshStandardMaterial;       // hardware, gantry, chassis
-  rubber: THREE.MeshStandardMaterial;     // tyres
+  rubber: THREE.MeshStandardMaterial;     // tyre tread + shoulder/sidewall
   cab: THREE.MeshStandardMaterial;        // tractor unit paint
-  rim: THREE.MeshStandardMaterial;        // wheel rims
-  glass: THREE.MeshStandardMaterial;      // windscreen
-  lens: THREE.MeshStandardMaterial;       // camera-head glass
+  rim: THREE.MeshStandardMaterial;        // wheel rims/hub — carries tyre() cap map
+  trim: THREE.MeshStandardMaterial;       // bumper/grille — lighter than chassis `dark`
+  glass: THREE.MeshStandardMaterial;      // windscreen — reads as glass, not black
+  lens: THREE.MeshStandardMaterial;       // camera-head glass — toned down, was clipping
+  headlamp: THREE.MeshStandardMaterial;   // front lamp lenses — emissive, so the front reads as a front
+  marker: THREE.MeshStandardMaterial;     // roof marker lights — small emissive amber, NOT signal orange
   plate: THREE.MeshStandardMaterial;      // trailer plate decal
   barrierLight: THREE.MeshStandardMaterial; // boom-gate arm, light bands
+  road: THREE.MeshStandardMaterial;       // the carriageway surface
+  apron: THREE.MeshStandardMaterial;      // the ground beyond the lane
   all: THREE.Material[];
   dispose: () => void;
 }
@@ -127,42 +133,12 @@ function makeCabTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Tyre tread + sidewall, mapped around the cylinder. The tread blocks run
-    across the belt; the sidewall rings sit at both ends. Without this a tyre is
-    a black cylinder, which is exactly what it looked like. */
-function makeTyreTexture(): THREE.CanvasTexture {
-  const w = 512, h = 256;
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  // willReadFrequently — this canvas ends in grain(), a getImageData round
-  // trip; see the note in _vision/metal.ts on why that matters here
-  const c = cv.getContext("2d", { willReadFrequently: true })!;
-  c.fillStyle = "#15171B";
-  c.fillRect(0, 0, w, h);
-
-  // tread blocks: two staggered rows of lugs around the circumference
-  c.fillStyle = "#0A0C0F";
-  const lugs = 26;
-  for (let i = 0; i < lugs; i++) {
-    const x = (i / lugs) * w;
-    c.fillRect(x, h * 0.16, w / lugs - 4, h * 0.30);
-    c.fillRect(x + w / lugs / 2, h * 0.54, w / lugs - 4, h * 0.30);
-  }
-  // circumferential grooves
-  c.fillStyle = "#05070A";
-  c.fillRect(0, h * 0.47, w, 5);
-  // sidewall bands at both edges — lighter, scuffed rubber
-  c.fillStyle = "#20242A";
-  c.fillRect(0, 0, w, h * 0.13);
-  c.fillRect(0, h * 0.87, w, h * 0.13);
-
-  grain(c, w, h, 18);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 8;
-  return tex;
-}
+/* TYRES NO LONGER HAVE THEIR OWN GENERATOR. `hero-cards/skins.ts`'s `tyre()`
+   already ships a cached tread map (tiles on the belt's circumference) and a
+   cap map (sidewall/hub, does not tile) — proven, module-cached, and warmed
+   at idle by `warmHeroSkins()`. Re-authoring the same asset here was the
+   exact duplication the owner flagged; `gateTextures()` below pulls both maps
+   from that cache instead of painting its own. */
 
 /* TEXTURE CACHE + IDLE WARM — measured.
    Gate Vision was the most expensive build on the Viso Yard page at ~346 ms
@@ -192,9 +168,10 @@ function makeTyreTexture(): THREE.CanvasTexture {
 interface GateTextures {
   plateTex: THREE.CanvasTexture;
   cabTex: THREE.CanvasTexture;
-  tyreTex: THREE.CanvasTexture;
+  /** From hero-cards/skins.ts's `tyre()` — module-cached there, not here. */
+  tyreTreadTex: THREE.Texture;
+  tyreCapTex: THREE.Texture;
   cabRough: THREE.CanvasTexture;
-  tyreRough: THREE.CanvasTexture;
 }
 let gateTexCache: GateTextures | null = null;
 
@@ -233,12 +210,16 @@ export function gateStencilTexture(): THREE.CanvasTexture {
 
 function gateTextures(): GateTextures {
   if (!gateTexCache) {
+    const { tread, cap } = tyreSkin();
     gateTexCache = {
       plateTex: makePlateTexture(),
       cabTex: makeCabTexture(),
-      tyreTex: makeTyreTexture(),
+      tyreTreadTex: tread,
+      tyreCapTex: cap,
       cabRough: makeRoughnessMap("painted", 0.46),
-      tyreRough: makeRoughnessMap("painted", 0.94),
+      // tyreRough is gone with makeTyreTexture — tyre() has no roughness map
+      // of its own, so the tread/cap materials below carry a flat roughness
+      // instead of a mapped one, same as any other skins.ts consumer.
     };
   }
   return gateTexCache;
@@ -269,32 +250,97 @@ export function buildGateMaterials(): GateMaterials {
      built from now carries a real roughness map, so the softbox breaks up
      across a face instead of shading it like one flat polygon — which is what
      made the whole rig read as plastic. */
-  const { plateTex, cabTex, tyreTex, cabRough, tyreRough } = gateTextures();
+  const { plateTex, cabTex, tyreTreadTex, tyreCapTex, cabRough } = gateTextures();
 
   const darkMetal = makeMetal(DARK_METAL);
   const dark = darkMetal.material;
+  /* TYRE, VIA hero-cards/skins.ts's `tyre()` — REUSED, NOT REPAINTED. The
+     tread map goes on the belt/shoulder/sidewall-disc meshes (all of which
+     already wrap a cylinder around the tyre's circumference in gate.ts, so
+     the map's own S-axis repeat is correct with no extra UV work); the cap
+     map goes on the rim disc + hub, which is exactly the sidewall/hub asset
+     `tyre().cap` was drawn for. */
   const rubber = new THREE.MeshStandardMaterial({
     // colour MULTIPLIES the map, so this knocks the rubber down rather than
     // up — under this key a 0.15-albedo map still renders mid-grey on its own
-    map: tyreTex, color: "#70757C", roughnessMap: tyreRough, roughness: 1,
+    map: tyreTreadTex, color: "#70757C", roughness: 0.96,
     metalness: 0.0, ...common,
   });
   /* The cab is the biggest single surface in the scene, so it is the one that
      most needs a roughness map: a large panel at one flat roughness reflects
      the softbox as an even wash and reads as plastic no matter how good the
-     albedo is. */
+     albedo is. envMapIntensity lifted from the shared `common` 0.7 to 0.9 —
+     see the exposure note in scene.tsx: the cab paint was the flattest thing
+     in the scene once the overall level came up, and paint wants some sheen
+     of its own on top of a brighter room, not just a brighter room. */
   const cab = new THREE.MeshStandardMaterial({
-    map: cabTex, roughnessMap: cabRough, roughness: 1, metalness: 0.45, ...common,
+    map: cabTex, roughnessMap: cabRough, roughness: 1, metalness: 0.45,
+    ...common, envMapIntensity: 0.9,
   });
-  // bare rim/hub metal, distinct from the black hardware
+  // bare rim/hub metal, carrying the tyre's own cap/hub map instead of a flat
+  // tint — distinct from the black hardware
   const rimMetal = makeMetal(RIM_METAL);
   const rim = rimMetal.material;
-  const glass = new THREE.MeshStandardMaterial({
-    color: "#0B1220", metalness: 0.9, roughness: 0.12, envMapIntensity: 1.4,
+  rim.map = tyreCapTex;
+  /* Lighter trim steel for the bumper/grille — one step up from `dark` in
+     both colour and roughness, the same idea gate.ts's chassis/cab split
+     already draws on: a truck front is paint, glass, dark chassis AND a
+     lighter bumper/grille trim, four values not two. Without this the bumper
+     and the chassis rails behind it were the same flat black and the nose
+     read as one shape instead of four. */
+  const trim = new THREE.MeshStandardMaterial({
+    color: "#4A5158", metalness: 0.55, roughness: 0.42, envMapIntensity: 0.6,
     transparent: true, opacity: 0,
   });
+  /* THE WINDSCREEN, FIXED. This was metalness 0.9 / envMapIntensity 1.4 —
+     numbers for a POLISHED METAL PANEL, not glass, and a metal that dark
+     just reads as a black rectangle under a low-level room (see the exposure
+     note below). Real automotive glass is close to metalness 0 with a very
+     low roughness: it is a dielectric, so what makes it read as glass is a
+     SHARP, BRIGHT environment reflection sitting on top of a dark base, not
+     the base's own metallic response. Dropped metalness to near 0, roughness
+     down to a true specular sheen, and envMapIntensity pushed hard (2.4) so
+     the strip-light softboxes actually streak across it — that streak is the
+     one cue that reads as "glass" rather than "hole". Base colour lifted one
+     notch, #0B1220 -> #16233A, so the panel has a colour of its own under the
+     reflection instead of reading as pure black between highlights. */
+  const glass = new THREE.MeshStandardMaterial({
+    color: "#16233A", metalness: 0.05, roughness: 0.045, envMapIntensity: 2.4,
+    transparent: true, opacity: 0,
+  });
+  /* THE CLIPPING HIGHLIGHT. This was the single brightest thing in the frame,
+     clipping to pure white — envMapIntensity 1.8 on a metalness-0.95/
+     roughness-0.08 lens (near-mirror) pointed up at the gantry's own softbox
+     strip is exactly the recipe for a blown specular. Brought down across all
+     three axes: envMapIntensity 1.8 -> 0.85, roughness 0.08 -> 0.20 (still a
+     glass lens, just not a mirror), metalness 0.95 -> 0.8. Still the darkest,
+     glossiest surface in the scene — it no longer clips. */
   const lens = new THREE.MeshStandardMaterial({
-    color: "#05070C", metalness: 0.95, roughness: 0.08, envMapIntensity: 1.8,
+    color: "#05070C", metalness: 0.8, roughness: 0.20, envMapIntensity: 0.85,
+    transparent: true, opacity: 0,
+  });
+  /* HEADLAMPS — the front used to have two lens-material boxes standing in
+     for lamps, which under the old dim exposure read as two more dark
+     rectangles. Emissive white-warm, unlit by the scan/scene lighting (it is
+     the lamp's OWN light, not a reflection), so it reads as a lit lamp at any
+     exposure. toneMapped:false, same house rule as every unlit accent mark on
+     this site (see the underline/scan marks in scene.tsx) — a lamp is a light
+     source, not a lit surface, and ACES would otherwise crush it back toward
+     grey. */
+  const headlamp = new THREE.MeshStandardMaterial({
+    color: "#EDEFF4", emissive: "#EDEFF4", emissiveIntensity: 0.9,
+    roughness: 0.3, metalness: 0.1, toneMapped: false,
+    transparent: true, opacity: 0,
+  });
+  /* MARKER LIGHTS — small amber roof-line lamps, the row of clearance lights
+     that makes a cab's roofline read as a roofline at night. Amber, NOT the
+     SIGNAL #ED510C: #E8A560 is a warm desaturated amber, clearly a different
+     hue/saturation family from the detection accent, so it can never be
+     mistaken for "the system flagged something" — it is vehicle equipment,
+     always on, never a finding. */
+  const marker = new THREE.MeshStandardMaterial({
+    color: "#E8A560", emissive: "#E8A560", emissiveIntensity: 0.8,
+    roughness: 0.4, metalness: 0.0, toneMapped: false,
     transparent: true, opacity: 0,
   });
 
@@ -314,16 +360,53 @@ export function buildGateMaterials(): GateMaterials {
     transparent: true, opacity: 0,
   });
 
-  const all = [dark, rubber, cab, rim, glass, lens, plate, barrierLight];
+  /* ---- the road and the apron beyond it ----
+     Both reuse hero-cards/skins.ts's `concreteFloor()` — one cached canvas,
+     two tints/repeats, the same idiom `wallMapFor`/skins' own callers use for
+     one map serving several rects. The road stays close to its old near-black
+     value (it is a much-driven lane, darker than the open apron) with a tight
+     tile so the aggregate reads at truck-passing distance; the apron is a
+     stop lighter (real sealed concrete, not lane asphalt) and tiles wider
+     since it is seen from further back and to the sides. */
+  const roadTex = concreteFloorSkin();
+  const roadTexT = roadTex.clone();
+  roadTexT.wrapS = roadTexT.wrapT = THREE.RepeatWrapping;
+  roadTexT.repeat.set(9, 1.2);
+  roadTexT.needsUpdate = true;
+  const road = new THREE.MeshStandardMaterial({
+    map: roadTexT, color: "#3A3F46", roughness: 0.95, metalness: 0.0,
+    transparent: true, opacity: 0,
+  });
+  const apronTex = roadTex.clone();
+  apronTex.wrapS = apronTex.wrapT = THREE.RepeatWrapping;
+  apronTex.repeat.set(14, 14);
+  apronTex.needsUpdate = true;
+  const apron = new THREE.MeshStandardMaterial({
+    map: apronTex, color: "#63696F", roughness: 0.96, metalness: 0.0,
+    envMapIntensity: 0.12,
+    transparent: true, opacity: 0,
+  });
+
+  const all = [
+    dark, rubber, cab, rim, trim, glass, lens, headlamp, marker, plate,
+    barrierLight, road, apron,
+  ];
   return {
-    dark, rubber, cab, rim, glass, lens, plate, barrierLight, all,
-    /* MATERIALS ONLY. The five canvas textures are cached in gateTexCache and
-       the metal maps are cached in metal.ts, so a teardown that disposed them
+    dark, rubber, cab, rim, trim, glass, lens, headlamp, marker, plate,
+    barrierLight, road, apron, all,
+    /* MATERIALS ONLY. The canvas textures are cached in gateTexCache (or, for
+       the tyre and concrete maps, in hero-cards/skins.ts's own cache) and the
+       metal maps are cached in metal.ts, so a teardown that disposed them
        would leave the next gate build sampling destroyed textures — the exact
-       hazard flagged on container-vision's FrontMaterial.dispose. */
+       hazard flagged on container-vision's FrontMaterial.dispose. The two
+       CLONED road/apron textures are this material's own (clone() shares the
+       image but not the repeat/wrap state) and are disposed here; the image
+       data underneath stays owned by skins.ts's cache. */
     dispose: () => {
       darkMetal.dispose();
       rimMetal.dispose();
+      roadTexT.dispose();
+      apronTex.dispose();
       all.forEach((m) => m.dispose());
     },
   };

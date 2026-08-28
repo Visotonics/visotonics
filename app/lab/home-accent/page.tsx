@@ -113,7 +113,6 @@ function leadcardSvg(preserveAspectRatio: string) {
 const DARK = "#0A0B0E";
 const DARK_SURFACE = "#101216";
 const LIGHT = "#ECEDEF";
-const LIGHT_SURFACE = "#F6F7F8";
 const TXT_D1 = "#F4F5F7";
 const TXT_D2 = "#A6ADB8";
 const TXT_L1 = "#13151A";

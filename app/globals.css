@@ -575,32 +575,58 @@
 .v-enc { opacity: 0.55; }
 
 /* ---------------------------------------------------------------------------
-   Hero scan line (app/page.tsx Hero()) — a single soft-edged bar travelling
-   the length of the callout rule, once every 9s, holding at each end rather
-   than pulsing. "The grid coming alive" per docs/15-hero-visual-critique.md,
-   without violating the codebase's calm-motion rule. Reduced-motion turns it
-   into the plain static rule it sits on top of.
+   Hero callout pulse (DimensionSpan's `pulse` prop, hero call site only in
+   app/page.tsx) — a calm pulse emitted from the callout label, once every
+   9s, travelling OUTWARD IN BOTH DIRECTIONS AT ONCE along the callout's own
+   two accent rule segments (not across empty space — there is no longer a
+   full-width grid rule for a single bar to cross). The left bar runs
+   right-to-left (label toward the left tick), the right bar runs
+   left-to-right (label toward the right tick); same soft-edged gradient look
+   as the old single-bar scanline, same 9s cadence with a hold between
+   emissions. Both keyframes share duration/timing-function/delay (all
+   implicit 0s) so the two stay mirrored and synchronised. Reduced-motion
+   hides both, leaving the plain static rule.
 --------------------------------------------------------------------------- */
-.hero-scanline-bar {
+
+.hero-pulse-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  overflow: hidden;
+  pointer-events: none;
+}
+.hero-pulse-bar {
   position: absolute;
   top: 0;
-  left: -10%;
-  width: 10%;
+  width: 12%;
   height: 100%;
   background: linear-gradient(90deg, transparent, rgba(92, 200, 255, 0.9), transparent);
 }
+.hero-pulse-bar-right { left: -12%; }
+.hero-pulse-bar-left { right: -12%; }
 @media (prefers-reduced-motion: no-preference) {
-  .hero-scanline-bar {
-    animation: heroScan 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  .hero-pulse-bar-right {
+    animation: heroPulseOutRight 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  .hero-pulse-bar-left {
+    animation: heroPulseOutLeft 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 }
-@keyframes heroScan {
-  0% { left: -10%; }
+@keyframes heroPulseOutRight {
+  0% { left: -12%; }
   40% { left: 100%; }
   100% { left: 100%; }
 }
+@keyframes heroPulseOutLeft {
+  0% { right: -12%; }
+  40% { right: 100%; }
+  100% { right: 100%; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .hero-scanline-bar { display: none; }
+  .hero-pulse-bar-right, .hero-pulse-bar-left { display: none; }
 }
 
 /* ---------------------------------------------------------------------------

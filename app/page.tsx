@@ -19,7 +19,6 @@ import { DataCard, FactoryCard, LeadCardScene, WarehouseCard, YardCard } from "@
 const DARK = "#0A0B0E";
 const DARK_SURFACE = "#101216";
 const LIGHT = "#ECEDEF";
-const LIGHT_SURFACE = "#F6F7F8";
 const TXT_D1 = "#F4F5F7";
 const TXT_D2 = "#A6ADB8";
 const TXT_L1 = "#13151A";
@@ -93,8 +92,8 @@ function SignalCross({ style, color = SIGNAL }: { style: CSSProperties; color?: 
    neither type nor a 3px dot. Extension ticks at each end, a rule between, and
    a mono label sitting on the rule with the background knocked out behind it. */
 function DimensionSpan({
-  label, left, right, top, color = SIGNAL, strong = false,
-}: { label: string; left: number | string; right: number | string; top: number | string; color?: string; strong?: boolean }) {
+  label, left, right, top, color = SIGNAL, strong = false, pulse = false,
+}: { label: string; left: number | string; right: number | string; top: number | string; color?: string; strong?: boolean; pulse?: boolean }) {
   // `strong` is the hero-only weight bump called for in
   // docs/15-hero-visual-critique.md ("give DimensionSpan more visual
   // weight") — every other caller keeps the original quiet instrument-label
@@ -128,7 +127,13 @@ function DimensionSpan({
           display: "flex", alignItems: "center",
         }}
       >
-        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
+        <div style={{ position: "relative", flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55, overflow: pulse ? "visible" : undefined }}>
+          {pulse && (
+            <div className="hero-pulse-track">
+              <div className="hero-pulse-bar hero-pulse-bar-left" />
+            </div>
+          )}
+        </div>
         <span
           style={{
             flexShrink: 0,
@@ -139,7 +144,13 @@ function DimensionSpan({
         >
           {label}
         </span>
-        <div style={{ flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55 }} />
+        <div style={{ position: "relative", flex: 1, height: 1, background: color, opacity: strong ? 0.85 : 0.55, overflow: pulse ? "visible" : undefined }}>
+          {pulse && (
+            <div className="hero-pulse-track">
+              <div className="hero-pulse-bar hero-pulse-bar-right" />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -358,14 +369,11 @@ function Hero() {
           <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: "calc(100% - 52px)" }} />
           <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: 60, top: 4 }} />
           <Cross color={HERO_CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: 4 }} />
-          {/* THE GRID COMING ALIVE — one calm, slow scan travelling the length
-              of the callout rule, once every 9s. Not a pulse: a single
-              soft-edged bar crossing left to right and holding briefly at each
-              end. Respects prefers-reduced-motion (see .hero-scanline in
-              globals.css, which zeroes the animation there). */}
-          <div className="hero-scanline" style={{ position: "absolute", top: "calc(100% - 49px)", left: 60, right: 68, height: 2, overflow: "hidden" }}>
-            <div className="hero-scanline-bar" />
-          </div>
+          {/* THE GRID COMING ALIVE — a calm pulse emitted from the callout
+              label, once every 9s, travelling outward in both directions at
+              once along the callout's own two accent rule segments (see the
+              `pulse` prop on DimensionSpan below, and .hero-pulse-bar in
+              globals.css). Respects prefers-reduced-motion. */}
           {/* SILENT CHROME — the hero's drafting furniture is drawn in neutral,
               not in the accent.
 
@@ -415,6 +423,7 @@ function Hero() {
           top="calc(100% - 53px)"
           color={HERO_CROSS_D}
           strong
+          pulse
         />
 
         {/* The headline takes the whole band and centres in it. flex:1 rather

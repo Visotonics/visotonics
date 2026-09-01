@@ -3,6 +3,7 @@ import DecryptedText from "@/components/decrypted-text";
 import { JsonLd, productSchema } from "@/components/json-ld";
 import { pageMeta } from "@/lib/seo";
 import { Reveal } from "@/components/motion";
+import { Verticals } from "../viso-yard/_shared";
 
 /* Every section here sets its own inline background (no shared ambient canvas
    behind them), so Reveal wraps the inner desktop/mobile content div rather
@@ -91,22 +92,10 @@ const eyebrow = (color: string): CSSProperties => ({
 });
 
 // the 5 page-wide verticals — identical coordinates to the yard sheet
-const V_X = [
-  "64px",
-  "calc(64px + (100% - 128px) * 0.25)",
-  "50%",
-  "calc(64px + (100% - 128px) * 0.75)",
-  "calc(100% - 64px)",
-];
-function Verticals({ color }: { color: string }) {
-  return (
-    <>
-      {V_X.map((x, i) => (
-        <div key={i} aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
-      ))}
-    </>
-  );
-}
+/* V_X and Verticals were a byte-identical duplicate of the pair in
+   ../viso-yard/_shared. Removed in favour of the shared version so the
+   scan-pulse scattering (period/speed/phase per line) lives in ONE place —
+   duplicating it here would have meant two copies to keep in step. */
 
 /* mobile-only hero manifest — the quick-nav list is mobile's only way to jump
    to a system before scrolling (matches the other three platform pages). */
@@ -484,7 +473,8 @@ export default function VisoDataPage() {
           <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
             <div style={{ flex: "0 0 180px" }} />
             <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
-              <Verticals color={GRID_D} />
+              {/* Ambient scan pulses — see Verticals in ../viso-yard/_shared. */}
+              <Verticals color={GRID_D} className="wire-sweep" />
             </div>
           </div>
           <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>

@@ -156,7 +156,11 @@ export default function VisoFactoryPage() {
             <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
               <div style={{ flex: "0 0 180px" }} />
               <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
-                <Verticals color={GRID_D} />
+                {/* Ambient scan pulses on the page-level gridlines. wire-sweep, not
+                    the opacity-fade classes: fading a rgba(...,0.08) line changes
+                    almost nothing on screen. Each line self-scatters its period,
+                    speed and phase — see Verticals in ../viso-yard/_shared. */}
+                <Verticals color={GRID_D} className="wire-sweep" />
               </div>
             </div>
             <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>

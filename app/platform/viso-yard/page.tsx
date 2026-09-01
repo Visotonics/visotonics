@@ -58,8 +58,12 @@ function Hero() {
   return (
     <div style={{ position: "relative" }}>
       <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, top: 0, height: 1, background: BORDER_D_STRONG, zIndex: 2 }} />
-      <Cross color={CROSS_D} style={{ left: 60, top: -4 }} />
-      <Cross color={CROSS_D} style={{ left: "calc(100% - 68px)", top: -4 }} />
+      {/* hero-wire-activate, NOT wire-activate: these sit outside any <Reveal>,
+          and the scroll-triggered class only matches under
+          [data-revealed="true"] — tagging them with it would leave them at
+          opacity 0 forever. Same reason the home hero has its own variant. */}
+      <Cross color={CROSS_D} className="hero-wire-activate" style={{ left: 60, top: -4 }} />
+      <Cross color={CROSS_D} className="hero-wire-activate" style={{ left: "calc(100% - 68px)", top: -4 }} />
 
       {/* DESKTOP */}
       <div className="hidden md:block" style={{ position: "relative", zIndex: 1, padding: "104px 64px 48px", boxSizing: "border-box" }}>
@@ -161,7 +165,11 @@ export default function VisoYardPage() {
             <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
               <div style={{ flex: "0 0 180px" }} />
               <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
-                <Verticals color={GRID_D} />
+                {/* Page-level backdrop spanning every band, so it belongs to
+                    no single section and cannot use the scroll-triggered
+                    class — it announces itself once on mount, like the home
+                    hero's grid, then holds. */}
+                <Verticals color={GRID_D} className="hero-wire-activate" />
               </div>
             </div>
             <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>

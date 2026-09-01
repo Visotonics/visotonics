@@ -43,10 +43,24 @@ export const eyebrow = (color: string): CSSProperties => ({
   color,
 });
 
-// 9px registration cross, anchored to a corner / rule endpoint.
-export function Cross({ color, style }: { color: string; style: CSSProperties }) {
+/* 9px registration cross, anchored to a corner / rule endpoint.
+
+   `className` is optional and additive — every existing caller passes only
+   colour+style and is unaffected. It exists so these marks can take the
+   wireframe activation classes (.hero-wire-activate / .wire-activate, see
+   app/globals.css), which is how the home page's identical primitive already
+   works; the platform copy simply never had the hook. */
+export function Cross({
+  color,
+  style,
+  className,
+}: {
+  color: string;
+  style: CSSProperties;
+  className?: string;
+}) {
   return (
-    <div aria-hidden="true" style={{ position: "absolute", width: 9, height: 9, ...style }}>
+    <div aria-hidden="true" className={className} style={{ position: "absolute", width: 9, height: 9, ...style }}>
       <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: color }} />
       <div style={{ position: "absolute", top: 0, bottom: 0, left: 4, width: 1, background: color }} />
     </div>
@@ -68,13 +82,18 @@ export const V_X = [
   "calc(64px + (100% - 128px) * 0.75)",
   "calc(100% - 64px)",
 ];
-export function Verticals({ color }: { color: string }) {
+/* `className` is applied to EVERY line, not to a wrapper — this returns a
+   fragment, so there is no single element to hang it on, and the activation
+   CSS keys off the class on the animated element itself. Optional and
+   additive; existing callers pass colour only. */
+export function Verticals({ color, className }: { color: string; className?: string }) {
   return (
     <>
       {V_X.map((x, i) => (
         <div
           key={i}
           aria-hidden="true"
+          className={className}
           style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }}
         />
       ))}

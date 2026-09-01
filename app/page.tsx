@@ -29,7 +29,14 @@ const ACCENT_L = "#1B7FC4";
 // grids/crosses — hue-shifted to the accent, alpha unchanged from the previous neutral values
 const GRID_D = "rgba(92,200,255,0.08)";
 const GRID_L = "rgba(27,127,196,0.06)";
-const CROSS_D = "rgba(92,200,255,0.4)";
+/* 0.4 -> 0.55. Confirmed the only consumer is the dark-section wire-activate
+   crosses (app/page.tsx grep, no static/non-animated use) — safe to raise
+   directly rather than needing a dedicated constant the way GRID_D did not
+   get one: GRID_D also draws every plain static divider/border on the page,
+   so bumping IT would have brightened lines that were never part of this
+   fix. See the wire-activate CSS block in globals.css for the full
+   effective-weight arithmetic this value was picked against. */
+const CROSS_D = "rgba(92,200,255,0.55)";
 const CROSS_L = "rgba(27,127,196,0.30)";
 // hero-only, higher-weight variants of the two lines above — see the
 // "raise the alpha of the existing blue" item in docs/15-hero-visual-critique.md.
@@ -41,10 +48,22 @@ const HERO_CROSS_D = "rgba(92,200,255,0.7)";
 const BORDER_D = "rgba(244,245,247,0.10)";
 const RULE_L = "#D4D6DB";
 const SIGNAL = "#ED510C";
-// ProofPartners-only: the ORIGINAL neutral value, so that section renders
-// identically to before even though CROSS_L above changed hue for every
-// other section (logos are handled separately from the accent system).
-const PP_CROSS_L = "rgba(19,21,26,0.30)";
+/* WAS a near-black neutral (rgba(19,21,26,0.30)), kept that way on purpose so
+   this section rendered identically to before a hue change made elsewhere —
+   but every current use of this constant is one of the six animated
+   wire-activate crosses below, not a static divider, so that rationale no
+   longer applies to anything live in this file. A near-black mark at 0.30
+   alpha on this section's light background, THEN multiplied by
+   wire-activate's own resting opacity, is what rendered these as invisible
+   grey specks across five review passes — wrong hue family entirely, not
+   just under-weighted like CROSS_D was.
+
+   rgba(27,127,196, 0.55): the same blue hue this file already uses for every
+   OTHER light-background accent mark (see CROSS_L), at the alpha needed to
+   land at the same effective weight as the dark-section fix above
+   (0.55 x wire-activate's 0.75 resting = 0.4125, matching CROSS_D's). Light
+   and dark sections now read as equally strong, not two different systems. */
+const WIRE_CROSS_L = "rgba(27,127,196,0.55)";
 
 const mono = "var(--font-plex-mono)";
 const sans = "var(--font-archivo)";
@@ -942,7 +961,7 @@ function ProofPartners() {
           {/* header band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
             <Dot style={{ left: -2, top: -2 }} />
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 16, display: "block" }}>PROVEN WHERE IT&apos;S HARDEST</span>
             <h2 style={{ margin: "24px 0 0", fontFamily: sans, fontSize: 54, lineHeight: 1.05, fontWeight: 600, letterSpacing: "-0.02em", color: TXT_L1, maxWidth: "22ch" }}>
               Trusted by Industry Leaders
@@ -960,8 +979,8 @@ function ProofPartners() {
 
           {/* deployed band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>DEPLOYED AT</span>
             <div style={{ marginTop: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 56 }}>
               {DEPLOYED.map((l) => <Logo key={l.src} {...l} />)}
@@ -970,8 +989,8 @@ function ProofPartners() {
 
           {/* recognition band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "48px 0" }}>
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ right: -4, top: -5 }} />
             <span style={{ ...eyebrow(TXT_L2), fontSize: 15, display: "block" }}>BACKED &amp; RECOGNISED BY</span>
             <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 28, columnGap: 48 }}>
               {RECOGNISED.map((l) => <Logo key={l.src} {...l} />)}
@@ -980,7 +999,7 @@ function ProofPartners() {
 
           {/* footnote band */}
           <div style={{ position: "relative", borderTop: `1px solid ${RULE_L}`, padding: "28px 0 0" }}>
-            <Cross color={PP_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
+            <Cross color={WIRE_CROSS_L} className="wire-activate" style={{ left: -4, top: -5 }} />
             <Dot style={{ right: -2, top: -2 }} />
             <span style={{ display: "block", fontSize: 16, lineHeight: 1.6, color: TXT_L2 }}>CII Best Industry AI Application 2025&nbsp;·&nbsp;Patented Technology</span>
           </div>

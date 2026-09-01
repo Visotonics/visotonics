@@ -639,22 +639,42 @@
    Reveal is wrapping. Hero is excluded on purpose: it has its own distinct
    glow/scanline treatment, not this one.
 --------------------------------------------------------------------------- */
+/* RESTING OPACITY 0.55 -> 0.75, and every colour token this class is ever
+   handed follows below. Measured live (not eyeballed): at rest, a CROSS_D
+   mark (rgba alpha 0.4) at the old 0.55 multiplier renders at an EFFECTIVE
+   0.22 — against HERO_CROSS_D's 0.7 alpha at hero-wire-activate's 1.0 resting
+   multiplier, effective 0.7. That is a 3x gap, and it is why these marks were
+   reported invisible across five separate reviews: on a page the user
+   actually scrolls (not a static screenshot), a 1200ms flash at a third of
+   the hero's weight reads as nothing.
+
+   0.75 was chosen over simply matching hero's 1.0 on purpose — the file's own
+   original comment called 0.55 "a calm PERMANENT" rest, deliberately quieter
+   than the hero, which owns the page's one loud moment. That distinction is
+   real and worth keeping; the bug was never "these should look identical to
+   hero", it was "these were quiet to the point of not existing". 0.75 clears
+   that bar (CROSS_D at 0.55 alpha x 0.75 = effective 0.4125, well over half
+   of hero's weight) while still reading as calmer than the hero on an A/B
+   look.
+
+   The keyframe's own 100% stop is updated to match, so the flash settles
+   INTO the new resting value rather than dropping past it. */
 @media (prefers-reduced-motion: no-preference) {
   .wire-activate {
     opacity: 0;
   }
   [data-revealed="true"] .wire-activate {
-    opacity: 0.55;
+    opacity: 0.75;
     animation: wireGridFlash 1200ms ease-out;
   }
 }
 @keyframes wireGridFlash {
   0% { opacity: 0; }
   30% { opacity: 1; }
-  100% { opacity: 0.55; }
+  100% { opacity: 0.75; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wire-activate { opacity: 0.55; }
+  .wire-activate { opacity: 0.75; }
 }
 
 /* ---------------------------------------------------------------------------

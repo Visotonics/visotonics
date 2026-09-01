@@ -165,11 +165,12 @@ export default function VisoYardPage() {
             <div className="hidden md:flex" style={{ maxWidth: 1620, height: "100%", margin: "0 auto" }}>
               <div style={{ flex: "0 0 180px" }} />
               <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, maxWidth: 1440 }}>
-                {/* Page-level backdrop spanning every band, so it belongs to
-                    no single section and cannot use the scroll-triggered
-                    class — it announces itself once on mount, like the home
-                    hero's grid, then holds. */}
-                <Verticals color={GRID_D} className="hero-wire-activate" />
+                {/* wire-sweep, not hero-wire-activate: a travelling glow, not
+                    an opacity fade. Fading a line whose own colour is already
+                    rgba(...,0.08) changes almost nothing on screen, which is
+                    why the fade version read as "no animation at all". Each
+                    line self-scatters its phase — see Verticals. */}
+                <Verticals color={GRID_D} className="wire-sweep" />
               </div>
             </div>
             <div className="md:hidden" style={{ position: "absolute", inset: 0 }}>

@@ -678,6 +678,114 @@
 }
 
 /* ---------------------------------------------------------------------------
+   WIREFRAME SCAN SWEEP — a bright segment that TRAVELS down the background
+   gridlines, on a loop.
+
+   This is deliberately NOT .wire-activate / .hero-wire-activate above. Those
+   animate OPACITY: the line fades up, holds, and settles. On a gridline whose
+   own colour is rgba(92,200,255,0.08) that is invisible in practice — fading
+   an already-invisible line in and out changes almost nothing, which is
+   exactly why the treatment was reported as missing across repeated reviews
+   even though the mechanism was firing correctly every time.
+
+   A sweep is a different thing entirely: a short, BRIGHT gradient segment
+   moving ALONG the line, at an alpha an order of magnitude above the line's
+   own. It reads as the grid being scanned rather than as the grid appearing.
+
+   Same visual language as .hero-pulse-bar (the callout rule's travelling
+   segment) — same 0.9-alpha accent, same cubic-bezier, same "travel, then
+   hold off-screen for the rest of the cycle" keyframe shape. Rotated to the
+   vertical axis, since these lines run top-to-bottom.
+
+   The 9s cycle with travel finishing at 40% is inherited from the hero pulse
+   on purpose: it means ~3.6s of movement and ~5.4s of stillness, so the page
+   is calm most of the time and the sweep is an event rather than a loop that
+   never stops moving.
+
+   `--wire-sweep-delay` lets each line start at a different point, so the set
+   reads as one sweep crossing the page rather than every line firing at once.
+--------------------------------------------------------------------------- */
+.wire-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  pointer-events: none;
+}
+/* A REPEATING BAND, not a single travelling segment.
+
+   The first attempt animated one short segment from the top of the line to
+   the bottom. That cannot work here: these gridlines span the WHOLE PAGE
+   (~7000px), not the viewport, so a single pulse is somewhere off-screen the
+   overwhelming majority of the time — the animation ran correctly and you
+   would essentially never catch it.
+
+   A repeating gradient scrolled by one period puts a pulse every
+   --wire-sweep-period px along the entire line, so wherever the reader is
+   scrolled there are pulses in view, and several lines show one at once.
+
+   Wider than the line (9px, offset -4px) with a blur: the glow needs
+   somewhere to bloom. A box-shadow cannot do it here because the shadow
+   follows the ELEMENT box, which is the full-height line — it would halo the
+   whole column rather than the moving band. Blurring a slightly wider
+   element spreads the light around each band instead, which is the look. */
+.wire-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 9px;
+  /* TAPERED, and much shorter than the first pass. The stops step the alpha
+     down in stages either side of the peak (0.42 → 0.16 → 0.05 → 0) rather
+     than falling straight to transparent, so the pulse has a soft head and
+     tail instead of two hard ends. Bright for ~5% of the period, against
+     ~14% before.
+
+     Peak alpha 0.42, down from 0.95: at 0.95 against a
+     rgba(92,200,255,0.08) gridline the pulse was ~12x its own line and read
+     as a light bar rather than a charge moving along a wire. */
+  /* The band is a PERCENTAGE of the period, so it had to shrink sharply when
+     the period grew: 5.2% of the old ~4800px was ~240px, and the same 5.2% of
+     the new ~9000px would have been ~470px — twice as long, the opposite of
+     "much smaller". 1.1% holds it near ~100px regardless. */
+  background-image: linear-gradient(
+    180deg,
+    rgba(92, 200, 255, 0) 0%,
+    rgba(92, 200, 255, 0) 49.45%,
+    rgba(92, 200, 255, 0.03) 49.62%,
+    rgba(92, 200, 255, 0.09) 49.8%,
+    rgba(92, 200, 255, 0.22) 50%,
+    rgba(92, 200, 255, 0.09) 50.2%,
+    rgba(92, 200, 255, 0.03) 50.38%,
+    rgba(92, 200, 255, 0) 50.55%,
+    rgba(92, 200, 255, 0) 100%
+  );
+  background-size: 100% var(--wire-sweep-period, 4800px);
+  background-repeat: repeat-y;
+  filter: blur(2px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wire-sweep::after {
+    /* Period, duration and delay all come from the element (see Verticals in
+       _shared.tsx), so no two lines share a speed OR a phase. The negative
+       delay starts each line partway through its cycle, so the first painted
+       frame already has pulses at scattered heights. */
+    animation: wireSweepScroll var(--wire-sweep-dur, 7s) linear infinite;
+    animation-delay: var(--wire-sweep-delay, 0s);
+  }
+}
+/* Scrolls exactly ONE period, so the loop is seamless — the band that leaves
+   the bottom is replaced by the identical one entering from above. */
+@keyframes wireSweepScroll {
+  from { background-position-y: 0; }
+  to { background-position-y: var(--wire-sweep-period, 760px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire-sweep::after { display: none; }
+}
+
+/* ---------------------------------------------------------------------------
    Hero wireframe activate — the hero band's own equivalent of .wire-activate
    above, adapted for the fact that the hero is above the fold: a scroll-into-
    view trigger never fires on load, so this fires on MOUNT instead, via a

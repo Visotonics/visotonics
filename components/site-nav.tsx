@@ -215,6 +215,24 @@ export function SiteNav() {
       style={{ background: "var(--canvas-dark)", borderColor: "var(--border-dark)" }}
       onClickCapture={handleHeaderClick}
     >
+      {/* Ambient scan pulse riding the nav's bottom rule. Sits ON the existing
+          border rather than replacing it — the border still draws when motion
+          is reduced or the pulse is mid-gap. `sticky` already establishes a
+          positioning context, so this anchors to the header without needing
+          `relative` added. Its own period/phase differ from the footer's so
+          the two rules never pulse in lockstep. */}
+      <span
+        aria-hidden="true"
+        className="wire-sweep-h"
+        style={
+          {
+            bottom: -1,
+            "--wire-sweep-period": "2200px",
+            "--wire-sweep-dur": "5.1s",
+            "--wire-sweep-delay": "-1.7s",
+          } as CSSProperties
+        }
+      />
       {/* DESKTOP NAV — the trio below (nav row + mega-menu panel) share one
           hover boundary: entering any trigger opens its panel directly (no
           click needed), moving between triggers swaps panels without ever

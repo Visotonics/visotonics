@@ -785,6 +785,73 @@
   .wire-sweep::after { display: none; }
 }
 
+/* HORIZONTAL TWIN — for rules that run across rather than down: the nav's
+   bottom border and the footer's top border.
+
+   Same idea and same tuning targets as .wire-sweep, rotated 90 degrees. It
+   is a separate class rather than a modifier because almost every property
+   differs once the axis changes (width/height, background-size axis,
+   repeat-x vs repeat-y, background-position-x vs -y), so sharing one class
+   would have been a pile of overrides rather than reuse.
+
+   Periods are much shorter here: these rules are ~1360px wide, not ~7000px
+   tall, so the multi-thousand-pixel spacing used vertically would mean a
+   pulse crossed roughly once a minute. Sized so one crosses every few
+   seconds, matching the vertical lines' felt rhythm.
+
+   The pulse is a touch wider (3% vs 1.1%) because it is read against a much
+   shorter line — the vertical proportion here would be a ~40px dash that
+   reads as a glitch rather than a travelling charge. */
+.wire-sweep-h {
+  /* `display:block` is load-bearing, not tidiness. Both call sites use a
+     <span>, which is inline by default — an inline box ignores height and
+     does not stretch to left/right, so the element measured 0x0 and the
+     ::after had nothing to paint into. Set here rather than at the call
+     sites so it cannot regress the next time one is added. */
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  pointer-events: none;
+}
+.wire-sweep-h::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 9px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(92, 200, 255, 0) 0%,
+    rgba(92, 200, 255, 0) 48.5%,
+    rgba(92, 200, 255, 0.03) 48.9%,
+    rgba(92, 200, 255, 0.09) 49.4%,
+    rgba(92, 200, 255, 0.22) 50%,
+    rgba(92, 200, 255, 0.09) 50.6%,
+    rgba(92, 200, 255, 0.03) 51.1%,
+    rgba(92, 200, 255, 0) 51.5%,
+    rgba(92, 200, 255, 0) 100%
+  );
+  background-size: var(--wire-sweep-period, 2400px) 100%;
+  background-repeat: repeat-x;
+  filter: blur(2px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wire-sweep-h::after {
+    animation: wireSweepAcross var(--wire-sweep-dur, 5.5s) linear infinite;
+    animation-delay: var(--wire-sweep-delay, 0s);
+  }
+}
+@keyframes wireSweepAcross {
+  from { background-position-x: 0; }
+  to { background-position-x: var(--wire-sweep-period, 2400px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wire-sweep-h::after { display: none; }
+}
+
 /* ---------------------------------------------------------------------------
    Hero wireframe activate — the hero band's own equivalent of .wire-activate
    above, adapted for the fact that the hero is above the fold: a scroll-into-

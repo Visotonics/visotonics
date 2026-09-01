@@ -53,6 +53,23 @@ export function SiteFooter() {
       className="relative overflow-hidden border-t"
       style={{ background: "var(--canvas-dark)", borderColor: "var(--border-dark)" }}
     >
+      {/* Ambient scan pulse on the footer's top rule. Period/phase are
+          deliberately different from the nav's (2600 vs 2200, 6.4s vs 5.1s)
+          so the two never pulse together — matching pulses top and bottom of
+          the viewport would read as a synchronised frame rather than as
+          ambient activity. */}
+      <span
+        aria-hidden="true"
+        className="wire-sweep-h"
+        style={
+          {
+            top: -1,
+            "--wire-sweep-period": "2600px",
+            "--wire-sweep-dur": "6.4s",
+            "--wire-sweep-delay": "-3.9s",
+          } as CSSProperties
+        }
+      />
       <div className="relative z-[1] mx-auto max-w-[1360px] px-5 md:px-16">
         {/* DESKTOP GRID */}
         <div

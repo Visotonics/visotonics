@@ -70,6 +70,19 @@ function LightCorners() {
   );
 }
 
+/* Dark-ground twin of LightCorners — same four registration marks, on the
+   accent-on-dark cross colour this file already defines. */
+function DarkCorners() {
+  return (
+    <>
+      <Cross color={CROSS_D} style={{ left: 0, top: 0 }} />
+      <Cross color={CROSS_D} style={{ right: 0, top: 0 }} />
+      <Cross color={CROSS_D} style={{ left: 0, bottom: 0 }} />
+      <Cross color={CROSS_D} style={{ right: 0, bottom: 0 }} />
+    </>
+  );
+}
+
 /* =========================================================================
    HERO — same layout as /platform/viso-yard (see that file's band comment).
 
@@ -166,27 +179,27 @@ function CompressionAI() {
   return (
     <section
       id="compression-ai"
-      className={`${ANCHOR_OFFSET} on-light`}
-      style={{ position: "relative", background: CANVAS_LIGHT, boxSizing: "border-box", overflow: "hidden" }}
+      className={`${ANCHOR_OFFSET} on-dark`}
+      style={{ position: "relative", background: CANVAS_DARK, boxSizing: "border-box", overflow: "hidden" }}
     >
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 900, padding: "60px 64px 64px" }}>
-        <LightCorners />
+        <DarkCorners />
         {/* header lockup, centred */}
         <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-          <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L2 }}>
+          <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D2 }}>
             COMPRESSION AI
           </span>
-          <h2 style={{ margin: "24px auto 0", maxWidth: 640, fontFamily: sans, fontSize: 34, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.015em", color: TXT_L1 }}>
+          <h2 style={{ margin: "24px auto 0", maxWidth: 640, fontFamily: sans, fontSize: 34, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.015em", color: TXT_D1 }}>
             The footage you need is the footage you deleted.
           </h2>
-          <p style={{ margin: "28px auto 0", maxWidth: 820, fontFamily: sans, fontSize: 22, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.01em", color: CANVAS_DARK }}>
+          <p style={{ margin: "28px auto 0", maxWidth: 820, fontFamily: sans, fontSize: 22, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
             Same footage. Fewer bytes. Analytics unaffected.
           </p>
         </div>
 
         {/* spec register — bottom-anchored monument */}
-        <div style={{ position: "relative", zIndex: 1, marginTop: 96, borderTop: `1px solid ${INK_L}`, borderBottom: `1px solid ${INK_L}` }}>
+        <div style={{ position: "relative", zIndex: 1, marginTop: 96, borderTop: `1px solid ${BORDER_D_STRONG}`, borderBottom: `1px solid ${BORDER_D_STRONG}` }}>
           {COMPRESSION_SPECS.map(([label, value], i) => (
             <div
               key={label}
@@ -196,11 +209,11 @@ function CompressionAI() {
                 justifyContent: "space-between",
                 gap: 40,
                 padding: "36px 0",
-                borderTop: i === 0 ? undefined : `1px solid ${RULE_L}`,
+                borderTop: i === 0 ? undefined : `1px solid ${GRID_D}`,
               }}
             >
-              <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L1 }}>{label}</span>
-              <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 400, letterSpacing: "0.06em", color: TXT_L2, textAlign: "right" }}>{value}</span>
+              <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D1 }}>{label}</span>
+              <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 400, letterSpacing: "0.06em", color: TXT_D2, textAlign: "right" }}>{value}</span>
             </div>
           ))}
         </div>
@@ -208,20 +221,20 @@ function CompressionAI() {
 
       {/* MOBILE */}
       <Reveal as="div" className="md:hidden" style={{ position: "relative", padding: "48px 24px 56px" }}>
-        <span style={{ display: "block", textAlign: "center", fontFamily: mono, fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L2 }}>
+        <span style={{ display: "block", textAlign: "center", fontFamily: mono, fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D2 }}>
           COMPRESSION AI
         </span>
-        <h2 style={{ margin: "16px 0 0", textAlign: "center", fontFamily: sans, fontSize: 28, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_L1 }}>
+        <h2 style={{ margin: "16px 0 0", textAlign: "center", fontFamily: sans, fontSize: 28, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-0.01em", color: TXT_D1 }}>
           The footage you need is the footage you deleted.
         </h2>
-        <p style={{ margin: "20px 0 0", textAlign: "center", fontFamily: sans, fontSize: 15, lineHeight: 1.4, fontWeight: 500, color: CANVAS_DARK }}>
+        <p style={{ margin: "20px 0 0", textAlign: "center", fontFamily: sans, fontSize: 15, lineHeight: 1.4, fontWeight: 500, color: TXT_D1 }}>
           Same footage. Fewer bytes. Analytics unaffected.
         </p>
-        <div style={{ marginTop: 32, borderTop: `1px solid ${INK_L}` }}>
+        <div style={{ marginTop: 32, borderTop: `1px solid ${BORDER_D_STRONG}` }}>
           {COMPRESSION_SPECS.map(([label, value], i) => (
-            <div key={label} style={{ padding: "20px 0", borderBottom: `1px solid ${i === COMPRESSION_SPECS.length - 1 ? INK_L : RULE_L}` }}>
-              <span style={{ display: "block", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_L1 }}>{label}</span>
-              <span style={{ display: "block", marginTop: 4, fontFamily: mono, fontSize: 14, fontWeight: 400, letterSpacing: "0.06em", color: TXT_L2 }}>{value}</span>
+            <div key={label} style={{ padding: "20px 0", borderBottom: `1px solid ${i === COMPRESSION_SPECS.length - 1 ? BORDER_D_STRONG : GRID_D}` }}>
+              <span style={{ display: "block", fontFamily: mono, fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: TXT_D1 }}>{label}</span>
+              <span style={{ display: "block", marginTop: 4, fontFamily: mono, fontSize: 14, fontWeight: 400, letterSpacing: "0.06em", color: TXT_D2 }}>{value}</span>
             </div>
           ))}
         </div>

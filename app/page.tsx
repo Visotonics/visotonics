@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { CountUp, Reveal, UnderlineDraw } from "@/components/motion";
+import { wireSweepVars } from "@/components/wire-sweep";
 import { TestimonialPagerDesktop, TestimonialPagerMobile } from "@/components/testimonial-pager";
 import DecryptedText from "@/components/decrypted-text";
 import StatementVideo from "@/components/statement-video";
@@ -180,10 +181,24 @@ function DimensionSpan({
 // sheet reads continuous.
 const V_X = ["64px", "calc(64px + (100% - 128px) * 0.25)", "50%", "calc(64px + (100% - 128px) * 0.75)", "calc(100% - 64px)"];
 function Verticals({ color, className }: { color: string; className?: string }) {
+  const isSweep = className?.includes("wire-sweep");
   return (
     <>
       {V_X.map((x, i) => (
-        <div key={i} aria-hidden="true" className={className} style={{ position: "absolute", top: 0, bottom: 0, left: x, width: 1, background: color }} />
+        <div
+          key={i}
+          aria-hidden="true"
+          className={className}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: x,
+            width: 1,
+            background: color,
+            ...(isSweep ? wireSweepVars(i) : {}),
+          }}
+        />
       ))}
     </>
   );
@@ -640,7 +655,7 @@ function Statement() {
             z-index and paint above it. Poster-only until the real loop ships. */}
         <StatementVideo>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_L} className="wire-activate" />
+          <Verticals color={GRID_L} className="wire-sweep" />
           {/* L-corner registration brackets, four section corners only */}
           <div style={{ position: "absolute", left: 16, top: 16, width: 16, height: 16, borderLeft: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
           <div style={{ position: "absolute", right: 16, top: 16, width: 16, height: 16, borderRight: `1px solid ${CROSS_L}`, borderTop: `1px solid ${CROSS_L}` }} />
@@ -1050,7 +1065,7 @@ function Testimonials() {
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ ...SHEET, minHeight: 740 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} className="wire-activate" />
+          <Verticals color={GRID_D} className="wire-sweep" />
           <HRule top={72} color={GRID_D} cross={CROSS_D} className="wire-activate" />
           <Cross color={CROSS_D} className="wire-activate" style={{ left: 60, top: 4 }} />
           <Cross color={CROSS_D} className="wire-activate" style={{ left: "calc(100% - 68px)", top: 4 }} />
@@ -1105,7 +1120,7 @@ function Convert() {
       {/* DESKTOP */}
       <Reveal as="div" className="hidden md:block" style={{ ...SHEET, height: 720 }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-          <Verticals color={GRID_D} className="wire-activate" />
+          <Verticals color={GRID_D} className="wire-sweep" />
           <div style={{ position: "absolute", left: 0, right: 0, top: 64, height: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: GRID_D }} />
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 64, height: 1, background: GRID_D }} />

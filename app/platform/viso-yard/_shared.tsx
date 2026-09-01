@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { wireSweepVars } from "@/components/wire-sweep";
 
 /* ---------------------------------------------------------------------------
    Viso Yard — shared drafting-sheet primitives + tokens.
@@ -83,80 +84,34 @@ export const V_X = [
   "calc(100% - 64px)",
 ];
 /* `className` is applied to EVERY line, not to a wrapper — this returns a
-   fragment, so there is no single element to hang it on, and the activation
-   CSS keys off the class on the animated element itself. Optional and
-   additive; existing callers pass colour only.
+   fragment, so there is no single element to hang it on, and the sweep CSS
+   keys off the class on the animated element itself. Optional and additive;
+   existing callers pass colour only.
 
-   SCATTERING THE SWEEP. When the class is `wire-sweep`, each line also gets
-   its own duration and a NEGATIVE delay, which is what makes the pulses look
-   independent: a negative delay starts an animation partway through, so the
-   very first painted frame already has pulses at different heights instead of
-   every line firing in unison from the top.
-
-   The values are DERIVED FROM THE INDEX, not Math.random(). This renders on
-   the server as well as the client, and a random value would differ between
-   the two and trip a hydration mismatch. Multiplying by irrationals and
-   taking the fractional part gives a sequence with no visible period across
-   the handful of lines here — deterministic, identical on both passes, and
-   still reads as scattered. The two multipliers are unrelated so a line's
-   delay does not correlate with its duration. */
+   When the class is `wire-sweep`, each line also takes its own period, speed
+   and phase from wireSweepVars — see that function in components/motion.tsx
+   for why the values are derived from the index rather than randomised. */
 export function Verticals({ color, className }: { color: string; className?: string }) {
   const isSweep = className?.includes("wire-sweep");
   return (
     <>
-      {V_X.map((x, i) => {
-        const frac = (n: number) => n - Math.floor(n);
-        /* SPEED AND SPACING MOVE TOGETHER, because with a scrolled repeating
-           band they are not independent: the band advances exactly one PERIOD
-           per DURATION, so
-             speed        = period / duration   (how fast a pulse travels)
-             gap in time  = duration            (how often one passes a point)
-
-           Making it "much faster" by shortening the duration alone would also
-           make pulses arrive more often — the opposite of "too many". So both
-           scale up together: period 3600–6000px over 4.5–7.5s holds the speed
-           at roughly 800px/s (fast — it crosses a ~700px viewport in about a
-           second, which is the "visible for a second max" ask) while spacing
-           pulses 4.5–7.5s apart on a given line instead of the previous
-           ~0.9s. Far fewer on screen, each one quicker.
-
-           Varying the period as well as the duration is what stops the set
-           reading as a rank marching in formation: with different spacings
-           the lines never align horizontally. */
-        /* MEASURED, then corrected. The first cut at these numbers gave
-           1.5–2.5s of visibility, not the ~1s intended — the estimate assumed
-           a ~700px viewport and a tall window (1280px here) keeps the pulse
-           on screen proportionally longer. Speed raised to ~1500px/s, which
-           puts (viewportHeight + pulseHeight) / speed at roughly 1s on a
-           1280px window and well under it on a laptop. Duration is kept long
-           so the GAP between pulses does not shrink with the speed. */
-        const period = 7000 + frac((i + 1) * 0.4142135624) * 4000;
-        const dur = 4.6 + frac((i + 1) * 0.6180339887) * 2.8;
-        // negative: start mid-cycle, so the first painted frame is already scattered
-        const delay = -frac((i + 1) * 0.7548776662) * dur;
-        return (
-          <div
-            key={i}
-            aria-hidden="true"
-            className={className}
-            style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: x,
-              width: 1,
-              background: color,
-              ...(isSweep
-                ? ({
-                    "--wire-sweep-dur": `${dur.toFixed(2)}s`,
-                    "--wire-sweep-delay": `${delay.toFixed(2)}s`,
-                    "--wire-sweep-period": `${period.toFixed(0)}px`,
-                  } as CSSProperties)
-                : {}),
-            }}
-          />
-        );
-      })}
+      {V_X.map((x, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className={className}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: x,
+            width: 1,
+            background: color,
+            ...(isSweep ? wireSweepVars(i) : {}),
+          }}
+        />
+      ))}
     </>
   );
 }
+

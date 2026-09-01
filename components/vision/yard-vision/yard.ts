@@ -23,7 +23,7 @@
        the drafting language is carrying real information — and the 3D yard is
        the SAME yard as the flat map in the section beside it: five rows A-E,
        eight bays 01-08, and D-06 is the located box in both.
-     · 55 containers means instancing. Three InstancedMesh, one per livery,
+     · 55 containers means instancing. One InstancedMesh per livery (see LIVERY),
        sharing one BoxGeometry — 3 draw calls instead of 55. `PERFORMANCE.md`
        has had instancing as planned work for a while; a yard is what it was
        waiting for.
@@ -153,7 +153,42 @@ export function warmYardTextures() { yardTextures(); }
    the albedo's 0.6 and then some. So these are now authored close to the value
    actually wanted, and the exposure is pulled to 0.98 in scene.tsx to stop the
    highlights on 55 lit roofs from flattening into one bright field. */
-const LIVERY = ["#33507A", "#243A5C", "#42648C"] as const;
+/* SIX LIVERIES, SPREAD BY VALUE — NOT BY HUE. The distinction was tested on
+   screen, not assumed.
+
+   The three originals are one navy family spanning relative luminance 56-96,
+   so 55 boxes read as one repeated box rather than as a yard.
+
+   FIRST ATTEMPT, AND WHY IT FAILED: three non-blue liveries were added
+   (desaturated teal #35564A, warm grey #5A544E, slate #4A4F5C), matched to
+   the originals' luminance so the value ceiling was untouched. On screen the
+   yard was still uniformly blue — with a full dev-server restart to rule out
+   a stale bundle.
+
+   The cause is the shared studio rig (_vision/studio.ts), which is a
+   deliberately COOL room: its environment gradient runs #37507A -> #182741 ->
+   #090F1C, the hemisphere light is 0x9fc0ee over 0x0b1220 at intensity 1.6,
+   and both the rim and the kickers are 0xcfe6ff. A desaturated hue under
+   saturated blue light and a blue environment reflection returns blue — the
+   paint loses to the room. Hue is simply not an available axis in this scene
+   unless the shared rig changes, and the rig is correct for every other
+   flagship that uses it.
+
+   VALUE survives any light colour, so that is the axis used. The ladder is
+   widened from 56-96 to 42-124, roughly three times the range:
+
+     #1B2C47   42
+     #243A5C   56   (original)
+     #33507A   77   (original)
+     #42648C   96   (original)
+     #52739B  111
+     #5E80A8  124
+
+   The ceiling still holds with margin: the top rung is 124 against the
+   #5CC8FF overlay's 181, i.e. 68% of it, so cargo stays clearly darker than
+   the accent — the one thing this scene must never break, being the only
+   scene where the blue proposal and the orange conclusion share a shot. */
+const LIVERY = ["#1B2C47", "#243A5C", "#33507A", "#42648C", "#52739B", "#5E80A8"] as const;
 
 /** Deterministic livery per slot. Stable across builds — a yard that reshuffles
  *  its paint on every page load reads as a bug, and `Math.random()` here would
@@ -309,7 +344,11 @@ export function buildYard(m: YardMaterials): Yard {
   /* Count per livery first. InstancedMesh needs its count at construction and
      over-allocating means drawing invisible instances at the origin, which on a
      dark scene shows up as a smear at the yard's centre. */
-  const counts = [0, 0, 0];
+  /* Sized from LIVERY, not a literal — this was [0, 0, 0] and would silently
+     drop every container whose livery index was >= 3 the moment the palette
+     grew (counts[k]++ on undefined yields NaN, the InstancedMesh is then
+     constructed with count NaN, and those boxes never draw). */
+  const counts = new Array<number>(LIVERY.length).fill(0);
   for (let j = 0; j < ROWS; j++) {
     for (let i = 0; i < BAYS; i++) {
       for (let t = 0; t < HEIGHTS[j][i]; t++) {
